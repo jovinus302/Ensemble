@@ -1,5 +1,7 @@
 # Ensemble — Structured Product State
 
+> 이 문서는 Product State의 개념 배경(5계층 모델, Desired/Actual 차이, 상태 차원 분리, 증거 버전 바인딩)을 설명한다. 엔티티·enum·파생 규칙·권한·PM 루프의 **정본은 `docs/product-state-model.md`**이며, 두 문서가 다르면 그 문서를 따른다.
+
 작성일: 2026-09-21
 상태: 대화 기반 제품 개념 제안. 구현 완료 보고나 확정 사양이 아니다.
 출처: [터미널 TTYD 설명](chatgpt-conversation://6ab0f074-46f8-83ee-b07a-25d08ee393ad)
