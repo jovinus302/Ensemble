@@ -141,3 +141,38 @@ identical to r3/r8/r8; `PitchV3 --frame=600` exit 0. Body text: SF1b 20.1–21.5
 SF2 20.3–21.8, SF3 20.3–21.3px. Hero: SF2 chips 36.5px tall, SF3 badge 58.3px
 tall. Anchor error 0.01px (SF3 lifted, SF3 rise 0, SF2). Held poses: SF1a
 (0,−40,0) s 0.8; SF1b (0,0,0) s 1.435; SF2/SF3 (0,0,0) s 1.45.
+
+## Round 4 — opening transition clip (design-v4 §5), after still approval
+
+Built `OpeningV4` (`src/v4/OpeningV4.tsx`, timeline/poses in `src/v4/opening.ts`,
+264f): ① and ② type-led on an empty stage → word swap "사람이" → "AI PM이" →
+③ recedes while the board enters at (0,−40,0) → hold (SF1a, f157–165) →
+30f rotation + push-in (f165–195, ease 0.45,0,0.12,1) → ③ re-set above the
+landed board (SF1b, f195–264). `StageV4` gained an optional `boardOpacity`
+(entrance only); omitted, the DOM is unchanged. Rendered
+`review/v4/opening-v4.mp4` (h264, crf 22) and frames `opening-f161.png`
+(start), `opening-f176.png` (mid-rotation, ry −16.9°), `opening-f195.png`
+(landing), `opening-f256.png` (SF1b pin).
+
+One fix before the final render (timing only): the board fade-in started on
+the same frame as ③'s recede, so the centered headline crossed the entering
+board for 12f; the entrance now starts 6f later (f145–157).
+
+Checks:
+- |ry| in 5–25°: 9 frames (f174–182) ≤ 12. Computed from the same pose
+  function the render uses; `opening.ts` throws if it ever exceeds 12.
+- Popping / layer drop: rendered f136–200 as PNGs and diffed consecutive
+  frames (`% of pixels changing by > 24/255`). A smooth ramp 0.1% → 12.0% at
+  peak angular speed (f174) → 0.3% after landing, no single-frame spike. The
+  entrance-wrapper removal (f157) changes 0.14% and the slab removal on
+  landing (f195→196) follows the decaying trend. The steady ~5.3 mean diff on
+  every other frame is the 2f noise tile shift. Full-res crops of f172/f176
+  show the board face intact at the side face (no repeat of round-1's drop).
+- Landing = SF1b: OpeningV4 f256 vs `SF1b.png` — mean diff 5.45, pixels > 24:
+  0.003% (noise and background drift only). f161 vs `SF1a.png`: 5.34 / 0.001%.
+  Geometry, board content and headline are identical.
+
+Final verification (this revision): `tsc --noEmit` exit 0; `git diff --stat
+0dc8e10 -- motion-remotion/src/v3` empty; StyleFrameV3 f185/f505/f1305
+SHA256 identical to r3/r8/r8, `PitchV3 --frame=600` exit 0; StyleFrameV4
+SF1a/SF1b/SF2/SF3 re-renders SHA256-identical to the committed PNGs.

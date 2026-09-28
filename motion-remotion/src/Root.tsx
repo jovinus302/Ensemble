@@ -5,6 +5,8 @@ import {UiMockupFlat} from './ui/UiMockupFlat';
 import {PitchV3} from './v3/PitchV3';
 import {StyleFrameV3} from './v3/StyleFrameV3';
 import {StyleFrameV4} from './v4/StyleFrameV4';
+import {OpeningV4} from './v4/OpeningV4';
+import {OPENING} from './v4/opening';
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -67,6 +69,16 @@ export const RemotionRoot: React.FC = () => {
         width={1920}
         height={1080}
         defaultProps={{still: 'SF1a' as const, debugProjection: false, heroRise: 1, measure: false}}
+      />
+      {/* v4 opening segment only (storyboard-v4.md O, design-v4 §5 rotation check). */}
+      <Composition
+        id="OpeningV4"
+        component={OpeningV4}
+        durationInFrames={OPENING.end}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{measure: false}}
       />
     </>
   );
