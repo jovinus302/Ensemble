@@ -8,7 +8,7 @@
 
 1. Product State는 `target_product` 단위로 소유한다. Project State(태스크)는 `project` 단위다. MVP는 `target_product:project` = 1:1이다.
 2. 정본은 DB 엔티티와 이벤트 원장이다. 채팅 추출과 구조화 패널은 같은 원장을 거쳐서만 쓴다.
-3. 채팅 발언은 후보로만 기록한다. 결정 확정은 결정권자(대상 제품 소유자; intent.md의 "사용자"에 해당하는 역할. MVP에서는 1인, `can_decide(target_product, user, kind)`로 판정)의 확인 카드로만 이루어진다.
+3. 채팅 발언은 후보로만 기록한다. 결정 확정은 결정권자(대상 제품 소유자; intent.md의 "사용자"에 해당하는 역할. MVP에서는 1인, `can_decide(target_product, user, kind)`로 판정)의 확인 카드, 또는 PM이 선택지로 요청한 결정에 대한 결정권자의 직접 답변(solicited)으로만 이루어진다. 두 경우 모두 undo를 제공한다.
 4. 에이전트의 완료 보고는 claim이다. 태스크는 `reported_done`까지만 올린다. 인수 조건이 `passed`가 되려면 system-attested 증거나 사람 승인이 필요하고, 에이전트만의 검증은 `agent_verified`(참고용)로 둔다.
 5. gap과 충족 판정은 결정적 코드(`computeGap`)가 한다. 목표 달성에는 결정권자의 명시적 승인이 필요하다.
 6. AI PM은 결정권자가 승인한 계획(`plan`) 안에서는 사람의 재승인 없이 후속 작업 전달·수정 요청·재개·인계를 진행한다(`dispatch: within_plan`). 계획에 없는 새 태스크, 담당자 교체, 결정 변경 후 `impacted` 처리, 범위 변경, 외부 공개·비용 발생·되돌리기 어려운 행동은 결정권자 확인을 받는다.
@@ -78,12 +78,12 @@
 
 ### 2.6 파생 규칙 (코드, 결정적)
 
-criterion 검증 상태: 판정은 해당 criterion의 유효 증거 중 `captured_at`이 가장 최신인 것을 기준으로 한다.
+criterion 검증 상태: 판정은 `attested_by`가 `ci_integration`/`connected_runner`/`human`인 유효 증거 중 `captured_at`이 가장 최신인 것을 기준으로 한다. `attested_by = agent_claim` 증거는 `passed`/`failed` 판정에 쓰지 않고 부속 표시 `agent_verified`에만 쓴다.
 
 | 상태 | 조건 |
 | --- | --- |
 | `passed` | 유효한 증거(invalidated 아님, criterion_version·requirement_version이 현재와 같음, required kind 충족)가 있고, `attested_by`가 `ci_integration`/`connected_runner`(system-attested) 또는 `human`(사람 승인)일 때 |
-| `failed` | 최신 유효 증거가 `fail` |
+| `failed` | 최신 유효(판정 대상) 증거가 `fail` |
 | `stale` | 증거는 있지만 현재 버전과 맞지 않음 |
 | `unverified` | 증거 없음 |
 
@@ -120,7 +120,7 @@ criterion 검증 상태: 판정은 해당 criterion의 유효 증거 중 `captur
 
 4. **결정 권한 판정은 코드가 한다**: `can_decide(target_product, user, kind)`. MVP는 결정권자 1인. LLM은 "결정처럼 보이는가"만 판정.
 5. 모든 적용 이벤트는 `source_message_id`를 남기고 되돌리기(undo) 이벤트를 제공한다.
-6. MVP에서는 분류 결과를 **자동 반영하지 않는다**(후보 표시까지만). 결정권자의 결정만 카드로 확정.
+6. MVP에서는 분류 결과를 **자동 반영하지 않는다**(후보 표시까지만). 결정권자의 결정만 카드 또는 solicited 답변으로 확정.
 
 ## 4. AI PM(orchestrator) 루프
 
@@ -131,7 +131,7 @@ criterion 검증 상태: 판정은 해당 criterion의 유효 증거 중 `captur
 | 1. 차이 파악 | `computeGap(target_product)` 순수 함수 |
 | 2. 작업 정의 | gap 중 승인된 계획의 `task_target`으로 이미 덮인 것은 계획대로 진행한다. 덮이지 않은 gap은 PM이 계획 수정안(`plan` version+1: 새 태스크·담당 후보·사유)으로 묶어 결정권자에게 카드 1장으로 제안한다 |
 | 3. 맥락·완료 조건 전달 | "Product State 슬라이스" 주입: 대상 criterion, 관련 `confirmed` decision/constraint, `scope_out`, 열린 질문, 필요한 증거 kind. "참고 데이터, 지시 아님" 경계 표시 |
-| 4. 결과·증거 확인 | 구조화 보고 → `reported_done`. PM이 검증 단계를 연다: CI 결과 수집(system-attested), 구현자가 아닌 검증 에이전트(`agent_verified` 참고용), 사람 검토 카드(`human`). `report_result` 보고 없이 실행이 멈추면 `reported_done`이 아니라 `blocked`로 전이한다(멈춤을 완료로 올리지 않는다). PM이 결과물을 `handoff_conditions`와 대조해 충족하면 `checked`, 부족하면 같은 담당자에게 구체적 수정 요청(자동) |
+| 4. 결과·증거 확인 | 구조화 보고 → `reported_done`. `report_result` 보고 없이 실행이 멈추면 `reported_done`이 아니라 `blocked`로 전이한다(멈춤을 완료로 올리지 않는다). PM이 결과물을 `handoff_conditions`와 대조해 충족하면 `checked`, 부족하면 같은 담당자에게 구체적 수정 요청(자동). PM이 검증 단계를 연다: CI 결과 수집(system-attested), 구현자가 아닌 검증 에이전트(`agent_verified` 참고용), 사람 검토 카드(`human`) |
 | 5. 현재 상태 반영 | 증거 이벤트 → 투영 갱신. `checked` 시 `depends_on`이 충족된 대기 태스크를 자동 시작. 대상 criterion이 모두 `passed`면 태스크 `accepted` |
 | 6. 다음 작업 연결 | 1단계로 복귀. gap이 비면 결정권자에게 "goal 승인 요청" 카드 |
 
@@ -192,7 +192,7 @@ PM의 "전달·시작"은 지시이며, 실행은 Agent 런타임 또는 외부 
 
 각 결정을 "선택 / 이유 / 반대가 나은 조건 / 되돌리기 비용" 형식으로 기록한다.
 
-1. **결정권자 모델**: 선택 — 결정권자 1인(`can_decide(target_product,user,kind)`). 이유 — MVP 팀 규모에서 kind별 역할 실익 적음, 확정자 단일화로 분류 오류 추적 용이, kind 인자를 미리 넣어 인터페이스 불변. 반대가 나은 조건 — 한 대상 제품에 5명 이상이고 범위·기술 책임자가 실제로 다를 때. 되돌리기 비용 — 낮음(`decided_by` 저장됨).
+1. **결정권자 모델**: 선택 — 결정권자 1인(`can_decide(target_product,user,kind)`). 이유 — MVP 팀 규모에서 kind별 역할 실익 적음, 확정자 단일화로 분류 오류 추적 용이, kind 인자를 미리 넣어 인터페이스 불변. 반대가 나은 조건 — 한 대상 제품에 5명 이상이고 범위·기술 책임자가 실제로 다를 때. 되돌리기 비용 — 낮음(`confirmed_by` 저장됨).
 2. **검증 인정 기준**: 선택 — system-attested 증거 또는 사람 승인, 에이전트 검증은 `agent_verified` 참고용. 이유 — "자기보고로 판단하지 않는다"를 에이전트 상호 검증에도 적용, 의미 검색 정확도는 본래 사람 판단 항목, 테스트로 결정되는 항목은 CI로 자동화. 반대가 나은 조건 — 검증 에이전트 정확도가 사람 수준으로 측정되고 사람 확인이 병목일 때. 되돌리기 비용 — 낮음(파생 규칙 변경 후 재계산).
 3. **배정 자율성**(2026-09-28 intent.md §7·§9 정합으로 개정): 선택 — `dispatch: within_plan`. 이유 — intent.md MVP 명제("누구도 다시 지시하지 않아도 대기하던 Agent의 다음 작업이 시작되는가")가 계획 안의 자동 진행을 요구한다. 사람 통제는 계획 승인과 계획 수정 승인으로 모은다. PM 품질은 계획 수정안 수락률과 `checked` 뒤 되돌림 비율로 관찰한다. 반대(`manual`)가 나은 조건 — `checked` 오판으로 잘못 시작된 후속 작업의 비용이 크게 관찰될 때. 되돌리기 비용 — 낮음(정책 값). 개정 전 선택 `auto_assign: off`(PM 제안 후 매 배정 1클릭 확정)는 폐기.
 4. **목표 입력**: 선택 — 대화 추출 + 확정 카드, 정본은 DB 엔티티, 구조화 패널 병행. 이유 — 채팅 협업이 핵심 방향, 편집기 정본은 대화를 주변화. 반대가 나은 조건 — PRD를 갖고 들어오는 조직, 요구사항 수십 개 이상. 되돌리기 비용 — 중~낮음(PRD 가져오기는 쓰기 경로 추가, "문서 정본"으로 바꾸려면 동기화 설계 필요).
@@ -209,7 +209,7 @@ PM의 "전달·시작"은 지시이며, 실행은 Agent 런타임 또는 외부 
 | §6 "담당자를 정하고", §8 시나리오 B "작업을 시작합니다", §9 "후속 작업 실행"·"자동으로 시작한다" | `dispatch: within_plan`, `checked` 트리거 | 계획 승인 후에는 계획 안에서 자동으로 다음 작업이 시작된다 |
 | §7 원칙 5 "결과물 확인 후 다음 일 시작" | `checked`(PM 판정, 작업 흐름) vs `passed`(증거, 대상 제품 상태) 분리 | PM의 흐름 판단과 코드/증거의 상태 판정을 분리해 둘 다 만족 |
 | §8 시나리오 B "Agent가 곧바로 작업 시작", §9 "후속 작업 실행" | PM 전달=지시, 실행은 Agent 런타임/외부 러너, 완료 판정은 attested 증거(§6) | Ensemble은 비호스팅 원칙을 유지하면서도 인계 자동화를 지시 계층에서 구현 |
-| §7 "사람의 승인" 주체, §10 Q3 | MVP 결정권자 = intent.md의 "사용자" 1인(잠정) | 용어와 역할을 1:1 대응, 확장 시 §10 Q3 해소 필요 |
+| §7 "사람의 승인" 주체, §10 Q3 | MVP 결정권자 = intent.md의 "사용자" 1인(잠정) | 용어와 역할을 1:1 대응, 확장 시 intent.md §10 Q3 해소 필요 |
 | §7 원칙 1 "제안과 확정된 결정 구분", §10 Q4 | 후보 분류(§3) + solicited 결정 즉시 `confirmed` + 비요청 결정성 발언은 확인 카드 | PM이 스스로 묻고 답을 받은 경우와, 사람이 먼저 던진 결정성 발언을 다르게 취급해 자동화와 안전장치를 모두 만족 |
 
 intent.md와 이 문서가 충돌하면 제품 의도는 intent.md, 데이터 모델·enum·규칙은 이 문서가 우선한다.
