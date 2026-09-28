@@ -1,0 +1,27 @@
+import { expect, it } from "vitest";
+import { AUTOMATION_LIMIT, automationGate, limitReachedEvent, planStarts, project } from "../src/index.ts";
+import type { LedgerEvent, NewLedgerEvent } from "../src/index.ts";
+it("caps PM actions at twelve, emits one notice per projected interval, and resumes", () => {
+  const ctx = { projectId: "p", targetProductId: "p" };
+  const events: LedgerEvent[] = [];
+  const append = (event: NewLedgerEvent) => events.push({ ...event, seq: events.length + 1, id: `${events.length}`, at: "fixed" });
+  append({ ...ctx, actor: { kind: "human", id: "u" }, type: "plan_committed", payload: { version: 1, basedOn: null, tasks: ["A", "B"].map((id) => ({ id, title: id, assignee: "u", dependsOn: [], handoffConditions: [] })), reason: "plan", approvedBy: "u", sourceMessageIds: [] } });
+  expect(limitReachedEvent(project(events), ctx)).toBeNull();
+  for (let i = 0; i < AUTOMATION_LIMIT - 1; i++) append({ ...ctx, actor: { kind: "pm", id: "pm" }, type: "message_recorded", payload: {} });
+  expect(automationGate(project(events))).toEqual({ allowed: true, remaining: 1 });
+  const starts = planStarts(project(events), "go", ctx);
+  expect(starts).toHaveLength(1);
+  starts.forEach(append);
+  expect(automationGate(project(events))).toEqual({ allowed: false, remaining: 0 });
+  expect(planStarts(project(events), "go", ctx)).toEqual([]);
+  const notice = limitReachedEvent(project(events), ctx)!;
+  expect(limitReachedEvent(project(events), ctx)).toEqual(notice);
+  append(notice);
+  expect(project(events).automation).toEqual({ actionsSinceResume: 12, limitReached: true });
+  expect(limitReachedEvent(project(events), ctx)).toBeNull();
+  append({ ...ctx, actor: { kind: "pm", id: "pm" }, type: "automation_resumed", payload: { by: "u" } });
+  expect(automationGate(project(events))).toEqual({ allowed: true, remaining: 12 });
+  expect(planStarts(project(events), "go", ctx)).toHaveLength(1);
+  for (let i = 0; i < AUTOMATION_LIMIT; i++) append({ ...ctx, actor: { kind: "pm", id: "pm" }, type: "message_recorded", payload: {} });
+  expect(limitReachedEvent(project(events), ctx)?.idempotencyKey).not.toBe(notice.idempotencyKey);
+});
