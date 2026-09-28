@@ -1,6 +1,6 @@
 import type { Id, NewLedgerEvent } from "./ledger.ts";
 import type { EventContext } from "./events.ts";
-import { isStaleResult } from "./projection.ts";
+import { isStaleResult, pendingUpdates } from "./projection.ts";
 import type { ProjectState, TaskState } from "./projection.ts";
 import { automationGate } from "./action-limit.ts";
 export function startKey(task: TaskState): string { return `start:${task.spec.id}:v${task.specVersion}`; }
@@ -24,9 +24,29 @@ function submittedTask(state: ProjectState, taskId: Id, resultId: Id): TaskState
   if (!task.results.some((result) => result.resultId === resultId)) throw new Error(`Unknown result ${resultId} for task ${taskId}`);
   return task;
 }
+/** A result cannot hand off while a plan update is unconfirmed or the result predates the confirmed version. */
+function updateBlockers(task: TaskState, resultId: Id): string[] {
+  const blockers = pendingUpdates(task).map((u) => `Update ${u.updateId} ${u.status === "sent" ? "not yet acknowledged" : "acknowledgement rejected"}: result ${resultId} precedes confirmation`);
+  const acknowledged = task.updates.filter((u) => u.status === "acknowledged");
+  const result = task.results.find((r) => r.resultId === resultId);
+  if (result && acknowledged.length) {
+    const confirmed = Math.max(...acknowledged.map((u) => u.toVersion));
+    if (result.planVersion < confirmed) blockers.push(`Result ${resultId} is based on v${result.planVersion}, before acknowledged v${confirmed}`);
+  }
+  return blockers;
+}
+/** Every reason a result cannot be checked yet; empty means handoff is allowed. */
+export function handoffBlockers(state: ProjectState, taskId: Id, resultId: Id): string[] {
+  let task: TaskState;
+  try { task = submittedTask(state, taskId, resultId); } catch (error) { return [(error as Error).message]; }
+  const blockers = isStaleResult(task, resultId) ? [`Stale result ${resultId}: task ${taskId} specification changed`] : [];
+  return [...blockers, ...updateBlockers(task, resultId)];
+}
 export function checkResult(state: ProjectState, taskId: Id, resultId: Id, reason: string, ctx: EventContext): NewLedgerEvent {
   const task = submittedTask(state, taskId, resultId);
   if (isStaleResult(task, resultId)) throw new Error(`Stale result ${resultId}: task ${taskId} specification changed`);
+  const blockers = updateBlockers(task, resultId);
+  if (blockers.length) throw new Error(blockers.join("; "));
   return { ...ctx, type: "task_checked", actor: { kind: "pm", id: "pm" }, payload: { taskId, resultId, reason } };
 }
 export function requestRevision(state: ProjectState, taskId: Id, resultId: Id, missing: string[], ctx: EventContext): NewLedgerEvent {

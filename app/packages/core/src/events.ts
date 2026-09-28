@@ -17,6 +17,14 @@ export interface EventPayloads {
   turn_finished: { agentId: Id; taskId: Id };
   action_limit_reached: { count: number; limit: number };
   automation_resumed: { by: Id };
+  session_linked: { agentId: Id; threadId: Id; workspace: string };
+  turn_observed: { agentId: Id; taskId: Id; turnId: Id; status: "started" | "completed" | "interrupted" | "failed" };
+  update_sent: { updateId: Id; taskId: Id; fromVersion: number; toVersion: number; turnId?: Id };
+  update_acknowledged: { updateId: Id; taskId: Id; planVersion: number; applied: string[]; dropped: string[] };
+  /** The acknowledgement failed validation; the update stays unconfirmed. */
+  update_rejected: { updateId: Id; taskId: Id; reasons: string[] };
+  /** An agent reply posted to the channel. */
+  reply_recorded: { memberId: Id; taskId?: Id; text: string; turnId?: Id };
 }
 export type EventType = keyof EventPayloads;
 export type AnyEvent = { [K in EventType]: LedgerEvent<K, EventPayloads[K]> }[EventType];

@@ -1,6 +1,8 @@
 import type { Id, LedgerEvent } from "./ledger.ts";
 import type { AnyEvent, EventPayloads, TaskSpec } from "./events.ts";
 
+export type UpdateStatus = "sent" | "acknowledged" | "rejected";
+export interface TaskUpdate { updateId: Id; toVersion: number; status: UpdateStatus; droppedItems: string[] }
 export type TaskStatus = "waiting" | "ready" | "reserved" | "running" | "submitted" | "revising" | "checked" | "blocked" | "cancelled";
 export interface TaskState {
   spec: TaskSpec;
@@ -9,6 +11,7 @@ export interface TaskState {
   results: { resultId: Id; planVersion: number }[];
   checkedResultId?: Id;
   blocked?: { reason: string; unblockBy?: Id; prevStatus: TaskStatus };
+  updates: TaskUpdate[];
 }
 export interface ProjectState {
   lastSeq: number;
@@ -19,6 +22,7 @@ export interface ProjectState {
   availability: Map<Id, number>;
   estimates: Map<Id, { min: number; max: number; source: EventPayloads["estimate_updated"]["source"] }>;
   activeTurn: Map<Id, Id>;
+  sessions: Map<Id, { threadId: Id; workspace: string }>;
   reservedStartKeys: Set<string>;
   automation: { actionsSinceResume: number; limitReached: boolean };
 }
@@ -27,11 +31,15 @@ export function isStaleResult(task: TaskState, resultId: Id): boolean {
   if (!result) throw new Error(`Unknown result ${resultId} for task ${task.spec.id}`);
   return result.planVersion < task.specVersion;
 }
+/** Updates the agent has not confirmed: still sent, or acknowledged with an invalid reply. */
+export function pendingUpdates(task: TaskState): TaskUpdate[] {
+  return task.updates.filter((update) => update.status !== "acknowledged");
+}
 /** Replay ledger order without retaining mutable references to input payloads. */
 export function project(events: readonly LedgerEvent[]): ProjectState {
   const state: ProjectState = {
     lastSeq: 0, members: new Map(), tasks: new Map(), availability: new Map(),
-    estimates: new Map(), activeTurn: new Map(), reservedStartKeys: new Set(),
+    estimates: new Map(), activeTurn: new Map(), sessions: new Map(), reservedStartKeys: new Set(),
     automation: { actionsSinceResume: 0, limitReached: false },
   };
   for (const original of events) {
@@ -48,7 +56,7 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
         for (const [id, task] of state.tasks) if (!ids.has(id)) task.status = "cancelled";
         for (const spec of p.tasks) {
           const task = state.tasks.get(spec.id);
-          if (!task) state.tasks.set(spec.id, { spec, specVersion: p.version, status: "waiting", results: [] });
+          if (!task) state.tasks.set(spec.id, { spec, specVersion: p.version, status: "waiting", results: [], updates: [] });
           else if (JSON.stringify(task.spec) !== JSON.stringify(spec)) {
             task.spec = spec;
             task.specVersion = p.version;
@@ -61,13 +69,19 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
       }
       case "availability_updated": state.availability.set(event.payload.memberId, event.payload.weeklyHours); break;
       case "estimate_updated": state.estimates.set(event.payload.taskId, { ...event.payload.hours, source: event.payload.source }); break;
+      case "session_linked": state.sessions.set(event.payload.agentId, { threadId: event.payload.threadId, workspace: event.payload.workspace }); break;
+      case "turn_observed":
+        if (event.payload.status === "started") break;
+        if (state.activeTurn.get(event.payload.agentId) === event.payload.taskId) state.activeTurn.delete(event.payload.agentId);
+        break;
       case "turn_finished":
         if (state.activeTurn.get(event.payload.agentId) === event.payload.taskId) state.activeTurn.delete(event.payload.agentId);
         break;
       case "action_limit_reached": state.automation.limitReached = true; break;
       case "automation_resumed": state.automation = { actionsSinceResume: 0, limitReached: false }; break;
       case "task_start_reserved": case "task_started": case "result_submitted": case "task_checked":
-      case "revision_requested": case "task_blocked": case "task_resumed": {
+      case "revision_requested": case "task_blocked": case "task_resumed":
+      case "update_sent": case "update_acknowledged": case "update_rejected": {
         const task = state.tasks.get(event.payload.taskId);
         if (!task || task.status === "cancelled") break;
         switch (event.type) {
@@ -96,6 +110,19 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
           case "task_resumed":
             if (task.status === "blocked" && task.blocked) { task.status = task.blocked.prevStatus; delete task.blocked; }
             break;
+          case "update_sent":
+            if (!task.updates.some((u) => u.updateId === event.payload.updateId)) task.updates.push({ updateId: event.payload.updateId, toVersion: event.payload.toVersion, status: "sent", droppedItems: [] });
+            break;
+          case "update_acknowledged": {
+            const update = task.updates.find((u) => u.updateId === event.payload.updateId);
+            if (update) { update.status = "acknowledged"; update.droppedItems = event.payload.dropped; }
+            break;
+          }
+          case "update_rejected": {
+            const update = task.updates.find((u) => u.updateId === event.payload.updateId);
+            if (update) update.status = "rejected";
+            break;
+          }
         }
         break;
       }
