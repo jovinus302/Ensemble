@@ -176,3 +176,27 @@ Final verification (this revision): `tsc --noEmit` exit 0; `git diff --stat
 0dc8e10 -- motion-remotion/src/v3` empty; StyleFrameV3 f185/f505/f1305
 SHA256 identical to r3/r8/r8, `PitchV3 --frame=600` exit 0; StyleFrameV4
 SF1a/SF1b/SF2/SF3 re-renders SHA256-identical to the committed PNGs.
+
+## Round 5 — opening breathing room (timing only, one defect type)
+
+User on `opening-v4.mp4`: "AI PM이 챙긴다로 넘어갈때 너무 쉴틈이 없음". The swap
+followed ②'s reveal directly, and ③ held centered only ~0.5s before receding.
+Fix (`opening.ts`; `OpeningV4.tsx` passes the top-band stagger):
+- ② is set at f100 and holds still 15f; the swap starts at f115, and "AI PM이" is set at f151.
+- ③ holds centered and fully still for 60f (f151–211). There is no board and no camera move.
+- Recede f211–223; board enters f217–229; SF1a hold f229–237 (pin f233); rotation f237–267.
+- The top-band ③ enters at f261 with a 4f stagger and is fully set at f317 (pin); landed hold f267–320 (53f).
+- The numbers do not close inside 1710f without cutting beats, so the opening grows 264 → 320f.
+  The total is now **1766f (58.9s)**; beats ①–⑥ and the closing keep their lengths and shift by +56f.
+Checks (re-rendered `opening-v4.mp4`, frames `opening-f181` (③ centered hold),
+`-f233` (SF1a), `-f248` (mid-rotation), `-f267` (landing), `-f317` (SF1b)):
+- |ry| in 5–25°: 9 frames (f246–254) ≤ 12.
+- Consecutive-frame diff f150–272 (% of pixels changing > 24/255):
+  - centered hold f152–211 max 0.000; SF1a hold f230–237 0.000;
+  - entrance ramps to 3.3% at f222; the rotation ramps smoothly to 12.0% at f246 and back to 0.6% after landing.
+  - No single-frame spike, so no popping or layer drop.
+- Pins vs stills: f317 vs `SF1b.png` mean diff 5.47, pixels > 24 = 0.005%; f233 vs
+  `SF1a.png` 5.33 / 0.001% (noise and background drift only).
+Final verification: `tsc` exit 0; src/v3 diff vs 0dc8e10 empty; v3 SF1/SF2/SF3 SHA256
+identical, PitchV3 f600 exit 0; StyleFrameV4 SF1a/SF1b/SF2/SF3 SHA256-identical to the
+committed PNGs. The stale opening comments were rewritten with the new pins.

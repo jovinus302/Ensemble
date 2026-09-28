@@ -1,4 +1,4 @@
-// v4 opening segment (storyboard-v4.md segment O, f0–264): ① → ② → word swap
+// v4 opening segment (storyboard-v4.md segment O, f0–320): ① → ② → word swap
 // "사람이"→"AI PM이" → ③, board entrance at (0,-40,0) (SF1a), 30f rotation +
 // push-in to frontal (SF1b framing), ③ re-set above the landed board.
 // Timeline and poses: opening.ts. Built for the design-v4 §5 rotation check.
@@ -103,6 +103,7 @@ const OpeningType: React.FC<{frame: number}> = ({frame}) => {
           variant="T1"
           align="center"
           top={64}
+          stagger={OPENING.lineC.stagger}
         />
       )}
     </>

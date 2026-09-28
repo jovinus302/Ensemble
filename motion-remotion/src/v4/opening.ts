@@ -16,19 +16,24 @@ import {STILL_POSES} from './config';
 export const OPENING = {
   // ① "Agent는 늘었는데": 2 words -> read >= max(1.2s, 2/3+0.5s) = 36f
   lineA: {enter: 0, exit: 48},
-  // ② "다음 일은 사람이 챙긴다": 4 words -> read >= 1.83s = 55f (in by ~66, swap at 121)
+  // ② "다음 일은 사람이 챙긴다": 4 words -> read >= 1.83s = 55f. Last word starts
+  // at f70; the reveal spring is 0.9998 by +30f -> ② is set and still at f100.
   lineB: {enter: 52},
-  swap: {oldExit: 121, newEnter: 127, widthFrom: 121, widthTo: 135},
-  recede: {from: 139, to: 151}, // ③ (centered) recedes...
-  boardEnter: {from: 145, to: 157}, // ...while the board fades in, half a beat later
-  sf1aHold: {from: 157, to: 165}, // SF1a pinned at f161
-  rotate: {from: 165, to: 195}, // 30f (design: 24–36f)
-  // ③ re-set in the SF1b headline band; 5 words -> read >= 2.17s = 65f
-  // last word starts at +24f; the reveal spring is 1.0000 by +40f -> fully set at f253
-  lineC: {enter: 189},
-  sf1aPin: 161,
-  sf1bPin: 256,
-  end: 264,
+  // round 5 (user: "no breathing room"): ② holds still 15f (f100–115) before the swap
+  swap: {oldExit: 115, newEnter: 121, widthFrom: 115, widthTo: 129},
+  // "AI PM이" is set at f151 (121 + 30); ③ then holds centered and fully still
+  // for 60f (f151–211) — no board, no camera move, only the background drift.
+  centerHold: {from: 151, to: 211},
+  recede: {from: 211, to: 223}, // ③ (centered) recedes...
+  boardEnter: {from: 217, to: 229}, // ...while the board fades in, half a beat later
+  sf1aHold: {from: 229, to: 237}, // SF1a pinned at f233
+  rotate: {from: 237, to: 267}, // 30f (design: 24–36f)
+  // ③ re-set in the SF1b headline band (stagger 4): last word starts at +16f,
+  // the reveal spring is 1.0000 by +40f -> fully set at f317 (= SF1b).
+  lineC: {enter: 261, stagger: 4},
+  sf1aPin: 233,
+  sf1bPin: 317,
+  end: 320, // landed hold f267–320 (53f)
 } as const;
 
 // Ease-in-out with a long, soft landing: slow start out of the SF1a hold,
