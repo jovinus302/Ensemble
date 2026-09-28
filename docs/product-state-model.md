@@ -288,8 +288,7 @@ intent.md와 이 문서가 충돌하면 제품 의도는 intent.md, 데이터 �
 - 기술 스택·모듈 경로 확정
 - 분류기 모델·프리필터 규칙·예산 한도
 - 검토자 지정 UX, 다이제스트 주기
-- `docs/ensemble-direction-context.pdf`(main의 개념 비교 문서)는 텍스트 추출이 안 되어 본 설계에 반영되지 않았음
-- `intent.md`는 로컬 main에만 있고 origin/main에는 아직 없음. 이 문서의 참조가 유효해지려면 intent.md가 먼저 main에 반영돼야 한다.
+- `docs/ensemble-direction-context.pdf`(main의 개념 비교 문서)는 main에서 삭제됨(cfc7cff). 본 설계에 반영되지 않았음
 - 결정 1(결정권자)·solicited 결정 규칙을 intent.md §10 Q3·Q4 본문에 반영할지 사용자 승인 필요(intent.md는 이 브랜치에서 수정하지 않음).
 - 사람 산출물의 검증 근거 인정 기준: 검증 승인 권한자가 `human_review` 승인 시 무엇을 확인하는지(criterion 문구의 수치 N, 체크리스트 여부). 예시 §7.1의 수치는 예시값이다.
 - 담당자가 곧 승인자인 경우: 결정권자가 자기 산출물(예: T2 인터뷰 기록)을 스스로 승인하는 것을 MVP에서 허용하고 원장에 `produced_by = recorded_by`로 표시한다. 이후 제한할지는 미정이다.
