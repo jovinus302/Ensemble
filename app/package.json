@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json && npm run typecheck -w @ensemble/web",
     "smoke:llm": "tsx packages/llm/scripts/smoke.ts",
-    "smoke:codex": "tsx packages/agents/scripts/smoke-codex.ts"
+    "smoke:codex": "tsx packages/agents/scripts/smoke-codex.ts",
+    "live:pm": "tsx packages/orchestrator/scripts/live-coordination.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

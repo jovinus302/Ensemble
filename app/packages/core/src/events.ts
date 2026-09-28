@@ -25,6 +25,18 @@ export interface EventPayloads {
   update_rejected: { updateId: Id; taskId: Id; reasons: string[] };
   /** An agent reply posted to the channel. */
   reply_recorded: { memberId: Id; taskId?: Id; text: string; turnId?: Id };
+  message_recorded: { messageId: Id; authorId: Id; text: string; threadId?: Id; attachmentIds: Id[] };
+  attachment_recorded: { attachmentId: Id; name: string; mimeType: string; uri: string; taskId?: Id };
+  /** The PM's handoff judgement and the evidence behind it. */
+  handoff_reviewed: { taskId: Id; resultId: Id; verdict: "sufficient" | "insufficient"; met: string[]; missing: string[]; evidence: string[] };
+  /** The PM's answers to the three principle questions (docs/pm-principles.md) before speaking or staying silent. */
+  pm_considered: { considerationId: Id; triggerId: Id; whoseAction: string | null; alreadyKnows: "yes" | "no" | "unknown"; evidence: string[]; decision: "speak" | "silent"; reason: string; openTopics: string[] };
+  pm_spoke: { considerationId: Id; messageId: Id; text: string; kind: "fact" | "summary" | "ask" | "answer" | "nudge" };
+  decision_recorded: { decisionId: Id; summary: string; sourceMessageIds: Id[]; approvedBy: Id; changeKinds: ChangeKind[] };
+  authority_requested: { requestId: Id; decisionId?: Id; personId: Id; changeKinds: ChangeKind[]; text: string };
+  authority_granted: { requestId: Id; personId: Id; granted: boolean };
+  /** One change delivered to one recipient. */
+  change_notified: { changeId: Id; planVersion: number; recipientId: Id; text: string; via: "channel" | "steer" | "next_turn" };
 }
 export type EventType = keyof EventPayloads;
 export type AnyEvent = { [K in EventType]: LedgerEvent<K, EventPayloads[K]> }[EventType];

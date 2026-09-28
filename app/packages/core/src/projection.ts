@@ -13,6 +13,7 @@ export interface TaskState {
   blocked?: { reason: string; unblockBy?: Id; prevStatus: TaskStatus };
   updates: TaskUpdate[];
 }
+export interface ProjectMessage { messageId: Id; authorId: Id; text: string; threadId?: Id; seq: number }
 export interface ProjectState {
   lastSeq: number;
   members: Map<Id, EventPayloads["member_joined"]>;
@@ -25,6 +26,15 @@ export interface ProjectState {
   sessions: Map<Id, { threadId: Id; workspace: string }>;
   reservedStartKeys: Set<string>;
   automation: { actionsSinceResume: number; limitReached: boolean };
+  /** Channel messages in ledger order, including PM speech. */
+  messages: ProjectMessage[];
+  /** Topics the PM left open at its most recent consideration. */
+  openTopics: string[];
+  decisions: Map<Id, EventPayloads["decision_recorded"]>;
+  /** Authority requests still waiting for the person's answer. */
+  pendingAuthority: Map<Id, EventPayloads["authority_requested"]>;
+  /** `${changeId}:${recipientId}` pairs already notified. */
+  notified: Set<string>;
 }
 export function isStaleResult(task: TaskState, resultId: Id): boolean {
   const result = task.results.find((item) => item.resultId === resultId);
@@ -35,12 +45,19 @@ export function isStaleResult(task: TaskState, resultId: Id): boolean {
 export function pendingUpdates(task: TaskState): TaskUpdate[] {
   return task.updates.filter((update) => update.status !== "acknowledged");
 }
+export function notifiedKey(changeId: Id, recipientId: Id): string {
+  return `${changeId}:${recipientId}`;
+}
+export function wasNotified(state: ProjectState, changeId: Id, recipientId: Id): boolean {
+  return state.notified.has(notifiedKey(changeId, recipientId));
+}
 /** Replay ledger order without retaining mutable references to input payloads. */
 export function project(events: readonly LedgerEvent[]): ProjectState {
   const state: ProjectState = {
     lastSeq: 0, members: new Map(), tasks: new Map(), availability: new Map(),
     estimates: new Map(), activeTurn: new Map(), sessions: new Map(), reservedStartKeys: new Set(),
     automation: { actionsSinceResume: 0, limitReached: false },
+    messages: [], openTopics: [], decisions: new Map(), pendingAuthority: new Map(), notified: new Set(),
   };
   for (const original of events) {
     const event = structuredClone(original) as AnyEvent;
@@ -79,6 +96,21 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
         break;
       case "action_limit_reached": state.automation.limitReached = true; break;
       case "automation_resumed": state.automation = { actionsSinceResume: 0, limitReached: false }; break;
+      case "message_recorded": case "pm_spoke": {
+        const p = event.payload;
+        // Malformed payloads (no id or text) are ignored rather than projected.
+        if (typeof p.messageId !== "string" || typeof p.text !== "string" || state.messages.some((m) => m.messageId === p.messageId)) break;
+        const authorId = event.type === "message_recorded" ? event.payload.authorId : event.actor.id;
+        if (typeof authorId !== "string") break;
+        const threadId = event.type === "message_recorded" ? event.payload.threadId : undefined;
+        state.messages.push({ messageId: p.messageId, authorId, text: p.text, ...(threadId !== undefined ? { threadId } : {}), seq: event.seq });
+        break;
+      }
+      case "pm_considered": state.openTopics = event.payload.openTopics; break;
+      case "decision_recorded": state.decisions.set(event.payload.decisionId, event.payload); break;
+      case "authority_requested": state.pendingAuthority.set(event.payload.requestId, event.payload); break;
+      case "authority_granted": state.pendingAuthority.delete(event.payload.requestId); break;
+      case "change_notified": state.notified.add(notifiedKey(event.payload.changeId, event.payload.recipientId)); break;
       case "task_start_reserved": case "task_started": case "result_submitted": case "task_checked":
       case "revision_requested": case "task_blocked": case "task_resumed":
       case "update_sent": case "update_acknowledged": case "update_rejected": {

@@ -3,3 +3,9 @@
 // prompt-slice (fixed context slots), team-template.
 // The PM's exact responsibilities are settled with the user before M2.
 export { SessionRunner } from './session-runner.ts';
+export { ProjectManager } from './pm.ts';
+export type { ProjectManagerOptions, MessageAttachment, PmPost } from './pm.ts';
+export { Coordinator } from './coordination.ts';
+export { Dispatcher } from './dispatch.ts';
+export { buildTaskContext, summarizeForHuman } from './context.ts';
+export { judgeHandoff } from './handoff.ts';

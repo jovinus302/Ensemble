@@ -19,3 +19,4 @@ export interface Scenario {
   members: { id: Id; kind: "human" | "agent" | "pm"; displayName: string; role?: string }[];
   steps: ScriptedStep[];
 }
+export { SCENE_NOW, sceneTasks, sceneEvents, scene1, scene2, scene3 } from './scene-fixtures.ts';
