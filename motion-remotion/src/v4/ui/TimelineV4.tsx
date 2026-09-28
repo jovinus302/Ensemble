@@ -17,15 +17,17 @@ export interface TimelineV4Props {
   scrollY: number;
   excludeIds?: string[];
   pmReply?: number; // 0 = not posted yet, 1 = fully shown
+  approvedIds?: string[]; // round D: cards drawn in their approved state (product-state driven)
 }
 
-export const TimelineV4: React.FC<TimelineV4Props> = ({frame, scrollY, excludeIds = [], pmReply = 1}) => {
+export const TimelineV4: React.FC<TimelineV4Props> = ({frame, scrollY, excludeIds = [], pmReply = 1, approvedIds = []}) => {
   const {y0: vy0, y1: vy1} = AREAS.timelineViewport;
   const reply = pmReply > 0 ? [PM_REPLY] : [];
   return (
     <>
       {[...MESSAGES_V4.filter((m) => frame >= m.appearFrame), ...reply]
         .filter((m) => !excludeIds.includes(m.id))
+        .map((m) => (approvedIds.includes(m.id) && 'approved' in m.content ? {...m, content: {...m.content, approved: true}} : m))
         .map((m) => {
           const boardY = contentYToBoardY(m.contentY[0], scrollY);
           const boardYEnd = contentYToBoardY(m.contentY[1], scrollY);

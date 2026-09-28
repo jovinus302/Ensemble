@@ -26,11 +26,13 @@ const local = (boardAbsY: number) => boardAbsY - PANEL_Y;
 export interface RightPanelV4Props {
   progress: number;
   verifiedIds?: string[];
-  evidenceHighlightLast?: boolean;
+  reportedIds?: string[]; // round D: "보고됨" comes from the product state, not content.ts
+  showDecision?: boolean;
+  evidenceCount?: number;
   heroRowId?: string;
 }
 
-const RowBody: React.FC<{c: Criterion; verified: boolean; hero?: boolean}> = ({c, verified, hero}) => (
+const RowBody: React.FC<{c: Criterion; verified: boolean; reported?: boolean; hero?: boolean}> = ({c, verified, reported, hero}) => (
   <>
     <div style={{position: 'relative', flex: 1, minWidth: 0}}>
       <div style={uiTextStyle(uiType.labelMd, colors.onSurfaceVariant)}>{c.id}</div>
@@ -38,7 +40,7 @@ const RowBody: React.FC<{c: Criterion; verified: boolean; hero?: boolean}> = ({c
     </div>
     <div style={{position: 'relative', display: 'flex', alignItems: 'center', flexShrink: 0}}>
       {verified ? <VerifiedBadge hero={hero} /> : <UnverifiedBadge />}
-      {c.reportedTag && !verified && <ReportedTag />}
+      {reported && !verified && <ReportedTag />}
     </div>
   </>
 );
@@ -55,7 +57,7 @@ export const criterionHeroRect = (id: string) => {
 
 // The hero version of a criterion row, laid out inside a HeroLift card box
 // (coordinates relative to the card, which is criterionHeroRect(id)).
-export const CriterionHeroRow: React.FC<{id: string; verified: boolean}> = ({id, verified}) => {
+export const CriterionHeroRow: React.FC<{id: string; verified: boolean; reported?: boolean}> = ({id, verified, reported}) => {
   const c = PRODUCT_STATE.criteria.find((r) => r.id === id)!;
   return (
     <div
@@ -88,13 +90,13 @@ export const CriterionHeroRow: React.FC<{id: string; verified: boolean}> = ({id,
           gap: px(10),
         }}
       >
-        <RowBody c={c} verified={verified} hero />
+        <RowBody c={c} verified={verified} reported={reported} hero />
       </div>
     </div>
   );
 };
 
-export const RightPanelV4: React.FC<RightPanelV4Props> = ({progress, verifiedIds = [], evidenceHighlightLast, heroRowId}) => (
+export const RightPanelV4: React.FC<RightPanelV4Props> = ({progress, verifiedIds = [], reportedIds = [], showDecision = true, evidenceCount = 3, heroRowId}) => (
   <div
     style={{
       position: 'absolute',
@@ -141,22 +143,23 @@ export const RightPanelV4: React.FC<RightPanelV4Props> = ({progress, verifiedIds
             gap: px(10),
           }}
         >
-          <RowBody c={c} verified={verifiedIds.includes(c.id)} />
+          <RowBody c={c} verified={verifiedIds.includes(c.id)} reported={reportedIds.includes(c.id)} />
         </div>
       );
     })}
 
-    {/* decision block */}
+    {/* decision block (from ③ on) */}
+    {showDecision && (
     <div style={{position: 'absolute', left: px(PANEL_PAD), top: px(local(536)), width: px(ROW_W), display: 'flex', alignItems: 'center', gap: px(8)}}>
       <span style={uiTextStyle(uiType.bodyMd, colors.onSurface)}>{PRODUCT_STATE.decisionBlock.label}</span>
       <EmbossChip label={PRODUCT_STATE.decisionBlock.chip} container={colors.secondaryContainer} onContainer={colors.onSecondaryContainer} fontSize={SECONDARY_FONT} />
     </div>
+    )}
 
     {/* evidence block */}
     <div style={{position: 'absolute', left: px(PANEL_PAD), top: px(local(656)), width: px(ROW_W), display: 'flex', flexDirection: 'column', gap: px(6)}}>
       {PRODUCT_STATE.evidence.map((e, i) => {
-        const isLast = i === PRODUCT_STATE.evidence.length - 1;
-        if (isLast && !evidenceHighlightLast) return null;
+        if (i >= evidenceCount) return null;
         return (
           <div key={e} style={uiTextStyle(uiType.bodySm, colors.onSurfaceVariant)}>
             {e}

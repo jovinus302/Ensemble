@@ -14,6 +14,8 @@ import {BOARD_W, BOARD_H, AREAS, TEAM_ROWS, SIDEBAR_TEAM_Y0, SIDEBAR_TEAM_ROW_H,
 import {px, colors, uiTextStyle} from '../../v3/tokens/video';
 import {uiTypeV4 as uiType, SECONDARY_FONT, SIDEBAR_AVATAR} from './typeV4';
 import {MemberAvatar} from './membersV4';
+import type {MemberId} from './membersV4';
+import type {ProductState, TeamStatus} from '../stateV4';
 import {EmbossChip} from '../../v3/ui/primitives/EmbossChip';
 import {AddIcon, ForumIcon, InfoIcon, AutoAwesomeIcon} from '../../v3/ui/icons';
 import {TimelineV4} from './TimelineV4';
@@ -25,9 +27,8 @@ export interface BoardV4Props {
   scrollY: number;
   heroMessageId?: string;
   heroRowId?: string;
-  progress?: number;
-  verifiedIds?: string[];
-  evidenceHighlightLast?: boolean;
+  // round D: team chips and right panel come from one product state (stateV4)
+  state: ProductState;
   overlay?: React.ReactNode;
   // design-v4 r3 B: the AI PM's landing reply (M1b) and its "지휘 중" switch.
   pmReply?: number; // M1b reveal 0..1 (default 1: already in the thread)
@@ -72,7 +73,16 @@ const PmChip: React.FC<{p: number}> = ({p}) =>
     </span>
   );
 
-export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, heroRowId, progress = 0, verifiedIds, evidenceHighlightLast, overlay, pmReply = 1, pmActivation}) => (
+const TEAM_CHIP: Record<Exclude<TeamStatus, null>, {label: string; container: string}> = {
+  directing: {label: '지휘 중', container: colors.infoContainer},
+  working: {label: '작업 중', container: colors.infoContainer},
+  waiting: {label: '대기', container: colors.surfaceContainerHigh},
+  done: {label: '완료', container: colors.successContainer},
+};
+const TeamChip: React.FC<{status: TeamStatus}> = ({status}) =>
+  status ? <EmbossChip label={TEAM_CHIP[status].label} container={TEAM_CHIP[status].container} onContainer={colors.onSurface} fontSize={SECONDARY_FONT} /> : null;
+
+export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, heroRowId, state, overlay, pmReply = 1, pmActivation}) => (
   <>
     <div
       style={{
@@ -144,8 +154,8 @@ export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, 
               </div>
               {row.kind === 'pm' && pmActivation !== undefined ? (
                 <PmChip p={pmActivation} />
-              ) : row.chip && (
-                <EmbossChip label={row.chip.label} container={row.chip.state === 'working' ? colors.infoContainer : colors.surfaceContainerHigh} onContainer={colors.onSurface} fontSize={SECONDARY_FONT} />
+              ) : (
+                <TeamChip status={state.team[row.id as MemberId]} />
               )}
             </div>
           ))}
@@ -153,7 +163,7 @@ export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, 
       </div>
 
       {/* timeline (drawn before the header band so the band covers scrolled rows) */}
-      <TimelineV4 frame={frame} scrollY={scrollY} excludeIds={heroMessageId ? [heroMessageId] : []} pmReply={pmReply} />
+      <TimelineV4 frame={frame} scrollY={scrollY} excludeIds={heroMessageId ? [heroMessageId] : []} pmReply={pmReply} approvedIds={state.approvedMessages} />
 
       {/* channel header — opaque band; covers rows scrolled above y=64 by paint
           order (drawn after the timeline), so it needs no Z of its own (v3 used Z+4) */}
@@ -207,7 +217,14 @@ export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, 
         </div>
       </div>
 
-      <RightPanelV4 progress={progress} verifiedIds={verifiedIds} evidenceHighlightLast={evidenceHighlightLast} heroRowId={heroRowId} />
+      <RightPanelV4
+        progress={state.progress}
+        verifiedIds={state.verifiedIds}
+        reportedIds={state.reportedIds}
+        showDecision={state.showDecision}
+        evidenceCount={state.evidenceCount}
+        heroRowId={heroRowId}
+      />
 
       {overlay}
     </div>

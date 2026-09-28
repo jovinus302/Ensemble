@@ -20,6 +20,7 @@ import {KineticHeadline} from '../v3/type/KineticHeadline';
 import {GlowField} from '../v3/fx/GlowField';
 import {StageV4, TypeLayer} from './stage/StageV4';
 import {BoardV4} from './ui/BoardV4';
+import {STATES} from './stateV4';
 import {BoardThickness} from './ui/BoardThickness';
 import {HeroLift} from './ui/HeroLift';
 import {CriterionHeroRow, criterionHeroRect} from './ui/RightPanelV4';
@@ -53,7 +54,7 @@ const SF1a: React.FC = () => {
   // No headline: this still isolates the perspective hypothesis (design-v4 §2).
   // The slab (side faces) is only passed for the rotated pose: at (0,0,0)
   // every side face is back-facing and would draw nothing.
-  return <StageV4 frame={185} pose={pose} slab={<BoardThickness />} board={<BoardV4 frame={185} scrollY={0} pmReply={0} pmActivation={0} />} />;
+  return <StageV4 frame={185} pose={pose} slab={<BoardThickness />} board={<BoardV4 frame={185} scrollY={0} state={STATES.pre} pmReply={0} pmActivation={0} />} />;
 };
 
 const SF1b: React.FC = () => {
@@ -64,7 +65,7 @@ const SF1b: React.FC = () => {
       frame={185}
       pose={pose}
       // landed: the AI PM has replied under M1 and its row reads "지휘 중" (design-v4 r3 B)
-      board={<BoardV4 frame={185} scrollY={0} pmReply={1} pmActivation={1} />}
+      board={<BoardV4 frame={185} scrollY={0} state={STATES.replied} pmReply={1} pmActivation={1} />}
       overlay={
         <TypeLayer>
           <KineticHeadline
@@ -103,6 +104,8 @@ const SF2: React.FC<{rise: number; debug?: boolean}> = ({rise, debug}) => {
       pose={pose}
       board={
         <BoardV4
+          // plan proposed, not approved yet: everyone but the AI PM still 대기
+          state={STATES.replied}
           frame={SF2_FRAME}
           scrollY={SF2_SCROLL}
           heroMessageId="M2"
@@ -164,9 +167,7 @@ const SF3: React.FC<{rise: number; debug?: boolean}> = ({rise, debug}) => {
           frame={SF3_FRAME}
           scrollY={1650 + MESSAGE_SHIFT} // v3's beat-5 scroll, plus the M1b shift: same rows on screen
           heroRowId="C3.1"
-          progress={3}
-          verifiedIds={['C1.1', 'C2.1']}
-          evidenceHighlightLast
+          state={STATES.verified}
           overlay={
             <>
               {/* out-of-focus units veiled (design-v4 §2): sidebar + timeline column */}

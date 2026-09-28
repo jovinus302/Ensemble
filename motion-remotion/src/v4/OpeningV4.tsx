@@ -12,6 +12,7 @@ import {type as typeScale, inkColor, accentColor} from '../v3/tokens/video';
 import {KineticHeadline} from '../v3/type/KineticHeadline';
 import {StageV4, TypeLayer} from './stage/StageV4';
 import {BoardV4} from './ui/BoardV4';
+import {STATES} from './stateV4';
 import {BoardThickness} from './ui/BoardThickness';
 import {COPY} from './config';
 import {OPENING, openingPose, obliqueBandFrames, boardEnterProgress, pmReplyProgress, pmPopProgress} from './opening';
@@ -128,7 +129,7 @@ const OpeningInner: React.FC<{measure?: boolean}> = ({measure}) => {
       // entrance fades the whole board group; after it, the plain (still-identical) DOM
       boardOpacity={frame < OPENING.boardEnter.to ? (boardVisible ? enter : 0) : undefined}
       slab={boardVisible && pose.ry !== 0 ? <BoardThickness /> : undefined}
-      board={<BoardV4 frame={frame} scrollY={0} pmReply={pmReplyProgress(frame)} pmActivation={pmPopProgress(frame)} />}
+      board={<BoardV4 frame={frame} scrollY={0} state={frame < OPENING.pmPop.from ? STATES.pre : STATES.replied} pmReply={pmReplyProgress(frame)} pmActivation={pmPopProgress(frame)} />}
       overlay={
         <TypeLayer>
           <OpeningType frame={frame} />

@@ -295,3 +295,39 @@ Fix: new `ui/membersV4.tsx` (`MEMBERS`, `memberOf`, `MemberAvatar`). It is now t
 - Shape by kind: circle for people, rounded square for agents, ring for the PM.
 
 Stills re-rendered. The smallest text is unchanged (18.4 / 18.6 / 18.8), and the anchor error is still 0.01px. Opening frames and the clip are re-rendered in round 9, together with the status changes.
+
+## Round 9 (design-v4 r4 D) — status timeline consistency (one defect type)
+
+Audit of every v4 still and storyboard beat, checking the team list, plan card, right panel and messages against each other:
+
+1. The team list showed 경쟁사 조사 Agent "작업 중" and 프로토타입 Agent "대기(queued)" from the first frame, in SF1a/SF1b/SF2. But nothing was approved yet: the plan card said "승인 필요" and M1b said "계획을 곧 올립니다".
+2. The panel's D1 block "확정 · 김도윤" was always drawn, including SF1a/SF1b/SF2. D1 is decided only in ③ (M8).
+3. The panel's evidence rows ("인터뷰 기록 5건 · 사람 승인" …) were always drawn, including before any evidence existed.
+4. C3.1 carried "보고됨" from the start. 이서연 reports it only in ④ (M11).
+5. In SF3, the panel said C3.1 verified with "사용 흐름 초안 v1 · 사람 승인", but M14's approval card was drawn un-approved ("초안 승인" buttons).
+6. Checked and consistent: panel 0/5 before ④; SF3 3/5 with C1.1/C2.1/C3.1 verified; M13's own chip "작업 중" at ④; M4 "지금 시작합니다" after approval.
+   - Also checked: storyboard ⑥ is 4/5 with C4.2 open, which matches M15.
+   - One oddity kept, as it is not a contradiction: ⑥ shows 4/5 with 3 evidence rows, because content.ts has no C4.1 evidence row.
+
+Fix: `src/v4/stateV4.ts` is now one product-state timeline. Each stage sets the team chips, panel progress, verified/reported ids, D1, evidence rows and approved cards:
+
+| Stage | AI PM | 김도윤 | 이서연 | 조사 Agent | 프로토타입 Agent | Panel |
+|---|---|---|---|---|---|---|
+| pre | 대기 | 대기 | 대기 | 대기 | 대기 | 0/5 |
+| replied | 지휘 중 | 대기 | 대기 | 대기 | 대기 | 0/5 |
+| approved (② "계획 승인") | 지휘 중 | 작업 중 | 대기 | 작업 중 | 대기 | 0/5, M2 approved |
+| decided (③) | 지휘 중 | 완료 | 작업 중 | 완료 | 대기 | D1 shown |
+| submitted (④ M11) | 지휘 중 | 완료 | 완료 | 완료 | 대기 | 2/5, C3.1 보고됨 |
+| started (④ M13) | 지휘 중 | 완료 | 완료 | 완료 | 작업 중 | 2/5 |
+| verified (⑤) | 지휘 중 | 완료 | 완료 | 완료 | 작업 중 | 3/5, M14 approved |
+| goalCheck (⑥) | 지휘 중 | 완료 | 완료 | 완료 | 완료 | 4/5 |
+
+- `BoardV4` takes `state` and replaces the v3 TEAM_ROWS chips with state chips: 작업 중 / 대기 / 완료 / 지휘 중.
+- `RightPanelV4` takes reportedIds / showDecision / evidenceCount, so content.ts's reportedTag is no longer used.
+- `TimelineV4` draws approved cards from state.approvedMessages.
+- Stills map to stages: SF1a = pre, SF1b = replied, SF2 = replied (plan proposed, not approved), SF3 = verified.
+
+Result (re-rendered all stills, opening frames and the clip):
+- SF1a/SF1b/SF2 panels now show only the goal, 0/5 and five 미검증 rows. SF1b/SF2 team lists read AI PM 지휘 중 and everyone else 대기. SF3's M14 is approved; its visible part is only its title row.
+- Smallest text: 18.4 / 18.6 / 18.8. Anchor error 0.01px.
+- Pins: f330 vs `SF1b.png` 0.01% of pixels > 24; f233 vs `SF1a.png` 0.001%.
