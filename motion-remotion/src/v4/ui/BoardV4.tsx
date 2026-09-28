@@ -13,7 +13,7 @@ import {Easing} from 'remotion';
 import {BOARD_W, BOARD_H, AREAS, TEAM_ROWS, SIDEBAR_TEAM_Y0, SIDEBAR_TEAM_ROW_H, CHANNEL_TITLE, WORKSPACE_TITLE, PROJECT_TITLE} from '../../v3/ui/content';
 import {px, colors, uiTextStyle} from '../../v3/tokens/video';
 import {uiTypeV4 as uiType, SECONDARY_FONT, SIDEBAR_AVATAR} from './typeV4';
-import {ClayAvatar} from '../../v3/ui/primitives/ClayAvatar';
+import {MemberAvatar} from './membersV4';
 import {EmbossChip} from '../../v3/ui/primitives/EmbossChip';
 import {AddIcon, ForumIcon, InfoIcon, AutoAwesomeIcon} from '../../v3/ui/icons';
 import {TimelineV4} from './TimelineV4';
@@ -34,8 +34,6 @@ export interface BoardV4Props {
   pmActivation?: number; // AI PM row: 0 = "대기", (0,1) = POP in progress, 1 / undefined = "지휘 중"
 }
 
-type TeamRowKind = 'pm' | 'human' | 'agent';
-const rowColor = (kind: TeamRowKind): string => (kind === 'pm' ? colors.pm : kind === 'agent' ? colors.agentResearch : colors.humanDecisionMaker);
 
 // AI PM row status: "대기" until the PM acts, then "지휘 중" with one POP
 // (chip overshoot + a single harmony ring expanding off the avatar).
@@ -134,11 +132,11 @@ export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, 
             <div key={row.id} style={{marginTop: px(10), height: px(SIDEBAR_TEAM_ROW_H), display: 'flex', alignItems: 'center', gap: px(8)}}>
               {row.kind === 'pm' && pmActivation !== undefined ? (
                 <span style={{position: 'relative', display: 'inline-flex'}}>
-                  <ClayAvatar kind={row.kind} base={rowColor(row.kind)} label={row.name[0]} size={px(SIDEBAR_AVATAR)} frame={frame} />
+                  <MemberAvatar who={row.id} size={px(SIDEBAR_AVATAR)} frame={frame} />
                   <PmAvatarRing p={pmActivation} />
                 </span>
               ) : (
-                <ClayAvatar kind={row.kind} base={rowColor(row.kind)} label={row.name[0]} size={px(SIDEBAR_AVATAR)} frame={frame} />
+                <MemberAvatar who={row.id} size={px(SIDEBAR_AVATAR)} frame={frame} />
               )}
               <div style={{flex: 1, minWidth: 0}}>
                 <div style={{...uiTextStyle(uiType.labelLg, colors.onSurface), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{row.name}</div>

@@ -270,3 +270,28 @@ Checks (final revision):
 - `tsc` exit 0. src/v3 diff vs 0dc8e10 is empty. v3 SF1/SF2/SF3 SHA256 are identical, and PitchV3 f600 exits 0.
 - Clipping: SF1b has no chip or badge cut by the frame.
   - SF2's frame edges now also cut the veiled sidebar's 5th team row ("대기" chip) at the bottom, besides the veiled panel on the right. Both are out-of-focus context, the category allowed in design-v4 §6.
+
+## Round 8 (design-v4 r4 C) — one avatar per member (one defect type)
+
+User: "아바타랑 작업 중 모순 고치고 계속 진행해".
+
+The same person drew differently per component:
+
+| Member | Where | v3 look |
+|---|---|---|
+| AI PM | team list | "A" |
+| AI PM | messages | "P" |
+| Agents | messages | "A" |
+| 경쟁사 조사 Agent | plan card / handoff | "조" |
+| 경쟁사 조사 Agent | team list | "경" |
+| 프로토타입 Agent | team list | blue (research's color) |
+| 김도윤 | team list / plan card / handoff | "김" |
+| 김도윤 | own messages | "도" |
+| 이서연 | team list | 김도윤's color, "이" |
+
+Fix: new `ui/membersV4.tsx` (`MEMBERS`, `memberOf`, `MemberAvatar`). It is now the only avatar path in `BoardV4` and `MessageRendererV4`.
+- AI PM and the agents keep the team-list letters: AI PM "A" (pm shape + harmony ring), 경 (#5B84EC), 프 (#E5764F).
+- The two people use content.ts's own initials 도 (#CDBBA5) / 서 (#B9C7BE), as storyboard-v3 §3 specifies, instead of the list's surname letters.
+- Shape by kind: circle for people, rounded square for agents, ring for the PM.
+
+Stills re-rendered. The smallest text is unchanged (18.4 / 18.6 / 18.8), and the anchor error is still 0.01px. Opening frames and the clip are re-rendered in round 9, together with the status changes.

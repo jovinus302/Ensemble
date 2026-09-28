@@ -3,6 +3,7 @@
 // difference is the type scale — uiTypeV4 (bodySm / labelMd / labelSm at 13
 // logical, line heights unchanged) and EmbossChip labels at the same 13 — so
 // timestamps, attachments, inline lines and chips read >= 18px on screen.
+// Round C: every avatar is membersV4.MemberAvatar (one look per member).
 // Layout, geometry and the hero/Riser branch are v3's verbatim.
 import React from 'react';
 import type {TimelineMessage} from '../../../v3/ui/content';
@@ -10,7 +11,7 @@ import {people, agents} from '../../../v3/ui/content';
 import {TIMELINE_CONTENT_X0, TIMELINE_CONTENT_W} from '../../../v3/ui/content';
 import {px, colors, uiTextStyle} from '../../../v3/tokens/video';
 import {uiTypeV4 as uiType, SECONDARY_FONT} from '../typeV4';
-import {ClayAvatar} from '../../../v3/ui/primitives/ClayAvatar';
+import {MemberAvatar} from '../membersV4';
 import {Riser} from '../../../v3/ui/primitives/Riser';
 import {EmbossChip as EmbossChipV3} from '../../../v3/ui/primitives/EmbossChip';
 import {PrimaryButton, TextButton, DoneChip, OutlinedButton} from '../../../v3/ui/primitives/Button';
@@ -87,7 +88,7 @@ export const MessageRendererV4: React.FC<MessageRenderV4Props> = ({msg, boardY, 
     const p = people[c.speaker];
     return (
       <div style={{position: 'absolute', left: px(CARD_X), top: px(boardY), width: px(CARD_W), display: 'flex', gap: px(12)}}>
-        <ClayAvatar kind="human" base={p.color} label={p.initial} size={px(36)} />
+        <MemberAvatar who={c.speaker} size={px(36)} />
         <div>
           <div style={{display: 'flex', alignItems: 'baseline', gap: px(8)}}>
             <span style={uiTextStyle(uiType.titleMd, colors.onSurface)}>{p.name}</span>
@@ -118,7 +119,7 @@ export const MessageRendererV4: React.FC<MessageRenderV4Props> = ({msg, boardY, 
   if (c.kind === 'pmBubble') {
     return (
       <div style={{position: 'absolute', left: px(CARD_X), top: px(boardY), width: px(CARD_W), display: 'flex', gap: px(12)}}>
-        <ClayAvatar kind="pm" base={colors.pm} label="P" size={px(40)} frame={frame} />
+        <MemberAvatar who="pm" size={px(40)} frame={frame} />
         <div>
           <span style={uiTextStyle(uiType.titleMd, colors.onSurface)}>{agents.pm.name}</span>
           <div
@@ -148,7 +149,7 @@ export const MessageRendererV4: React.FC<MessageRenderV4Props> = ({msg, boardY, 
     const a = agents[c.agent];
     return (
       <div style={{position: 'absolute', left: px(CARD_X), top: px(boardY), width: px(CARD_W), display: 'flex', gap: px(12)}}>
-        <ClayAvatar kind="agent" base={a.color} label="A" size={px(36)} />
+        <MemberAvatar who={c.agent} size={px(36)} />
         <div>
           <span style={uiTextStyle(uiType.titleMd, colors.onSurface)}>{a.name}</span>
           <div style={{...uiTextStyle(uiType.messageBody, colors.onSurface), marginTop: px(2)}}>{c.text}</div>
@@ -207,7 +208,7 @@ export const MessageRendererV4: React.FC<MessageRenderV4Props> = ({msg, boardY, 
             <div style={{marginTop: px(16), display: 'flex', flexDirection: 'column', gap: px(8)}}>
               {c.rows.map((r, i) => (
                 <div key={i} style={{display: 'flex', alignItems: 'center', gap: px(10), height: px(44)}}>
-                  <ClayAvatar kind={r.who.includes('Agent') ? 'agent' : 'human'} base={r.who.includes('조사') ? colors.agentResearch : r.who.includes('프로토타입') ? colors.agentPrototype : r.who === '김도윤' ? colors.humanDecisionMaker : colors.humanDesigner} label={r.who[0]} size={px(32)} />
+                  <MemberAvatar who={r.who} size={px(32)} />
                   {/* fixed width (not flex:1) so the chip sits right after the
                       text instead of being pushed to the card's far edge —
                       round-3 fix for the "big empty middle" layout complaint */}
@@ -246,10 +247,10 @@ export const MessageRendererV4: React.FC<MessageRenderV4Props> = ({msg, boardY, 
         <div style={{padding: px(20)}}>
           <div style={{display: 'flex', alignItems: 'center', gap: px(8)}}>
             {c.fromChain.map((f) => (
-              <ClayAvatar key={f} kind={f.includes('Agent') ? 'agent' : 'human'} base={f.includes('Agent') ? colors.agentResearch : colors.humanDecisionMaker} label={f[0]} size={px(28)} />
+              <MemberAvatar key={f} who={f} size={px(28)} />
             ))}
             <div style={{width: px(24), height: px(2), background: colors.primary}} />
-            <ClayAvatar kind="human" base={colors.humanDesigner} label={c.to[0]} size={px(28)} />
+            <MemberAvatar who={c.to} size={px(28)} />
             <span style={{marginLeft: px(8), ...uiTextStyle(uiType.titleSm, colors.onSecondaryContainer)}}>{c.headline}</span>
           </div>
           <div style={{marginTop: px(14), display: 'flex', flexDirection: 'column', gap: px(8)}}>
@@ -273,7 +274,7 @@ export const MessageRendererV4: React.FC<MessageRenderV4Props> = ({msg, boardY, 
     const a = agents[c.agent];
     return (
       <div style={{position: 'absolute', left: px(CARD_X), top: px(boardY), width: px(CARD_W), display: 'flex', gap: px(12)}}>
-        <ClayAvatar kind="agent" base={a.color} label="A" size={px(36)} />
+        <MemberAvatar who={c.agent} size={px(36)} />
         <div>
           <span style={uiTextStyle(uiType.titleMd, colors.onSurface)}>{a.name}</span>
           <div style={{...uiTextStyle(uiType.messageBody, colors.onSurface), marginTop: px(2)}}>{c.text}</div>
