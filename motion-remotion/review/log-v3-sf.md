@@ -60,6 +60,65 @@ full beat-by-beat motion), a third full round was not spent. One known,
 unresolved minor artifact from the current renders is called out below
 instead of chasing it into a third round.
 
+## Round 3 (2026-09-28, resumed) — re-render after the K-doubling fixes
+
+`tsc --noEmit` clean (the `Button.tsx` px() fix was already complete on disk).
+Re-rendered all three as `*_r3.png` (the `_r2` files are byte-copies of r1).
+Confirmed landed: SF1 glow is soft/borderless and the grey smear is gone;
+SF1 headline sits in screen perspective; chips/badges render at full size;
+SF3 hero "검증됨" badge is ~60px on screen. Still open after r3:
+(a) SF3 grey smear left of the hero badge, (b) SF3 callout label covers
+C2.1's "미검증" badge and its leader points at the row, not the badge,
+(c) SF2 headline overlaps M1 message text.
+
+## Round 4 — SF3 cast-shadow smear (one defect type)
+
+Root cause: the risen C3.1 row had no surface — it was bare text with a
+row-sized `CastShadow` under it, so the shadow read as a grey smear.
+Fix (`RightPanel.tsx`): give the risen row a white card surface (radius 16,
+rim highlight) between the shadow and the success glow; make the row's text
+block `position: relative` so it paints above the new surface. Result
+`SF3-f1305_r4.png`: smear gone, C3.1 reads as a lifted card. SF1/SF2
+re-rendered byte-identical to r3 (change is gated on `c31Risen && verified`).
+Next rounds, one each: (b) SF3 callout, (c) SF2 headline overlap.
+
+## Round 5 — SF3 callout target (one defect type)
+
+The callout was anchored at `C3_1_CENTER` (row middle) with its chip parked
+over C2.1's "미검증" badge. Fix (`StyleFrameV3.tsx`): anchor moved to the hero
+badge's right edge (board-logical x 1420, same y/z), chip moved into the empty
+stage right of the panel (`chipOffsetX 140`, `chipOffsetY -110`). Result
+`SF3-f1305_r5.png`: dot sits on the badge edge, chip covers nothing, C2.1's
+badge is visible again. SF1/SF2 byte-identical to r3; `tsc` clean.
+Noted, not fixed: `Callout`'s leader stops 60px short of the chip by design
+(`chipX ∓ 60`), which reads as disconnected in SF2 and SF3 alike — changing
+the shared component touches SF2, so it is its own round.
+
+## Round 6 — SF2 headline over UI text (one defect type)
+
+T2 headline sat at `top 96, left 120`, on top of M1's message text. Moved to
+`top 900, left 320` — the empty channel area below the risen plan card.
+`SF2-f505_r6.png`: M1 fully readable, headline overlaps no UI text.
+
+## Round 7 — SF2 plan card empty space (one defect type)
+
+The plan card used the full timeline width (632 logical) while its rows are
+fixed-width (avatar + 220 + chip), leaving the right third and a bottom band
+empty. `MessageRenderer.tsx` now sizes the plan card to 440x360 logical (glow
+and cast shadow follow); the timeline slot (`contentY`) is unchanged.
+`SF2-f505_r7.png`: no empty band, "선행 작업 대기" chip now sits off-card, the
+cast shadow reads at the card's lower right. SF1/SF3 byte-identical after r6–r7.
+
+## Round 8 — callout leaders stop short of the chip (one defect type)
+
+`Callout` ended the leader at `chipX ∓ 60`, 60px short of the chip. It now
+ends at `chipX + dir*8`, just under the chip's near edge (chip paints on top).
+`SF2-f505_r8.png`, `SF3-f1305_r8.png`: every leader meets its chip; dots and
+chips unmoved. SF1 (no callouts) byte-identical; `tsc` clean.
+
+All six items from the paused round are now addressed. Latest stills:
+`SF1-f185_r3.png`, `SF2-f505_r8.png`, `SF3-f1305_r8.png` — awaiting approval.
+
 ## Checklist against spec §5 requirements
 
 - **SF1 (f185)**: T1 headline "잇는 건 이제 PM" centered, "PM" primary green,

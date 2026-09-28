@@ -1,24 +1,30 @@
-// v3 §2/§7 step 5 — renders one TimelineMessage at its content-space position.
-// Hero cards (the hero for whichever beat is being reviewed) are lifted via
-// Riser (translateZ + CastShadow); background messages render flat (z=0, no
-// shadow — cheap, and correct per §2 depth table "카드 Z 0 -> risen only when
-// the card is the bit's protagonist").
+// Copy of src/v3/ui/messages/MessageRenderer.tsx (v3 untouched, design-v4 §9).
+// Round 3 (design-v4 r2 §4, secondary text >= 18px): the only behavioral
+// difference is the type scale — uiTypeV4 (bodySm / labelMd / labelSm at 13
+// logical, line heights unchanged) and EmbossChip labels at the same 13 — so
+// timestamps, attachments, inline lines and chips read >= 18px on screen.
+// Round C: every avatar is membersV4.MemberAvatar (one look per member).
+// Layout, geometry and the hero/Riser branch are v3's verbatim.
 import React from 'react';
-import type {TimelineMessage} from '../content';
-import {people, agents} from '../content';
-import {TIMELINE_CONTENT_X0, TIMELINE_CONTENT_W} from '../content';
-import {px, colors, uiType, uiTextStyle, Z} from '../../tokens/video';
-import {ClayAvatar} from '../primitives/ClayAvatar';
-import {Riser} from '../primitives/Riser';
-import {EmbossChip} from '../primitives/EmbossChip';
-import {PrimaryButton, TextButton, DoneChip, OutlinedButton} from '../primitives/Button';
-import {GlowField} from '../../fx/GlowField';
+import type {TimelineMessage} from '../../../v3/ui/content';
+import {people, agents} from '../../../v3/ui/content';
+import {TIMELINE_CONTENT_X0, TIMELINE_CONTENT_W} from '../../../v3/ui/content';
+import {px, colors, uiTextStyle} from '../../../v3/tokens/video';
+import {uiTypeV4 as uiType, SECONDARY_FONT} from '../typeV4';
+import {MemberAvatar} from '../membersV4';
+import {Riser} from '../../../v3/ui/primitives/Riser';
+import {EmbossChip as EmbossChipV3} from '../../../v3/ui/primitives/EmbossChip';
+import {PrimaryButton, TextButton, DoneChip, OutlinedButton} from '../../../v3/ui/primitives/Button';
+import {GlowField} from '../../../v3/fx/GlowField';
 import {AttachIcon, DocCheckIcon} from '../../../ui/icons';
+
+const EmbossChip: React.FC<React.ComponentProps<typeof EmbossChipV3>> = (p) => <EmbossChipV3 {...p} fontSize={p.fontSize ?? SECONDARY_FONT} />;
 
 const CARD_X = TIMELINE_CONTENT_X0;
 const CARD_W = TIMELINE_CONTENT_W;
+export const GOAL_CARD_H = 212;
 
-export interface MessageRenderProps {
+export interface MessageRenderV4Props {
   msg: TimelineMessage;
   boardY: number; // top position for this message's box, already scroll-resolved
   frame: number;
@@ -66,7 +72,7 @@ const Wrap: React.FC<{x: number; y: number; w: number; h: number; hero?: boolean
   );
 };
 
-export const MessageRenderer: React.FC<MessageRenderProps> = ({msg, boardY, frame, hero, heroZ = 90, glow}) => {
+export const MessageRendererV4: React.FC<MessageRenderV4Props> = ({msg, boardY, frame, hero, heroZ = 90, glow}) => {
   const c = msg.content;
   const [y0, y1] = msg.contentY;
   const h = y1 - y0;
@@ -83,7 +89,7 @@ export const MessageRenderer: React.FC<MessageRenderProps> = ({msg, boardY, fram
     const p = people[c.speaker];
     return (
       <div style={{position: 'absolute', left: px(CARD_X), top: px(boardY), width: px(CARD_W), display: 'flex', gap: px(12)}}>
-        <ClayAvatar kind="human" base={p.color} label={p.initial} size={px(36)} />
+        <MemberAvatar who={c.speaker} size={px(36)} />
         <div>
           <div style={{display: 'flex', alignItems: 'baseline', gap: px(8)}}>
             <span style={uiTextStyle(uiType.titleMd, colors.onSurface)}>{p.name}</span>
@@ -114,7 +120,7 @@ export const MessageRenderer: React.FC<MessageRenderProps> = ({msg, boardY, fram
   if (c.kind === 'pmBubble') {
     return (
       <div style={{position: 'absolute', left: px(CARD_X), top: px(boardY), width: px(CARD_W), display: 'flex', gap: px(12)}}>
-        <ClayAvatar kind="pm" base={colors.pm} label="P" size={px(40)} frame={frame} />
+        <MemberAvatar who="pm" size={px(40)} frame={frame} />
         <div>
           <span style={uiTextStyle(uiType.titleMd, colors.onSurface)}>{agents.pm.name}</span>
           <div
@@ -144,7 +150,7 @@ export const MessageRenderer: React.FC<MessageRenderProps> = ({msg, boardY, fram
     const a = agents[c.agent];
     return (
       <div style={{position: 'absolute', left: px(CARD_X), top: px(boardY), width: px(CARD_W), display: 'flex', gap: px(12)}}>
-        <ClayAvatar kind="agent" base={a.color} label="A" size={px(36)} />
+        <MemberAvatar who={c.agent} size={px(36)} />
         <div>
           <span style={uiTextStyle(uiType.titleMd, colors.onSurface)}>{a.name}</span>
           <div style={{...uiTextStyle(uiType.messageBody, colors.onSurface), marginTop: px(2)}}>{c.text}</div>
@@ -203,7 +209,7 @@ export const MessageRenderer: React.FC<MessageRenderProps> = ({msg, boardY, fram
             <div style={{marginTop: px(16), display: 'flex', flexDirection: 'column', gap: px(8)}}>
               {c.rows.map((r, i) => (
                 <div key={i} style={{display: 'flex', alignItems: 'center', gap: px(10), height: px(44)}}>
-                  <ClayAvatar kind={r.who.includes('Agent') ? 'agent' : 'human'} base={r.who.includes('조사') ? colors.agentResearch : r.who.includes('프로토타입') ? colors.agentPrototype : r.who === '김도윤' ? colors.humanDecisionMaker : colors.humanDesigner} label={r.who[0]} size={px(32)} />
+                  <MemberAvatar who={r.who} size={px(32)} />
                   {/* fixed width (not flex:1) so the chip sits right after the
                       text instead of being pushed to the card's far edge —
                       round-3 fix for the "big empty middle" layout complaint */}
@@ -242,10 +248,10 @@ export const MessageRenderer: React.FC<MessageRenderProps> = ({msg, boardY, fram
         <div style={{padding: px(20)}}>
           <div style={{display: 'flex', alignItems: 'center', gap: px(8)}}>
             {c.fromChain.map((f) => (
-              <ClayAvatar key={f} kind={f.includes('Agent') ? 'agent' : 'human'} base={f.includes('Agent') ? colors.agentResearch : colors.humanDecisionMaker} label={f[0]} size={px(28)} />
+              <MemberAvatar key={f} who={f} size={px(28)} />
             ))}
             <div style={{width: px(24), height: px(2), background: colors.primary}} />
-            <ClayAvatar kind="human" base={colors.humanDesigner} label={c.to[0]} size={px(28)} />
+            <MemberAvatar who={c.to} size={px(28)} />
             <span style={{marginLeft: px(8), ...uiTextStyle(uiType.titleSm, colors.onSecondaryContainer)}}>{c.headline}</span>
           </div>
           <div style={{marginTop: px(14), display: 'flex', flexDirection: 'column', gap: px(8)}}>
@@ -269,7 +275,7 @@ export const MessageRenderer: React.FC<MessageRenderProps> = ({msg, boardY, fram
     const a = agents[c.agent];
     return (
       <div style={{position: 'absolute', left: px(CARD_X), top: px(boardY), width: px(CARD_W), display: 'flex', gap: px(12)}}>
-        <ClayAvatar kind="agent" base={a.color} label="A" size={px(36)} />
+        <MemberAvatar who={c.agent} size={px(36)} />
         <div>
           <span style={uiTextStyle(uiType.titleMd, colors.onSurface)}>{a.name}</span>
           <div style={{...uiTextStyle(uiType.messageBody, colors.onSurface), marginTop: px(2)}}>{c.text}</div>
@@ -320,9 +326,10 @@ export const MessageRenderer: React.FC<MessageRenderProps> = ({msg, boardY, fram
     );
   }
 
-  // goalCheckCard
+  // goalCheckCard — fitted to its content (padding 20 + 24 + 8 + 21 + 10 + 24 + 14 + 21 + 10 + 40 + 20 = 212),
+  // like v3 round 7 did for the plan card: the 268 slot left an empty band.
   return (
-    <Wrap x={CARD_X} y={boardY} w={CARD_W} h={h} hero={hero} z={hero ? heroZ : 0} radius={20} background={colors.brandInk}>
+    <Wrap x={CARD_X} y={boardY} w={CARD_W} h={Math.min(h, GOAL_CARD_H)} hero={hero} z={hero ? heroZ : 0} radius={20} background={colors.brandInk}>
       <div style={{padding: px(20)}}>
         <div style={uiTextStyle(uiType.titleMd, '#E3EDE7')}>{c.title}</div>
         <div style={{marginTop: px(8), ...uiTextStyle(uiType.bodyMd, '#E3EDE7'), fontVariantNumeric: 'tabular-nums'}}>{c.progressLabel}</div>

@@ -4,6 +4,11 @@ import {PitchVideo} from './compositions/PitchVideo';
 import {UiMockupFlat} from './ui/UiMockupFlat';
 import {PitchV3} from './v3/PitchV3';
 import {StyleFrameV3} from './v3/StyleFrameV3';
+import {StyleFrameV4} from './v4/StyleFrameV4';
+import {OpeningV4} from './v4/OpeningV4';
+import {OPENING} from './v4/opening';
+import {PitchV4} from './v4/PitchV4';
+import {PITCH_TOTAL} from './v4/pitch/pitchTimeline';
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -57,6 +62,28 @@ export const RemotionRoot: React.FC = () => {
         height={1080}
         defaultProps={{frame: 185, debugProjection: false}}
       />
+      {/* v4 style frames (review/design-v4.md r1 §3): SF1a / SF1b / SF2 / SF3, chosen by `still`. */}
+      <Composition
+        id="StyleFrameV4"
+        component={StyleFrameV4}
+        durationInFrames={1}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{still: 'SF1a' as const, debugProjection: false, heroRise: 1, measure: false}}
+      />
+      {/* v4 opening segment only (storyboard-v4.md O, design-v4 §5 rotation check). */}
+      <Composition
+        id="OpeningV4"
+        component={OpeningV4}
+        durationInFrames={OPENING.end}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{measure: false}}
+      />
+      {/* v4 full pitch video (storyboard-v4.md, 1834f = 61.1s). */}
+      <Composition id="PitchV4" component={PitchV4} durationInFrames={PITCH_TOTAL} fps={30} width={1920} height={1080} />
     </>
   );
 };

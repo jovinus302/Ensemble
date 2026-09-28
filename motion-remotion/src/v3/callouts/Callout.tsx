@@ -37,7 +37,9 @@ export const Callout: React.FC<CalloutProps> = ({
     <>
       <svg style={{position: 'absolute', inset: 0, overflow: 'visible', pointerEvents: 'none'}} width="100%" height="100%">
         <path
-          d={`M ${p.x} ${p.y} L ${stubX} ${p.y} L ${chipX + (dir === 1 ? -60 : 60)} ${chipY}`}
+          // Round-8 fix: the leader used to stop 60px short of the chip and read as
+          // disconnected; end it just under the chip's near edge (the chip paints on top).
+          d={`M ${p.x} ${p.y} L ${stubX} ${p.y} L ${chipX + dir * 8} ${chipY}`}
           stroke="rgba(23,59,48,.55)"
           strokeWidth={3}
           strokeLinecap="round"

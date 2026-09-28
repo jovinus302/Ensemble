@@ -58,8 +58,10 @@ const SF2: React.FC<{frame: number}> = ({frame}) => {
           frame={400}
           variant="T2"
           align="left"
-          top={96}
-          left={120}
+          // Round-6 fix: top-left sat on M1's message text; the empty channel
+          // area below the risen plan card holds no readable UI.
+          top={900}
+          left={320}
           width={1200}
         />
       </TypeRig>
@@ -99,7 +101,9 @@ const SF3: React.FC<{frame: number; debugProjection?: boolean}> = ({frame, debug
           width={1200}
         />
       </TypeRig>
-      <Callout pose={pose} anchor={{x: C3_1_CENTER.x, y: C3_1_CENTER.y, z: 40 + 70}} label="검증됨" dotColor="#1E7F4F" side="right" chipOffsetX={170} chipOffsetY={-120} />
+      {/* Round-5 fix: anchor on the hero badge's right edge (not the row center) and park the
+          chip in the empty stage right of the panel, so it no longer covers C2.1's badge. */}
+      <Callout pose={pose} anchor={{x: 1420, y: C3_1_CENTER.y, z: 40 + 70}} label="검증됨" dotColor="#1E7F4F" side="right" chipOffsetX={140} chipOffsetY={-110} />
       {debugProjection &&
         (() => {
           const p = projectPoint(pose, C3_1_CENTER.x, C3_1_CENTER.y, 40 + 70);
