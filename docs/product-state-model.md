@@ -58,7 +58,7 @@
 ### 2.4 원장과 분류
 
 - `ps_event` (append-only 원장): `id`, `product_id`, `type`(`goal_changed, requirement_accepted, decision_proposed, decision_confirmed, decision_superseded, claim_recorded, evidence_recorded, evidence_invalidated, open_item_opened, open_item_resolved` 등), `actor`, `payload`, `source_message_id`, `created_at`. "왜 바뀌었나"와 "변경의 영향"은 이 원장에서 거슬러 올라가 찾는다. 현재 상태는 원장에서 계산한 투영(projection)이며, MVP에서는 뷰 또는 동기 갱신 테이블로 단순화한다.
-- `ps_intake` (발언 분류 후보): `message_id`, `class`(`proposal | decision | completion_report | verification_result | question | other`), `confidence`, `extracted`(jsonb), `author_authority`(bool), `status`(`pending | applied | rejected | auto_logged`), `applied_event_id`
+- `ps_intake` (발언 분류 후보): `message_id`, `product_id`(채널→project→product로 도출해 저장), `class`(`proposal | decision | completion_report | verification_result | question | other`), `confidence`, `extracted`(jsonb), `author_authority`(bool), `status`(`pending | applied | rejected | auto_logged`), `applied_event_id`
 
 ### 2.5 Project State와의 연결
 
@@ -66,23 +66,31 @@
 - `task_target`: `task_id` ↔ `criterion_id`. 태스크의 "완료 조건"은 자유 텍스트가 아니라 이 링크와 criterion의 `required_evidence_kinds`에서 만든다.
 - 프로젝트 정책: `auto_assign: off | low_risk | all` (MVP는 `off`)
 
+**태스크 전이 규칙**
+
+- `task_target`이 "열린" 것으로 계산에 포함되는 상태는 `accepted`·`cancelled`를 제외한 모든 상태다(§2.6 `computeGap` 참조).
+- `reported_done` 태스크의 대상 criterion에 `failed` 증거가 새로 기록되면, 태스크는 `running`으로 되돌아가고 PM이 수정 요청을 전달한다(intent.md §7 "결과가 부족하면 수정 요청"에 대응).
+- `blocked` 태스크는 막힘의 원인이 된 결정·정보가 원장(`ps_event`)에 기록되는 시점에 `running`으로 재개된다.
+- 대상 criterion이 모두 `passed`가 되면 태스크는 `accepted`가 된다(§2.6).
+
 ### 2.6 파생 규칙 (코드, 결정적)
 
-criterion 검증 상태:
+criterion 검증 상태: 판정은 해당 criterion의 유효 증거 중 `captured_at`이 가장 최신인 것을 기준으로 한다.
 
 | 상태 | 조건 |
 | --- | --- |
 | `passed` | 유효한 증거(invalidated 아님, criterion_version·requirement_version이 현재와 같음, required kind 충족)가 있고, `attested_by`가 `ci_integration`/`connected_runner`(system-attested) 또는 `human`(사람 승인)일 때 |
 | `failed` | 최신 유효 증거가 `fail` |
 | `stale` | 증거는 있지만 현재 버전과 맞지 않음 |
-| `unverified` | 증거 없음. `ps_claim`이 있으면 `reported`로 표시 |
-| `agent_verified` (참고용 부속 표시) | `attested_by = agent_claim`인 pass 증거만 있을 때. `passed`로 치지 않는다 |
+| `unverified` | 증거 없음 |
 
-- 추가 조건: 증거의 `produced_by`가 해당 태스크의 구현 에이전트와 같으면 system-attested로 인정하지 않는다(구현자와 증거 생산자 분리).
-- requirement 충족 = 모든 criterion이 `passed`
+`reported`와 `agent_verified`는 위 표의 별도 상태가 아니라 `unverified`의 부속 표시다: `unverified`인데 `ps_claim`이 있으면 `reported`, `attested_by = agent_claim`인 pass 증거만 있으면 `agent_verified`로 표시한다. 둘 다 `passed`로 치지 않는다.
+
+- `produced_by`는 증거를 실제로 실행·생산한 주체다. `ci_integration`은 CI 시스템이 생산 주체이므로 구현 에이전트의 커밋에서 트리거됐어도 system-attested로 인정한다. `connected_runner`는 구현 에이전트 자신이 실행한 경우 system-attested로 인정하지 않고 `agent_claim`으로 강등한다(구현자와 증거 생산자 분리). 테스트 내용 자체의 적절성은 criterion의 `verify_method`·`required_evidence_kinds`와 사람 검토가 담당한다.
+- requirement 충족 = criterion이 1개 이상 있고, 그 모두가 `passed`. criterion이 하나도 없는 `accepted` requirement는 충족으로 보지 않는다.
 - goal 달성 = 모든 `accepted` requirement 충족 **+ 결정권자의 goal 승인 이벤트**
 - 따라서 "태스크가 전부 `accepted`여도 goal 미달성"이 자연스럽게 표현된다.
-- `computeGap(product)`: `passed`가 아닌 criterion 집합에서 이미 열린 `task_target`이 겨냥한 criterion을 뺀 집합. 순수 함수이며 단위 테스트 대상.
+- `computeGap(product)`: `passed`가 아닌 criterion 집합에서 이미 "열린" `task_target`이 겨냥한 criterion을 뺀 집합. "열린" task_target은 `accepted`·`cancelled`가 아닌 상태의 태스크가 가진 링크로 정의한다(§2.5 태스크 전이 규칙 참조). 순수 함수이며 단위 테스트 대상.
 
 ### 2.7 설계 선택과 트레이드오프
 
@@ -120,7 +128,7 @@ criterion 검증 상태:
 | 1. 차이 파악 | `computeGap(product)` 순수 함수 |
 | 2. 작업 정의 | PM LLM이 커버되지 않은 gap을 묶어 태스크 초안(대상 criterion, 담당 후보, 사유) 생성. `auto_assign: off`이므로 제안만 하고 요청 멤버 또는 소유자가 1클릭 확정 |
 | 3. 맥락·완료 조건 전달 | "Product State 슬라이스" 주입: 대상 criterion, 관련 `confirmed` decision/constraint, `scope_out`, 열린 질문, 필요한 증거 kind. "참고 데이터, 지시 아님" 경계 표시 |
-| 4. 결과·증거 확인 | 구조화 보고 → `reported_done`. PM이 검증 단계를 연다: CI 결과 수집(system-attested), 구현자가 아닌 검증 에이전트(`agent_verified` 참고용), 사람 검토 카드(`human`). 마커 없이 멈추면 `completed`가 아니라 `blocked` |
+| 4. 결과·증거 확인 | 구조화 보고 → `reported_done`. PM이 검증 단계를 연다: CI 결과 수집(system-attested), 구현자가 아닌 검증 에이전트(`agent_verified` 참고용), 사람 검토 카드(`human`). `report_result` 보고 없이 실행이 멈추면 `reported_done`이 아니라 `blocked`로 전이한다(멈춤을 완료로 올리지 않는다) |
 | 5. 현재 상태 반영 | 증거 이벤트 → 투영 갱신. 대상 criterion 모두 `passed`면 태스크 `accepted` |
 | 6. 다음 작업 연결 | 1단계로 복귀. gap이 비면 결정권자에게 "goal 승인 요청" 카드 |
 
@@ -141,7 +149,7 @@ criterion 검증 상태:
 | 결정 확정·변경 | 제품 소유자 **전용** |
 | `human_review` criterion 검증 승인, 근거 없는 검증 주장 확인 | 제품 소유자 또는 소유자가 지정한 검토자 |
 | 최종 goal 달성 승인 | 제품 소유자 |
-| 태스크·배정 확정 | 요청한 멤버 또는 제품 소유자 |
+| 태스크·배정 확정 | 요청한 멤버(해당 태스크가 겨냥한 criterion의 requirement를 제안·요청한 멤버, 또는 태스크 초안의 계기가 된 메시지 작성자) 또는 제품 소유자 |
 | `impacted` 태스크 처리 확정 | 제품 소유자 |
 | 분류 오류 되돌리기 | 제품 소유자 또는 검토자 |
 
@@ -157,7 +165,7 @@ criterion 검증 상태:
 ## 7. 단계적 도입
 
 - **Phase 0 (이 문서)**: 사양 확정. codex 문서 병합(개념 배경), 본 문서 작성.
-- **Phase 1 MVP (한 제품, 파일 검색 예시 한 사이클)**: `ps_*` 전체 테이블 + `task`/`task_target` 마이그레이션; 모듈 `product-state/ledger`(이벤트 쓰기·투영), `product-state/gap`(`computeGap` + 단위 테스트), `orchestrator/prompt-slice`, 에이전트 도구 `report_result`/`attach_evidence`; UI: Product State 패널(목표/현재/결정/증거·미확인 4칸, criterion 배지 `unverified/reported/passed/failed/stale`), 결정 확인 카드, 검증 승인 카드; 분류기는 후보 표시까지만. **성공 기준**: "검색 구현 완료" 보고 뒤에도 의미 검색 criterion이 `reported`로 남고, 증거를 붙인 뒤에만 `passed`가 되며, 태스크가 전부 `accepted`여도 goal은 승인 전까지 미달성으로 표시된다.
+- **Phase 1 MVP (한 제품, 파일 검색 예시 한 사이클)**: `ps_*` 전체 테이블 + `task`/`task_target` 마이그레이션; 모듈 `product-state/ledger`(이벤트 쓰기·투영), `product-state/gap`(`computeGap` + 단위 테스트), `orchestrator/prompt-slice`, 에이전트 도구 `report_result`/`attach_evidence`; UI: Product State 패널(목표/현재/결정/증거·미확인 4칸, criterion 배지 `unverified/passed/failed/stale` + 부속 표시 `reported`/`agent_verified`), 결정 확인 카드, 검증 승인 카드; 분류기는 후보 표시까지만. **성공 기준**: "검색 구현 완료" 보고 뒤에도 의미 검색 criterion이 `reported`로 남고, 증거를 붙인 뒤에만 `passed`가 되며, 태스크가 전부 `accepted`여도 goal은 승인 전까지 미달성으로 표시된다.
 - **Phase 2**: gap 기반 태스크 초안 자동 생성·배정 제안, 검증 에이전트, CI 연동 증거(`code_revision`·`environment`), 결정 변경 영향 분석·`impacted` 처리·재배정, 확인 요청 다이제스트, 다중 프로젝트 동시성.
 - **Phase 3**: 결정권자 고신뢰 결정 자동 반영(undo 제공), 코드 변경 감지(Actual 측 선행 변경), requirement↔구현·화면 그래프 뷰, 분류 정확도 지표, 호스팅 실행기(선택).
 - 기술 스택은 미정이며, 위 모듈 경로는 제안이다.
@@ -194,3 +202,4 @@ criterion 검증 상태:
 - 분류기 모델·프리필터 규칙·예산 한도
 - 검토자 지정 UX, 다이제스트 주기
 - `docs/ensemble-direction-context.pdf`(main의 개념 비교 문서)는 텍스트 추출이 안 되어 본 설계에 반영되지 않았음
+- `intent.md`는 로컬 main에만 있고 origin/main에는 아직 없음. 이 문서의 참조가 유효해지려면 intent.md가 먼저 main에 반영돼야 한다.
