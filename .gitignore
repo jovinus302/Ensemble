@@ -1,1 +1,22 @@
 .claude/worktrees/
+
+# secrets and local env
+.env
+.env.*
+!.env.example
+
+# node / build output
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+
+# local runtime data
+app/data/
+*.db
+*.db-journal
+
+# local reference material (not part of this repo)
+argo/
+ensemble-studio-v1.0/
