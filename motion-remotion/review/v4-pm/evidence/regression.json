@@ -1,0 +1,34 @@
+[
+  {
+    "id": "v4-SF1a",
+    "exitCode": 0,
+    "sha256": "9c8c9a491b5d323abe4b6311aa7579518552d632431b0cf84728989526b5bceb",
+    "measurement": null,
+    "referenceSha256": "9c8c9a491b5d323abe4b6311aa7579518552d632431b0cf84728989526b5bceb",
+    "identical": true
+  },
+  {
+    "id": "v4-SF1b",
+    "exitCode": 0,
+    "sha256": "45289989181c9b5007881d50769eee5ebd4c6cc4a1e7df040ae6d444e8d133f9",
+    "measurement": null,
+    "referenceSha256": "45289989181c9b5007881d50769eee5ebd4c6cc4a1e7df040ae6d444e8d133f9",
+    "identical": true
+  },
+  {
+    "id": "v4-SF2",
+    "exitCode": 0,
+    "sha256": "2f39962dc9673e3d1a98c74ec4d5513bc9929fd4a9e26a1c1974b21ffdbb3261",
+    "measurement": null,
+    "referenceSha256": "2f39962dc9673e3d1a98c74ec4d5513bc9929fd4a9e26a1c1974b21ffdbb3261",
+    "identical": true
+  },
+  {
+    "id": "v4-SF3",
+    "exitCode": 0,
+    "sha256": "cb0ab9e6ed494648f31144d1435d97cd771b6558457ff721145b38c6825ffc9d",
+    "measurement": null,
+    "referenceSha256": "cb0ab9e6ed494648f31144d1435d97cd771b6558457ff721145b38c6825ffc9d",
+    "identical": true
+  }
+]
