@@ -50,7 +50,10 @@ export const SF1B_ZOOM = 1.435;
 // background band above the board, so they can never overlap UI text.
 // SF1b's board top (212) is set so the bottom frame edge falls in the gap
 // between sidebar team rows 4 and 5 — row 4's "작업 중" chip was cut at 252.
-export const FRONTAL_BOARD_TOP = {SF1b: 212, SF2: 200, SF3: 200} as const;
+// SF2's is 176 (was 200): the AI PM reply M1b now sits between M1 and the
+// plan card (design-v4 r3 B), so the card is 42 logical lower; 176 keeps its
+// bottom edge ~40px inside the frame while the T2 headline (ends y 151) stays clear.
+export const FRONTAL_BOARD_TOP = {SF1b: 212, SF2: 176, SF3: 200} as const;
 
 const frontal = (tx: number, boardTopScreenY: number, s = FEATURE_ZOOM): CameraPose => ({
   // (ax, ay) = stage center; (tx, ty) = the board-logical point shown there.

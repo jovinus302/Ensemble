@@ -1,6 +1,7 @@
-// v4 opening segment (storyboard-v4.md segment O, f0–320): ① → ② → word swap
+// v4 opening segment (storyboard-v4.md segment O, f0–388): ① → ② → word swap
 // "사람이"→"AI PM이" → ③, board entrance at (0,-40,0) (SF1a), 30f rotation +
-// push-in to frontal (SF1b framing), ③ re-set above the landed board.
+// push-in to frontal (SF1b framing), ③ re-set above the landed board, then
+// the AI PM replies under M1 and its row pops to "지휘 중" (design-v4 r3 B).
 // Timeline and poses: opening.ts. Built for the design-v4 §5 rotation check.
 // Props: measure (log the per-frame pose table and the oblique-band count).
 import React, {useEffect, useLayoutEffect, useMemo, useState} from 'react';
@@ -13,7 +14,7 @@ import {StageV4, TypeLayer} from './stage/StageV4';
 import {BoardV4} from './ui/BoardV4';
 import {BoardThickness} from './ui/BoardThickness';
 import {COPY} from './config';
-import {OPENING, openingPose, obliqueBandFrames, boardEnterProgress} from './opening';
+import {OPENING, openingPose, obliqueBandFrames, boardEnterProgress, pmReplyProgress, pmPopProgress} from './opening';
 
 const T1 = typeScale.T1;
 const LINE_H = T1.fontSize * T1.lineHeight + 0.15 * T1.fontSize; // RevealUnit box (lh + .15em mask pad)
@@ -127,7 +128,7 @@ const OpeningInner: React.FC<{measure?: boolean}> = ({measure}) => {
       // entrance fades the whole board group; after it, the plain (still-identical) DOM
       boardOpacity={frame < OPENING.boardEnter.to ? (boardVisible ? enter : 0) : undefined}
       slab={boardVisible && pose.ry !== 0 ? <BoardThickness /> : undefined}
-      board={<BoardV4 frame={frame} scrollY={0} />}
+      board={<BoardV4 frame={frame} scrollY={0} pmReply={pmReplyProgress(frame)} pmActivation={pmPopProgress(frame)} />}
       overlay={
         <TypeLayer>
           <OpeningType frame={frame} />

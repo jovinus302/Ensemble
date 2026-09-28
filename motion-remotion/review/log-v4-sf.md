@@ -226,3 +226,47 @@ Checks:
 - Opening pins after the change: f317 vs `SF1b.png` mean diff 0.04, pixels > 24 =
   0.005%; f233 vs `SF1a.png` 0.21 / 0.001%. Only background light drift remains.
 - `tsc` exit 0. The v3 SHA regression is run on the final revision (round 7).
+
+## Round 7 (design-v4 r3 B) — the PM visibly takes over at landing (one defect type)
+
+User: "AI PM이 챙긴다는데 정작 챙기는 화면은 안보임". Chosen option: "착지 즉시 PM이 답한다".
+
+What changed:
+- `ui/contentV4.ts` (v3 `content.ts` untouched) adds M1b, the AI PM's reply under 김도윤's goal M1:
+  **"담당과 순서는 제가 정리할게요. 계획을 곧 올립니다."**
+  - It follows the PM voice order (누가 · 무엇을 · 언제) with no hype.
+  - It promises the plan rather than saying work has started, because beat ② then shows that plan still at "승인 필요".
+  - The example line suggested in the brief ("…조사 Agent가 경쟁사 조사부터 시작합니다") would contradict ②, so it was not used.
+- M1b sits at contentY 101–172. M2…M15 move down by 42 logical.
+- `TimelineV4` draws M1b from a `pmReply` progress (opacity plus a 12-logical rise) rather than the v3 frame clock.
+- `BoardV4` gains `pmActivation`: the AI PM row reads "대기" until the PM acts, then POPs to "지휘 중" (chip overshoot plus one harmony ring off the avatar). It uses the existing EmbossChip and avatar styling.
+- Opening (`opening.ts`): M1b rises f300–312 and the POP runs f300–318, both after ③ reads in the band (it is fully set at f317).
+  - M1b has 7 words, so it needs ≥ 85f of reading; it holds to f388.
+  - The opening is now 388f, and the total is **1834f (61.1s)**. Beats ①–⑥ and the closing are not shortened; they shift by +68f.
+- Knock-on of the 42 shift:
+  - SF3 scroll 1650 → 1692, the same rows on screen. The SF3 PNGs are byte-identical to round 6.
+  - SF2 keeps scroll 40 but its board top moves 200 → 176, so M1, M1b and the plan card all fit. The hero card bottom is at y 1041 and the headline still ends at y 151.
+- New SF1b = OpeningV4 f330 state (reply shown, "지휘 중" settled, ③ settled). SF1a now shows "대기" on the AI PM chip.
+
+Stills: `review/v4/SF1b.png` (new), `SF2.png` / `SF2-debug.png` (recomposed), `SF1a.png` (chip only), `opening-f306.png` (mid-appearance), `opening-f330.png` (SF1b pin).
+
+Checks (final revision):
+- Text sizes:
+  - SF1b: M1b message body 21.5px, M1 21.5, panel 20.1; "지휘 중" chip text 18.7.
+  - Smallest text on screen: SF1b 18.4, SF2 18.6, SF3 18.8.
+  - Hero: SF2 chips 36.5 tall, SF3 badge 58.3 tall.
+- Anchor error 0.01px (SF2, SF3 lifted, SF3 rise 0).
+- Held poses: SF1a (0,−40,0) s 0.8; SF1b (0,0,0) s 1.435; SF2 and SF3 (0,0,0) s 1.45.
+- Opening, frame-to-frame (% of pixels > 24):
+  - Centered hold f152–211: 0.
+  - SF1a hold: 0.
+  - Rotation: smooth ramp, peak 11.8% at f245, no spike.
+  - Landed hold before the reply: ≤ 0.85.
+  - Reply/POP f300–318: ≤ 0.38.
+  - After f331: ≤ 0.001.
+- |ry| in 5–25°: 9 frames (f246–254). The mp4 was re-rendered (1.2 MB).
+- Pins: f330 vs `SF1b.png` 0.01% of pixels > 24 (PM ring angle and light drift); f233 vs `SF1a.png` 0.001%.
+- vs round 6: SF3 identical; SF1a 0.005% (chip); SF1b 0.44% (M1b + chip); SF2 recomposed.
+- `tsc` exit 0. src/v3 diff vs 0dc8e10 is empty. v3 SF1/SF2/SF3 SHA256 are identical, and PitchV3 f600 exits 0.
+- Clipping: SF1b has no chip or badge cut by the frame.
+  - SF2's frame edges now also cut the veiled sidebar's 5th team row ("대기" chip) at the bottom, besides the veiled panel on the right. Both are out-of-focus context, the category allowed in design-v4 §6.

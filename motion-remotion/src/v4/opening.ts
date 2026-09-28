@@ -31,10 +31,25 @@ export const OPENING = {
   // ③ re-set in the SF1b headline band (stagger 4): last word starts at +16f,
   // the reveal spring is 1.0000 by +40f -> fully set at f317 (= SF1b).
   lineC: {enter: 261, stagger: 4},
+  // design-v4 r3 B "착지 즉시 PM이 답한다": once ③ reads in the band (~f297), the
+  // AI PM replies under M1 (M1b, 12f rise) and its team row pops to "지휘 중"
+  // (18f). M1b has 7 words -> read >= 7/3+0.5 = 2.83s = 85f -> hold to f388.
+  pmReply: {from: 300, to: 312},
+  pmPop: {from: 300, to: 318},
   sf1aPin: 233,
-  sf1bPin: 317,
-  end: 320, // landed hold f267–320 (53f)
+  sf1bPin: 330, // ③ settled (f317), reply settled, POP finished
+  end: 388, // landed hold f267–388 (121f)
 } as const;
+
+export const pmReplyProgress = (frame: number) =>
+  interpolate(frame, [OPENING.pmReply.from, OPENING.pmReply.to], [0, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+    easing: Easing.bezier(0.2, 0, 0, 1),
+  });
+
+export const pmPopProgress = (frame: number) =>
+  interpolate(frame, [OPENING.pmPop.from, OPENING.pmPop.to], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
 
 // Ease-in-out with a long, soft landing: slow start out of the SF1a hold,
 // fast through the oblique band, gentle settle onto frontal.

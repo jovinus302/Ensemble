@@ -9,6 +9,7 @@
 //    hero layer); `overlay` renders last inside the board body (veils, hero).
 // Rail / sidebar / channel header / composer markup is v3's, verbatim.
 import React from 'react';
+import {Easing} from 'remotion';
 import {BOARD_W, BOARD_H, AREAS, TEAM_ROWS, SIDEBAR_TEAM_Y0, SIDEBAR_TEAM_ROW_H, CHANNEL_TITLE, WORKSPACE_TITLE, PROJECT_TITLE} from '../../v3/ui/content';
 import {px, colors, uiTextStyle} from '../../v3/tokens/video';
 import {uiTypeV4 as uiType, SECONDARY_FONT, SIDEBAR_AVATAR} from './typeV4';
@@ -28,12 +29,52 @@ export interface BoardV4Props {
   verifiedIds?: string[];
   evidenceHighlightLast?: boolean;
   overlay?: React.ReactNode;
+  // design-v4 r3 B: the AI PM's landing reply (M1b) and its "지휘 중" switch.
+  pmReply?: number; // M1b reveal 0..1 (default 1: already in the thread)
+  pmActivation?: number; // AI PM row: 0 = "대기", (0,1) = POP in progress, 1 / undefined = "지휘 중"
 }
 
 type TeamRowKind = 'pm' | 'human' | 'agent';
 const rowColor = (kind: TeamRowKind): string => (kind === 'pm' ? colors.pm : kind === 'agent' ? colors.agentResearch : colors.humanDecisionMaker);
 
-export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, heroRowId, progress = 0, verifiedIds, evidenceHighlightLast, overlay}) => (
+// AI PM row status: "대기" until the PM acts, then "지휘 중" with one POP
+// (chip overshoot + a single harmony ring expanding off the avatar).
+const POP = Easing.bezier(0.34, 1.56, 0.64, 1);
+const PmAvatarRing: React.FC<{p: number}> = ({p}) => {
+  if (p <= 0 || p >= 1) return null;
+  const size = px(SIDEBAR_AVATAR);
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: '50%',
+        width: size,
+        height: size,
+        marginTop: -size / 2,
+        borderRadius: '50%',
+        background: harmonyConic,
+        WebkitMaskImage: `radial-gradient(farthest-side, transparent calc(100% - ${px(3)}px), #000 calc(100% - ${px(3)}px))`,
+        maskImage: `radial-gradient(farthest-side, transparent calc(100% - ${px(3)}px), #000 calc(100% - ${px(3)}px))`,
+        transform: `scale(${1 + 0.8 * p})`,
+        opacity: 0.9 * (1 - p),
+        pointerEvents: 'none',
+      }}
+    />
+  );
+};
+const harmonyConic = `conic-gradient(${colors.harmony1}, ${colors.harmony2}, ${colors.harmony3}, ${colors.harmony4}, ${colors.harmony1})`;
+
+const PmChip: React.FC<{p: number}> = ({p}) =>
+  p <= 0 ? (
+    <EmbossChip label="대기" container={colors.surfaceContainerHigh} onContainer={colors.onSurface} fontSize={SECONDARY_FONT} />
+  ) : (
+    <span style={{display: 'inline-block', transform: p < 1 ? `scale(${0.7 + 0.3 * POP(p)})` : undefined}}>
+      <EmbossChip label="지휘 중" container={colors.infoContainer} onContainer={colors.onSurface} fontSize={SECONDARY_FONT} />
+    </span>
+  );
+
+export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, heroRowId, progress = 0, verifiedIds, evidenceHighlightLast, overlay, pmReply = 1, pmActivation}) => (
   <>
     <div
       style={{
@@ -91,12 +132,21 @@ export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, 
           <div style={uiTextStyle(uiType.titleSm, colors.onSurface)}>팀원 5</div>
           {TEAM_ROWS.map((row) => (
             <div key={row.id} style={{marginTop: px(10), height: px(SIDEBAR_TEAM_ROW_H), display: 'flex', alignItems: 'center', gap: px(8)}}>
-              <ClayAvatar kind={row.kind} base={rowColor(row.kind)} label={row.name[0]} size={px(SIDEBAR_AVATAR)} frame={frame} />
+              {row.kind === 'pm' && pmActivation !== undefined ? (
+                <span style={{position: 'relative', display: 'inline-flex'}}>
+                  <ClayAvatar kind={row.kind} base={rowColor(row.kind)} label={row.name[0]} size={px(SIDEBAR_AVATAR)} frame={frame} />
+                  <PmAvatarRing p={pmActivation} />
+                </span>
+              ) : (
+                <ClayAvatar kind={row.kind} base={rowColor(row.kind)} label={row.name[0]} size={px(SIDEBAR_AVATAR)} frame={frame} />
+              )}
               <div style={{flex: 1, minWidth: 0}}>
                 <div style={{...uiTextStyle(uiType.labelLg, colors.onSurface), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{row.name}</div>
                 <div style={{...uiTextStyle(uiType.bodySm, colors.onSurfaceVariant), whiteSpace: 'nowrap'}}>{row.subtitle}</div>
               </div>
-              {row.chip && (
+              {row.kind === 'pm' && pmActivation !== undefined ? (
+                <PmChip p={pmActivation} />
+              ) : row.chip && (
                 <EmbossChip label={row.chip.label} container={row.chip.state === 'working' ? colors.infoContainer : colors.surfaceContainerHigh} onContainer={colors.onSurface} fontSize={SECONDARY_FONT} />
               )}
             </div>
@@ -105,7 +155,7 @@ export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, 
       </div>
 
       {/* timeline (drawn before the header band so the band covers scrolled rows) */}
-      <TimelineV4 frame={frame} scrollY={scrollY} excludeIds={heroMessageId ? [heroMessageId] : []} />
+      <TimelineV4 frame={frame} scrollY={scrollY} excludeIds={heroMessageId ? [heroMessageId] : []} pmReply={pmReply} />
 
       {/* channel header — opaque band; covers rows scrolled above y=64 by paint
           order (drawn after the timeline), so it needs no Z of its own (v3 used Z+4) */}
