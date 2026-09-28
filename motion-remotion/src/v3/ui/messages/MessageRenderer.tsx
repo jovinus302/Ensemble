@@ -187,10 +187,15 @@ export const MessageRenderer: React.FC<MessageRenderProps> = ({msg, boardY, fram
   }
 
   if (c.kind === 'planCard') {
+    // Round-7 fix: rows are fixed-width (avatar + 220 + chip), so a full-timeline-
+    // width card left its right third and bottom band empty. Size the card to its
+    // content; the timeline slot (contentY) is unchanged.
+    const planW = Math.min(CARD_W, 440);
+    const planH = Math.min(h, 360);
     return (
       <>
-        {glow && <GlowField x={px(CARD_X)} y={px(boardY)} w={px(CARD_W)} h={px(h)} frame={frame} pad={px(48)} />}
-        <Wrap x={CARD_X} y={boardY} w={CARD_W} h={h} hero={hero} z={hero ? heroZ : 0} background={colors.surface} extraBoxShadow="inset 0 1px 0 rgba(255,255,255,.9), 0 2px 4px rgba(23,59,48,.06)">
+        {glow && <GlowField x={px(CARD_X)} y={px(boardY)} w={px(planW)} h={px(planH)} frame={frame} pad={px(48)} />}
+        <Wrap x={CARD_X} y={boardY} w={planW} h={planH} hero={hero} z={hero ? heroZ : 0} background={colors.surface} extraBoxShadow="inset 0 1px 0 rgba(255,255,255,.9), 0 2px 4px rgba(23,59,48,.06)">
           <div style={{position: 'relative', padding: px(20), height: '100%', boxSizing: 'border-box'}}>
             <div style={{position: 'absolute', left: 0, top: px(8), bottom: px(8), width: px(3), background: colors.primary, borderRadius: px(2)}} />
             <div style={uiTextStyle(uiType.titleMd, colors.onSurface)}>{c.title}</div>

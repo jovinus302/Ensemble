@@ -58,8 +58,10 @@ const SF2: React.FC<{frame: number}> = ({frame}) => {
           frame={400}
           variant="T2"
           align="left"
-          top={96}
-          left={120}
+          // Round-6 fix: top-left sat on M1's message text; the empty channel
+          // area below the risen plan card holds no readable UI.
+          top={900}
+          left={320}
           width={1200}
         />
       </TypeRig>
