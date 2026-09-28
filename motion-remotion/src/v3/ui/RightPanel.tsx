@@ -103,6 +103,22 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                   <>
                     {/* own contact shadow, cast onto the panel surface below this row's extra rise */}
                     <CastShadow x={0} y={0} w={ROW_W} h={y1 - y0} z={30} radius={16} />
+                    {/* Round-4 fix: the risen row had no surface of its own, so the
+                        card-sized shadow above read as a grey smear under bare text.
+                        Give the row a card so the shadow belongs to a visible object. */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: px(-12),
+                        top: px(-6),
+                        width: px(ROW_W + 24),
+                        height: px(y1 - y0 + 12),
+                        borderRadius: px(16),
+                        background: colors.surface,
+                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,.9)',
+                        pointerEvents: 'none',
+                      }}
+                    />
                     {/* soft success glow — same filter-free radial-gradient technique as GlowField, success-toned */}
                     <div
                       style={{
@@ -117,7 +133,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                     />
                   </>
                 )}
-                <div style={{flex: 1, minWidth: 0}}>
+                <div style={{position: 'relative', flex: 1, minWidth: 0}}>
                   <div style={{...uiTextStyle(uiType.labelMd, colors.onSurfaceVariant)}}>{c.id}</div>
                   <div style={{...uiTextStyle(uiType.bodyMd, colors.onSurface), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{c.label}</div>
                 </div>

@@ -60,6 +60,28 @@ full beat-by-beat motion), a third full round was not spent. One known,
 unresolved minor artifact from the current renders is called out below
 instead of chasing it into a third round.
 
+## Round 3 (2026-09-28, resumed) — re-render after the K-doubling fixes
+
+`tsc --noEmit` clean (the `Button.tsx` px() fix was already complete on disk).
+Re-rendered all three as `*_r3.png` (the `_r2` files are byte-copies of r1).
+Confirmed landed: SF1 glow is soft/borderless and the grey smear is gone;
+SF1 headline sits in screen perspective; chips/badges render at full size;
+SF3 hero "검증됨" badge is ~60px on screen. Still open after r3:
+(a) SF3 grey smear left of the hero badge, (b) SF3 callout label covers
+C2.1's "미검증" badge and its leader points at the row, not the badge,
+(c) SF2 headline overlaps M1 message text.
+
+## Round 4 — SF3 cast-shadow smear (one defect type)
+
+Root cause: the risen C3.1 row had no surface — it was bare text with a
+row-sized `CastShadow` under it, so the shadow read as a grey smear.
+Fix (`RightPanel.tsx`): give the risen row a white card surface (radius 16,
+rim highlight) between the shadow and the success glow; make the row's text
+block `position: relative` so it paints above the new surface. Result
+`SF3-f1305_r4.png`: smear gone, C3.1 reads as a lifted card. SF1/SF2
+re-rendered byte-identical to r3 (change is gated on `c31Risen && verified`).
+Next rounds, one each: (b) SF3 callout, (c) SF2 headline overlap.
+
 ## Checklist against spec §5 requirements
 
 - **SF1 (f185)**: T1 headline "잇는 건 이제 PM" centered, "PM" primary green,
