@@ -1,0 +1,20 @@
+{
+  "name": "@ensemble/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ensemble/core": "*",
+    "@ensemble/orchestrator": "*",
+    "@ensemble/scenarios": "*",
+    "next": "^16.3.6",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}

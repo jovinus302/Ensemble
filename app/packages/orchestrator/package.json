@@ -1,0 +1,16 @@
+{
+  "name": "@ensemble/orchestrator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@ensemble/agents": "*",
+    "@ensemble/channel": "*",
+    "@ensemble/core": "*",
+    "@ensemble/llm": "*",
+    "@ensemble/store": "*"
+  }
+}
