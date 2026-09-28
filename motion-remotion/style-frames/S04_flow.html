@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>S04 flow</title>
+<style>
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-Regular.woff2") format("woff2"); font-weight: 400; }
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-Medium.woff2") format("woff2"); font-weight: 500; }
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-SemiBold.woff2") format("woff2"); font-weight: 600; }
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-Bold.woff2") format("woff2"); font-weight: 700; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; background: #F6F6F3; font-family: "Pretendard", "Google Sans Text", system-ui, sans-serif; overflow: hidden; }
+  .stage { position: relative; width: 1920px; height: 1080px; }
+  .headline {
+    position: absolute; top: 78px; left: 400px;
+    font-family: "Pretendard", "Google Sans Flex", sans-serif; font-weight: 700; font-size: 66px;
+    letter-spacing: -0.02em; color: #18201C;
+  }
+  .node-label { font-family: "Pretendard", sans-serif; font-weight: 600; font-size: 28px; fill: #18201C; }
+  .badge-ai   { font-weight: 700; font-size: 16px; fill: #25105E; }
+  .pm-label   { font-weight: 700; font-size: 22px; fill: #0D3325; }
+  .chip-text  { font-weight: 600; font-size: 18px; fill: #0B2A66; }
+  .context-cap{ font-weight: 600; font-size: 15px; fill: #52635A; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="headline">배정과 인계, 한 흐름에서</div>
+
+  <svg width="1920" height="1080" viewBox="0 0 1920 1080" style="position:absolute; top:0; left:0;">
+    <defs>
+      <pattern id="grain" width="28" height="28" patternUnits="userSpaceOnUse">
+        <circle cx="2" cy="2" r="1.1" fill="#173B30" opacity="0.045" />
+      </pattern>
+      <linearGradient id="harmony" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#3DBE8B" />
+        <stop offset="35%" stop-color="#4C8DF6" />
+        <stop offset="65%" stop-color="#9B7BF7" />
+        <stop offset="100%" stop-color="#F08BB4" />
+      </linearGradient>
+      <radialGradient id="harmonyGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#3DBE8B" stop-opacity="0.95" />
+        <stop offset="100%" stop-color="#3DBE8B" stop-opacity="0" />
+      </radialGradient>
+      <filter id="shadowSoft" x="-50%" y="-50%" width="200%" height="200%">
+        <feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#173B30" flood-opacity="0.12" />
+      </filter>
+      <filter id="shadowHero" x="-60%" y="-60%" width="220%" height="220%">
+        <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#173B30" flood-opacity="0.18" />
+      </filter>
+    </defs>
+
+    <rect x="0" y="0" width="1920" height="1080" fill="url(#grain)" />
+
+    <!-- assignment lines: two settled (gray, rounded caps), one active in destination voice color -->
+    <line x1="981" y1="540" x2="204" y2="204" stroke="#C9D1CB" stroke-width="4" stroke-linecap="round" />
+    <line x1="981" y1="540" x2="204" y2="876" stroke="#C9D1CB" stroke-width="4" stroke-linecap="round" />
+    <line x1="981" y1="540" x2="1696" y2="231" stroke="#2A64D6" stroke-width="6" stroke-linecap="round" />
+    <line x1="981" y1="540" x2="1696" y2="849" stroke="#C9D1CB" stroke-width="4" stroke-linecap="round" />
+
+    <!-- handoff hero: comet trail leading a glowing context token along the active line -->
+    <circle cx="1181" cy="454" r="4" fill="#2A64D6" opacity="0.14" />
+    <circle cx="1238" cy="429" r="6" fill="#2A64D6" opacity="0.22" />
+    <circle cx="1296" cy="404" r="8" fill="#2A64D6" opacity="0.35" />
+    <circle cx="1353" cy="379" r="10" fill="#2A64D6" opacity="0.5" />
+    <circle cx="1410" cy="355" r="30" fill="url(#harmonyGlow)" />
+    <circle cx="1410" cy="355" r="17" fill="url(#harmony)" filter="url(#shadowSoft)" />
+
+    <!-- context packet riding beside the token: 5 bars = 5 context fields -->
+    <g transform="translate(1387,300)" filter="url(#shadowSoft)">
+      <rect x="0" y="0" width="96" height="40" rx="10" fill="#FFFFFF" stroke="#C9D1CB" stroke-width="2" />
+      <rect x="10" y="12" width="6" height="16" rx="3" fill="#3DBE8B" />
+      <rect x="22" y="12" width="6" height="16" rx="3" fill="#4C8DF6" />
+      <rect x="34" y="12" width="6" height="16" rx="3" fill="#9B7BF7" />
+      <rect x="46" y="12" width="6" height="16" rx="3" fill="#F08BB4" />
+      <rect x="58" y="12" width="6" height="16" rx="3" fill="#2B6A52" />
+    </g>
+    <text x="1435" y="292" class="context-cap">맥락 5요소</text>
+
+    <!-- PM: compact central node, single-shape harmony ring, conductor baton glyph -->
+    <g filter="url(#shadowHero)">
+      <rect x="894" y="453" width="174" height="174" rx="32" fill="none" stroke="url(#harmony)" stroke-width="5" />
+      <rect x="906" y="465" width="150" height="150" rx="26" fill="#D3EBDD" stroke="#2B6A52" stroke-width="3" />
+    </g>
+    <g transform="translate(981,515)">
+      <path d="M -24,20 L 22,-24" stroke="#0D3325" stroke-width="4" stroke-linecap="round" />
+      <path d="M -26,10 Q 0,36 32,4" fill="none" stroke="#0D3325" stroke-width="2.5" opacity="0.45" stroke-linecap="round" />
+      <circle cx="24" cy="-26" r="7" fill="url(#harmony)" />
+    </g>
+    <text x="981" y="585" text-anchor="middle" class="pm-label">PM</text>
+
+    <!-- User (human = circle, person glyph) -->
+    <g filter="url(#shadowSoft)">
+      <circle cx="204" cy="204" r="74" fill="#FFFFFF" stroke="#4A5650" stroke-width="4" />
+    </g>
+    <circle cx="204" cy="188" r="16" fill="none" stroke="#4A5650" stroke-width="4" stroke-linecap="round" />
+    <path d="M 168,240 C 168,215 184,203 204,203 C 224,203 240,215 240,240" fill="none" stroke="#4A5650" stroke-width="4" stroke-linecap="round" />
+    <text x="204" y="312" text-anchor="middle" class="node-label">사용자</text>
+
+    <!-- Designer (human = circle) -->
+    <g filter="url(#shadowSoft)">
+      <circle cx="204" cy="876" r="74" fill="#FFFFFF" stroke="#4A5650" stroke-width="4" />
+    </g>
+    <circle cx="204" cy="860" r="16" fill="none" stroke="#4A5650" stroke-width="4" stroke-linecap="round" />
+    <path d="M 168,912 C 168,887 184,875 204,875 C 224,875 240,887 240,912" fill="none" stroke="#4A5650" stroke-width="4" stroke-linecap="round" />
+    <text x="204" y="984" text-anchor="middle" class="node-label">디자이너</text>
+
+    <!-- 조사 Agent (voice-2 blue, search glyph) -->
+    <g filter="url(#shadowSoft)">
+      <rect x="1690" y="136" width="137" height="137" rx="24" fill="#DCE6FF" stroke="#2A64D6" stroke-width="4" />
+    </g>
+    <circle cx="1747.5" cy="193.5" r="16" fill="none" stroke="#0B2A66" stroke-width="4.5" stroke-linecap="round" />
+    <line x1="1759.5" y1="205.5" x2="1778" y2="224" stroke="#0B2A66" stroke-width="4.5" stroke-linecap="round" />
+    <rect x="1795" y="112" width="42" height="24" rx="12" fill="#E9E1FF" filter="url(#shadowSoft)" />
+    <text x="1816" y="129" text-anchor="middle" class="badge-ai">AI</text>
+    <text x="1758" y="312" text-anchor="middle" class="node-label">조사 Agent</text>
+    <rect x="1683" y="326" width="150" height="38" rx="19" fill="#DCE6FF" filter="url(#shadowSoft)" />
+    <text x="1758" y="351" text-anchor="middle" class="chip-text">인계받는 중</text>
+
+    <!-- 프로토타입 Agent (voice-3 coral, bolt glyph) -->
+    <g filter="url(#shadowSoft)">
+      <rect x="1690" y="808" width="137" height="137" rx="24" fill="#FFE0D6" stroke="#B34626" stroke-width="4" />
+    </g>
+    <path d="M 1763.6,843.3 L 1736.5,883.2 L 1755.6,883.2 L 1747.6,913.4 L 1777.9,870.4 L 1758.8,870.4 Z" fill="#4A1406" />
+    <rect x="1795" y="784" width="42" height="24" rx="12" fill="#E9E1FF" filter="url(#shadowSoft)" />
+    <text x="1816" y="801" text-anchor="middle" class="badge-ai">AI</text>
+    <text x="1758" y="984" text-anchor="middle" class="node-label">프로토타입 Agent</text>
+  </svg>
+</div>
+</body>
+</html>

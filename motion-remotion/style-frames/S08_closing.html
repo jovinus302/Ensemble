@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>S08 closing</title>
+<style>
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-Regular.woff2") format("woff2"); font-weight: 400; }
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-Medium.woff2") format("woff2"); font-weight: 500; }
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-SemiBold.woff2") format("woff2"); font-weight: 600; }
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-Bold.woff2") format("woff2"); font-weight: 700; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; background: #F6F6F3; font-family: "Pretendard", "Google Sans Text", system-ui, sans-serif; overflow: hidden; }
+  .stage { position: relative; width: 1920px; height: 1080px; }
+  .headline {
+    position: absolute; top: 72px; left: 0; width: 1920px; text-align: center;
+    font-family: "Pretendard", "Google Sans Flex", sans-serif; font-weight: 700; font-size: 62px;
+    letter-spacing: -0.02em; color: #18201C;
+  }
+  .node-label { font-family: "Pretendard", sans-serif; font-weight: 600; font-size: 28px; fill: #18201C; }
+  .pm-label   { font-weight: 700; font-size: 23px; fill: #0D3325; }
+  .tagline {
+    position: absolute; bottom: 60px; left: 0; width: 1920px; text-align: center;
+    font-weight: 400; font-size: 26px; color: #4A5650;
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="headline">다음 일은, PM이 잇는다</div>
+
+  <svg width="1920" height="1080" viewBox="0 0 1920 1080" style="position:absolute; top:0; left:0;">
+    <defs>
+      <pattern id="grain" width="28" height="28" patternUnits="userSpaceOnUse">
+        <circle cx="2" cy="2" r="1.1" fill="#173B30" opacity="0.045" />
+      </pattern>
+      <linearGradient id="harmony" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#3DBE8B" />
+        <stop offset="35%" stop-color="#4C8DF6" />
+        <stop offset="65%" stop-color="#9B7BF7" />
+        <stop offset="100%" stop-color="#F08BB4" />
+      </linearGradient>
+      <filter id="shadowSoft" x="-50%" y="-50%" width="200%" height="200%">
+        <feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#173B30" flood-opacity="0.12" />
+      </filter>
+      <filter id="shadowHero" x="-60%" y="-60%" width="220%" height="220%">
+        <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#173B30" flood-opacity="0.16" />
+      </filter>
+      <filter id="pmGlow" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur stdDeviation="18" />
+      </filter>
+    </defs>
+
+    <rect x="0" y="0" width="1920" height="1080" fill="url(#grain)" />
+
+    <!-- resolved connections, orbit formation around the PM -->
+    <line x1="960" y1="460" x2="300" y2="300" stroke="#C9D1CB" stroke-width="3.5" stroke-linecap="round" />
+    <line x1="960" y1="460" x2="260" y2="760" stroke="#C9D1CB" stroke-width="3.5" stroke-linecap="round" />
+    <line x1="960" y1="460" x2="1610" y2="250" stroke="#C9D1CB" stroke-width="3.5" stroke-linecap="round" />
+    <line x1="960" y1="460" x2="1660" y2="760" stroke="#C9D1CB" stroke-width="3.5" stroke-linecap="round" />
+
+    <!-- the ensemble chord: subtle pulse ring on the team, same shape family as each node -->
+    <circle cx="300" cy="300" r="72" fill="none" stroke="url(#harmony)" stroke-width="2.5" opacity="0.32" />
+    <circle cx="260" cy="760" r="72" fill="none" stroke="url(#harmony)" stroke-width="2.5" opacity="0.32" />
+    <rect x="1541" y="181" width="138" height="138" rx="34" fill="none" stroke="url(#harmony)" stroke-width="2.5" opacity="0.32" />
+    <rect x="1591" y="691" width="138" height="138" rx="34" fill="none" stroke="url(#harmony)" stroke-width="2.5" opacity="0.32" />
+
+    <!-- PM: the hero of the closing frame — largest node, strongest harmony emphasis -->
+    <circle cx="960" cy="460" r="118" fill="url(#harmony)" opacity="0.22" filter="url(#pmGlow)" />
+    <g filter="url(#shadowHero)">
+      <rect x="869" y="369" width="182" height="182" rx="34" fill="none" stroke="url(#harmony)" stroke-width="6" opacity="0.95" />
+      <rect x="880" y="380" width="160" height="160" rx="28" fill="#D3EBDD" stroke="#2B6A52" stroke-width="3.5" />
+    </g>
+    <g transform="translate(960,433)">
+      <path d="M -25.6,21.3 L 23.5,-25.6" stroke="#0D3325" stroke-width="3.6" stroke-linecap="round" />
+      <path d="M -27.7,10.7 Q 0,38.4 34.1,4.3" fill="none" stroke="#0D3325" stroke-width="2.2" opacity="0.45" stroke-linecap="round" />
+      <circle cx="25.6" cy="-27.7" r="7.5" fill="url(#harmony)" />
+    </g>
+    <text x="960" y="502" text-anchor="middle" class="pm-label">PM</text>
+
+    <!-- User -->
+    <g filter="url(#shadowSoft)">
+      <circle cx="300" cy="300" r="60" fill="#FFFFFF" stroke="#4A5650" stroke-width="3.5" />
+    </g>
+    <circle cx="300" cy="286" r="13" fill="none" stroke="#4A5650" stroke-width="3.5" stroke-linecap="round" />
+    <path d="M 271,332 C 271,311 284,301 300,301 C 316,301 329,311 329,332" fill="none" stroke="#4A5650" stroke-width="3.5" stroke-linecap="round" />
+    <text x="300" y="412" text-anchor="middle" class="node-label">사용자</text>
+
+    <!-- Designer -->
+    <g filter="url(#shadowSoft)">
+      <circle cx="260" cy="760" r="60" fill="#FFFFFF" stroke="#4A5650" stroke-width="3.5" />
+    </g>
+    <circle cx="260" cy="746" r="13" fill="none" stroke="#4A5650" stroke-width="3.5" stroke-linecap="round" />
+    <path d="M 231,792 C 231,771 244,761 260,761 C 276,761 289,771 289,792" fill="none" stroke="#4A5650" stroke-width="3.5" stroke-linecap="round" />
+    <text x="260" y="872" text-anchor="middle" class="node-label">디자이너</text>
+
+    <!-- 조사 Agent (voice-2 blue, search glyph) -->
+    <g filter="url(#shadowSoft)">
+      <rect x="1555" y="195" width="110" height="110" rx="22" fill="#DCE6FF" stroke="#2A64D6" stroke-width="3.5" />
+    </g>
+    <circle cx="1601.7" cy="241.7" r="13" fill="none" stroke="#0B2A66" stroke-width="4" stroke-linecap="round" />
+    <line x1="1611.3" y1="251.3" x2="1626" y2="266" stroke="#0B2A66" stroke-width="4" stroke-linecap="round" />
+    <text x="1610" y="359" text-anchor="middle" class="node-label">조사 Agent</text>
+
+    <!-- 프로토타입 Agent (voice-3 coral, bolt glyph) -->
+    <g filter="url(#shadowSoft)">
+      <rect x="1605" y="705" width="110" height="110" rx="22" fill="#FFE0D6" stroke="#B34626" stroke-width="3.5" />
+    </g>
+    <path d="M 1664.5,733.8 L 1642.7,765.8 L 1658.1,765.8 L 1651.7,790.1 L 1676.0,755.5 L 1660.6,755.5 Z" fill="#4A1406" />
+    <text x="1660" y="869" text-anchor="middle" class="node-label">프로토타입 Agent</text>
+
+    <!-- wordmark: harmony dot lives in the counter of the first "e" -->
+    <text x="960" y="936" text-anchor="middle" font-family="Pretendard, 'Google Sans Flex', sans-serif" font-weight="600" font-size="92" letter-spacing="-1" fill="#173B30">ensemble</text>
+    <circle cx="783" cy="900" r="6.5" fill="url(#harmony)" />
+  </svg>
+
+  <div class="tagline">사람과 Agent 팀을 위한 AI PM</div>
+</div>
+</body>
+</html>
