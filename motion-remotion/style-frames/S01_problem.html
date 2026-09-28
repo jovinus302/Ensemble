@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>S01 problem</title>
+<style>
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-Regular.woff2") format("woff2"); font-weight: 400; }
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-Medium.woff2") format("woff2"); font-weight: 500; }
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-SemiBold.woff2") format("woff2"); font-weight: 600; }
+  @font-face { font-family: "Pretendard"; src: url("./fonts/Pretendard-Bold.woff2") format("woff2"); font-weight: 700; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; background: #F6F6F3; font-family: "Pretendard", "Google Sans Text", system-ui, sans-serif; overflow: hidden; }
+  .stage { position: relative; width: 1920px; height: 1080px; }
+  .headline {
+    position: absolute; top: 112px; left: 0; width: 1920px; text-align: center;
+    font-family: "Pretendard", "Google Sans Flex", sans-serif; font-weight: 700; font-size: 76px;
+    letter-spacing: -0.02em; color: #18201C;
+  }
+  .subline {
+    position: absolute; top: 206px; left: 0; width: 1920px; text-align: center;
+    font-weight: 400; font-size: 25px; color: #7A867F;
+  }
+  .node-label { font-family: "Pretendard", sans-serif; font-weight: 600; font-size: 28px; fill: #18201C; }
+  .node-role  { font-weight: 400; font-size: 19px; fill: #4A5650; }
+  .badge-ai   { font-weight: 700; font-size: 15px; fill: #25105E; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="headline">인계는, 아직 사람의 몫</div>
+  <div class="subline">Agent는 늘었다. 잇는 일은 그대로다.</div>
+
+  <svg width="1920" height="1080" viewBox="0 0 1920 1080" style="position:absolute; top:0; left:0;">
+    <defs>
+      <pattern id="grain" width="28" height="28" patternUnits="userSpaceOnUse">
+        <circle cx="2" cy="2" r="1.1" fill="#173B30" opacity="0.045" />
+      </pattern>
+      <filter id="shadowSoft" x="-50%" y="-50%" width="200%" height="200%">
+        <feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#173B30" flood-opacity="0.12" />
+      </filter>
+      <filter id="shadowLine" x="-50%" y="-50%" width="200%" height="200%">
+        <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#173B30" flood-opacity="0.10" />
+      </filter>
+    </defs>
+
+    <rect x="0" y="0" width="1920" height="1080" fill="url(#grain)" />
+
+    <!-- empty PM slot: no conductor yet -->
+    <rect x="895" y="415" width="130" height="130" rx="22" fill="none" stroke="#C9D1CB" stroke-width="3" stroke-dasharray="3 11" stroke-linecap="round" />
+    <text x="960" y="580" text-anchor="middle" class="node-role" fill="#87938C">PM 없음</text>
+
+    <!-- tangled, crossing hand-drawn connections (chaos) -->
+    <g filter="url(#shadowLine)">
+      <path d="M 628,380 C 760,300 840,470 960,400 C 1080,330 1180,300 1256,347"
+            fill="none" stroke="#52635A" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 15" />
+      <path d="M 628,700 C 770,760 850,600 960,660 C 1090,730 1180,700 1256,667"
+            fill="none" stroke="#52635A" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 15" />
+      <path d="M 628,700 C 820,640 880,420 1000,410 C 1110,400 1180,370 1256,347"
+            fill="none" stroke="#A8B4AD" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="1 13" />
+      <path d="M 628,380 C 800,440 860,600 990,630 C 1100,655 1180,660 1256,667"
+            fill="none" stroke="#A8B4AD" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="1 13" />
+    </g>
+
+    <!-- hand cursor manually carrying a context packet through the tangle -->
+    <g transform="translate(1090,430) rotate(18)" filter="url(#shadowSoft)">
+      <path d="M0,0 L0,34 L8,27 L13,38 L20,35 L15,24 L26,24 Z" fill="#18201C" />
+    </g>
+    <g transform="translate(1129,456)" filter="url(#shadowSoft)">
+      <rect x="0" y="0" width="46" height="30" rx="7" fill="#FFFFFF" stroke="#C9D1CB" stroke-width="2" />
+      <rect x="8" y="9" width="20" height="4" rx="2" fill="#7A867F" />
+      <rect x="8" y="17" width="30" height="4" rx="2" fill="#C9D1CB" />
+    </g>
+
+    <!-- User (human = circle, with abstract person glyph) -->
+    <g filter="url(#shadowSoft)">
+      <circle cx="590" cy="380" r="42" fill="#FFFFFF" stroke="#4A5650" stroke-width="3.5" />
+    </g>
+    <circle cx="590" cy="371" r="9.5" fill="none" stroke="#4A5650" stroke-width="3.5" stroke-linecap="round" />
+    <path d="M 570,401 C 570,388 579,382 590,382 C 601,382 610,388 610,401" fill="none" stroke="#4A5650" stroke-width="3.5" stroke-linecap="round" />
+    <text x="590" y="448" text-anchor="middle" class="node-label">사용자</text>
+
+    <!-- Designer (human = circle) -->
+    <g filter="url(#shadowSoft)">
+      <circle cx="590" cy="700" r="42" fill="#FFFFFF" stroke="#4A5650" stroke-width="3.5" />
+    </g>
+    <circle cx="590" cy="691" r="9.5" fill="none" stroke="#4A5650" stroke-width="3.5" stroke-linecap="round" />
+    <path d="M 570,721 C 570,708 579,702 590,702 C 601,702 610,708 610,721" fill="none" stroke="#4A5650" stroke-width="3.5" stroke-linecap="round" />
+    <text x="590" y="768" text-anchor="middle" class="node-label">디자이너</text>
+
+    <!-- 조사 Agent (rounded square = agent, voice-2 blue, search glyph) -->
+    <g filter="url(#shadowSoft)">
+      <rect x="1254.5" y="304.5" width="86" height="86" rx="18" fill="#DCE6FF" stroke="#2A64D6" stroke-width="3.5" />
+    </g>
+    <circle cx="1291" cy="341" r="10" fill="none" stroke="#0B2A66" stroke-width="4" stroke-linecap="round" />
+    <line x1="1298.5" y1="348.5" x2="1310" y2="360" stroke="#0B2A66" stroke-width="4" stroke-linecap="round" />
+    <rect x="1310" y="298" width="34" height="22" rx="11" fill="#E9E1FF" filter="url(#shadowSoft)" />
+    <text x="1327" y="313" text-anchor="middle" class="badge-ai">AI</text>
+    <text x="1297.5" y="428" text-anchor="middle" class="node-label">조사 Agent</text>
+
+    <!-- 프로토타입 Agent (rounded square = agent, voice-3 coral, bolt glyph) -->
+    <g filter="url(#shadowSoft)">
+      <rect x="1254.5" y="624.5" width="86" height="86" rx="18" fill="#FFE0D6" stroke="#B34626" stroke-width="3.5" />
+    </g>
+    <path d="M 1301,647 L 1284,672 L 1296,672 L 1291,691 L 1310,664 L 1298,664 Z" fill="#4A1406" />
+    <rect x="1310" y="618" width="34" height="22" rx="11" fill="#E9E1FF" filter="url(#shadowSoft)" />
+    <text x="1327" y="633" text-anchor="middle" class="badge-ai">AI</text>
+    <text x="1297.5" y="748" text-anchor="middle" class="node-label">프로토타입 Agent</text>
+  </svg>
+</div>
+</body>
+</html>
