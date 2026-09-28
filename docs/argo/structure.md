@@ -2,8 +2,8 @@
 
 이 문서는 Argo가 어떤 프로그램인지, 화면과 기록과 실행이 어떻게 나뉘는지 설명한다. 비교와 적용 판단은 별도 문서에 있다.
 
-- 가져올 것: `argo-takeaways.md`
-- Ensemble과의 비교: `argo-ensemble-comparison.md`
+- 가져올 것: `takeaways.md`
+- Ensemble과의 비교: `ensemble-comparison.md`
 
 조사 기준은 2026-09-28, Argo 0.1.88이다. Argo 코드는 열어 볼 수 있지만 오픈소스 라이선스가 아니다. 이 문서는 동작을 설명만 하고, 문장과 코드를 옮기지 않는다.
 
