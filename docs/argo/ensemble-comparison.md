@@ -1,6 +1,6 @@
 # Argo와 Ensemble
 
-이 문서는 Argo와 Ensemble을 나란히 설명한다. Argo의 내부 구조는 `argo-structure.md`, Ensemble이 규칙으로 남기는 항목은 `argo-takeaways.md`에 있다.
+이 문서는 Argo와 Ensemble을 나란히 설명한다. Argo의 내부 구조는 `structure.md`, Ensemble이 규칙으로 남기는 항목은 `takeaways.md`에 있다.
 
 둘 다 사람과 AI가 일을 주고받는 공간을 만든다. 누가 그 사이를 잇는지가 다르다.
 

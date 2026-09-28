@@ -1,6 +1,6 @@
 # Argo에서 가져올 것
 
-이 문서는 Ensemble이 Argo의 동작 가운데 무엇을 규칙으로 가져오고, 무엇을 두지 않는지 정한다. Argo의 구조는 `argo-structure.md`, Ensemble과의 차이 설명은 `argo-ensemble-comparison.md`에 있다.
+이 문서는 Ensemble이 Argo의 동작 가운데 무엇을 규칙으로 가져오고, 무엇을 두지 않는지 정한다. Argo의 구조는 `structure.md`, Ensemble과의 차이 설명은 `ensemble-comparison.md`에 있다.
 
 Argo의 코드, SQL, 프롬프트 문장은 가져오지 않는다. 여기 있는 것은 규칙이다. Ensemble의 기록 정본은 이미 정한 Product State 원장이다. Argo의 파일과 테이블을 그대로 만들지 않는다.
 
