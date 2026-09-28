@@ -94,6 +94,31 @@ Noted, not fixed: `Callout`'s leader stops 60px short of the chip by design
 (`chipX ∓ 60`), which reads as disconnected in SF2 and SF3 alike — changing
 the shared component touches SF2, so it is its own round.
 
+## Round 6 — SF2 headline over UI text (one defect type)
+
+T2 headline sat at `top 96, left 120`, on top of M1's message text. Moved to
+`top 900, left 320` — the empty channel area below the risen plan card.
+`SF2-f505_r6.png`: M1 fully readable, headline overlaps no UI text.
+
+## Round 7 — SF2 plan card empty space (one defect type)
+
+The plan card used the full timeline width (632 logical) while its rows are
+fixed-width (avatar + 220 + chip), leaving the right third and a bottom band
+empty. `MessageRenderer.tsx` now sizes the plan card to 440x360 logical (glow
+and cast shadow follow); the timeline slot (`contentY`) is unchanged.
+`SF2-f505_r7.png`: no empty band, "선행 작업 대기" chip now sits off-card, the
+cast shadow reads at the card's lower right. SF1/SF3 byte-identical after r6–r7.
+
+## Round 8 — callout leaders stop short of the chip (one defect type)
+
+`Callout` ended the leader at `chipX ∓ 60`, 60px short of the chip. It now
+ends at `chipX + dir*8`, just under the chip's near edge (chip paints on top).
+`SF2-f505_r8.png`, `SF3-f1305_r8.png`: every leader meets its chip; dots and
+chips unmoved. SF1 (no callouts) byte-identical; `tsc` clean.
+
+All six items from the paused round are now addressed. Latest stills:
+`SF1-f185_r3.png`, `SF2-f505_r8.png`, `SF3-f1305_r8.png` — awaiting approval.
+
 ## Checklist against spec §5 requirements
 
 - **SF1 (f185)**: T1 headline "잇는 건 이제 PM" centered, "PM" primary green,
