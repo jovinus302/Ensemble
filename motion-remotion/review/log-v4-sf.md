@@ -1,0 +1,90 @@
+# log-v4-sf.md — v4 style frames, round 1
+
+2026-09-28. Built against `review/design-v4.md` r1 (the review of record).
+Stills: `review/v4/SF1a.png`, `SF1b.png`, `SF2.png`, `SF3.png`; projection
+debug: `SF3-debug.png` (lifted), `SF3-debug-rise0.png` (resting), `SF2-debug.png`.
+Render: `npx remotion still src/index.ts StyleFrameV4 <out> --props=<json>`
+with `{"still":"SF1a"|"SF1b"|"SF2"|"SF3","debugProjection":bool,"heroRise":0..1,"measure":bool}`.
+`measure: true` logs one `V4MEASURE {...}` line (visible with `--log=verbose`);
+sizes come from `getBoundingClientRect()` in the rendered page, so they include
+every 3D transform and the perspective divide.
+
+## What was built (`src/v4/`, v3 untouched)
+
+- `config.ts` — held rotations (frontal (0,0,0), opening (0,-40,0)) with
+  `assertHeldPose` (throws on anything else), the still pose table, hero lift
+  (scale 1.02, Z 40 logical, shadow (8,16) blur 24), slab thickness 48, wall
+  shadow, and the §8 copy with an 18-code-point assert at module load.
+- `stage/StageV4.tsx` — background (v3 `Background`) + detached `WallShadow`
+  → optional `slab` rig → board rig (v3 `rigTransform`) → 2D overlays → noise.
+- `stage/projectV4.ts` — hero transform (scale about card center, translateZ)
+  in front of v3 `projectPoint`; that is the only projection path for anchors.
+- `ui/BoardV4.tsx`, `ui/TimelineV4.tsx`, `ui/RightPanelV4.tsx` — adapted copies
+  of the v3 files: the beat's hero is drawn once, in the hero layer; the panel
+  is flat (board layer) instead of v3's Riser at Z+18/+40; no v3 slab plane,
+  ground ellipse, board drop shadow or sheen band.
+- `ui/HeroLift.tsx` (layer 3), `ui/BoardThickness.tsx`, `fx/WallShadow.tsx`,
+  `callouts/CalloutV4.tsx` (+ `DebugDot3D` / `DebugRing2D`), `measure.ts`.
+- `StyleFrameV4.tsx`, registered in `src/Root.tsx` (1920x1080, 30fps, 1 frame).
+
+Framing decision: in every frontal still the headline sits in a background band
+above the board's top edge (board top at y 200–252), so it cannot overlap UI.
+Feature zoom s = 1.45 everywhere — the smallest that keeps board body text
+(bodyMd 14) ≥ 20px and hero chips (24 tall) ≥ 36px.
+
+## Iterations (one defect class each)
+
+1. Wall shadow invisible — a true perspective projection onto a far wall
+   shrinks the shadow toward the screen center, behind the board. Switched to
+   screen-space offset proportional to each point's height above the wall.
+2. SF3 grey band bleeding through the board's top-right (frontal) and, in SF1a,
+   board-face pixels missing near the right side face. Isolated by experiment:
+   no-thickness render = correct; straight faces only = still broken; faces
+   moved 1px behind = still broken. Cause: side planes in the same 3D context
+   as the board body. Fix: thickness renders in its own rig composited behind
+   the board rig (`StageV4 slab`); faces outward + backface-hidden; back face
+   dropped; corners as parallel disc stacks. Frontal stills pass no slab
+   (every side face is back-facing at (0,0,0)).
+3. SF2 callout chips overlapped the plan card's right edge by ~8px, and the
+   anchors sat 9px low / 17px right of their chips. Moved chips right of the
+   card and corrected the row-center offset (−6 logical, measured).
+4. SF3 hero row card's lower edge touched the C4.1 label (lift magnification +
+   perspective push ~6px away from center). Card vertical margin 6 → 2.
+
+## Checks on the final revision
+
+- `npx tsc --noEmit`: exit 0.
+- `git diff --stat 0dc8e10 -- motion-remotion/src/v3`: empty.
+- v3 regression: StyleFrameV3 f185 / f505 / f1305 re-rendered, SHA256 identical
+  to `SF1-f185_r3.png` (c5a4a5dc…), `SF2-f505_r8.png` (e075496c…),
+  `SF3-f1305_r8.png` (5dd57fc2…). `PitchV3 --frame=600` rendered, exit 0.
+- Held poses (`STILL_POSES`, asserted at render): SF1a (0,−40,0) s 0.8;
+  SF1b / SF2 / SF3 (0,0,0) s 1.45. No other held rotation exists in v4.
+- Headlines (code points): 16 / 16 / 14 (SF1b / SF2 / SF3); all §8 lines ≤ 16.
+- On-screen sizes (px, measured):
+  - SF2: M1 message body 21.8; panel goal bodyMd 20.3; hero-card bodyMd 21.3;
+    hero chips 36.5 tall; hero-card secondary line (bodySm) 18.2.
+  - SF3: hero row bodyMd 21.3; hero badge "검증됨" 58.3 tall (text 29.2);
+    panel row bodyMd 20.3; timeline message body 21.8; C4.1 id label 17.4.
+  - SF1b: M1 21.8; panel goal 20.3.
+  - SF1a: not measurable by bounding box (rotated); computed 11–13px — see open item.
+- Anchor projection error (3D dot vs 2D projected ring, measured centers):
+  SF3 lifted 0.01px, SF3 resting (`heroRise 0`) 0.01px, SF2 lifted 0.01px.
+- Hero-vs-board parallax: the lift moves the SF3 anchor 19.6px (Z + 1.02
+  scale). Under a camera pan Δ the lifted card leads the board by
+  Δ·58/2142 ≈ 2.7% → 8–16px for pans of 300–590px. Background-vs-board
+  parallax is motion-only; not applied to held stills.
+- Overlap (eye + measured rects): headlines end at y 151–190, boards start at
+  y 200–252. SF2 chips x 1294–1547 sit between the card (right 1278) and the
+  panel (left 1576). SF3 chip sits on the background right of the board edge
+  (x 1499). Every leader ends under its chip. SF3 hero card clears C2.1 text by
+  15px and the C4.1 label line box by 3px.
+
+## Open items
+
+- SF1a UI text is ~11–13px on screen (whole board at −40°); the ≥20px body-text
+  invariant is not met there. A whole-board opening at ≥20px would need s ≥ 1.43,
+  which pushes the near edge (and its side face / shadow) off-frame at −40°.
+- SF3 marks C1.1 and C2.1 "검증됨" (v3 SF3 showed them "미검증" while the panel
+  reads 3/5 with three approved evidence items).
+- "AI PM이" / "PM이" accent includes the particle (KineticHeadline accents whole words).

@@ -4,6 +4,7 @@ import {PitchVideo} from './compositions/PitchVideo';
 import {UiMockupFlat} from './ui/UiMockupFlat';
 import {PitchV3} from './v3/PitchV3';
 import {StyleFrameV3} from './v3/StyleFrameV3';
+import {StyleFrameV4} from './v4/StyleFrameV4';
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -56,6 +57,16 @@ export const RemotionRoot: React.FC = () => {
         width={1920}
         height={1080}
         defaultProps={{frame: 185, debugProjection: false}}
+      />
+      {/* v4 style frames (review/design-v4.md r1 §3): SF1a / SF1b / SF2 / SF3, chosen by `still`. */}
+      <Composition
+        id="StyleFrameV4"
+        component={StyleFrameV4}
+        durationInFrames={1}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{still: 'SF1a' as const, debugProjection: false, heroRise: 1, measure: false}}
       />
     </>
   );
