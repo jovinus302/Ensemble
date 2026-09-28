@@ -14,7 +14,7 @@ import {ensurePretendardLoaded, ensurePretendardVariableLoaded} from '../tokens/
 import {px} from '../v3/tokens/video';
 import {contentYToBoardY, messageById, AREAS, BOARD_H} from '../v3/ui/content';
 import {Veil} from '../v3/fx/Veil';
-import {MessageRenderer} from '../v3/ui/messages/MessageRenderer';
+import {MessageRendererV4} from './ui/messages/MessageRendererV4';
 import {KineticHeadline} from '../v3/type/KineticHeadline';
 import {GlowField} from '../v3/fx/GlowField';
 import {StageV4, TypeLayer} from './stage/StageV4';
@@ -91,8 +91,10 @@ const SF2: React.FC<{rise: number; debug?: boolean}> = ({rise, debug}) => {
   const pose = STILL_POSES.SF2;
   assertHeldPose('SF2', pose);
   const hero = {card: PLAN_CARD, rise};
-  const a1 = {x: 728, y: planRowCenterY(0)};
-  const a2 = {x: 771, y: planRowCenterY(2)};
+  // anchors sit ~3 logical inside each chip's right edge (edges measured after
+  // round 3's 13px chip labels: 735.3 / 781.9 logical)
+  const a1 = {x: 732, y: planRowCenterY(0)};
+  const a2 = {x: 779, y: planRowCenterY(2)};
   return (
     <StageV4
       frame={SF2_FRAME}
@@ -111,7 +113,7 @@ const SF2: React.FC<{rise: number; debug?: boolean}> = ({rise, debug}) => {
               card={PLAN_CARD}
               rise={rise}
               under={<GlowField x={px(PLAN_CARD.x)} y={px(PLAN_CARD.y)} w={px(PLAN_CARD.w)} h={px(PLAN_CARD.h)} frame={SF2_FRAME} pad={px(48)} />}
-              boardChildren={<MessageRenderer msg={M2} boardY={PLAN_CARD.y} frame={SF2_FRAME} />}
+              boardChildren={<MessageRendererV4 msg={M2} boardY={PLAN_CARD.y} frame={SF2_FRAME} />}
             >
               {debug && <DebugDot3D x={a1.x - PLAN_CARD.x} y={a1.y - PLAN_CARD.y} />}
             </HeroLift>

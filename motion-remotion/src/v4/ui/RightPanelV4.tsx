@@ -9,8 +9,9 @@
 import React from 'react';
 import {AREAS, PRODUCT_STATE} from '../../v3/ui/content';
 import type {Criterion} from '../../v3/ui/content';
-import {px, colors, uiType, uiTextStyle} from '../../v3/tokens/video';
-import {UnverifiedBadge, VerifiedBadge, ReportedTag} from '../../v3/ui/primitives/Badge';
+import {px, colors, uiTextStyle} from '../../v3/tokens/video';
+import {uiTypeV4 as uiType, SECONDARY_FONT} from './typeV4';
+import {UnverifiedBadge, VerifiedBadge, ReportedTag} from './BadgeV4';
 import {EmbossChip} from '../../v3/ui/primitives/EmbossChip';
 
 export const PANEL_X = AREAS.rightPanel.x0;
@@ -148,7 +149,7 @@ export const RightPanelV4: React.FC<RightPanelV4Props> = ({progress, verifiedIds
     {/* decision block */}
     <div style={{position: 'absolute', left: px(PANEL_PAD), top: px(local(536)), width: px(ROW_W), display: 'flex', alignItems: 'center', gap: px(8)}}>
       <span style={uiTextStyle(uiType.bodyMd, colors.onSurface)}>{PRODUCT_STATE.decisionBlock.label}</span>
-      <EmbossChip label={PRODUCT_STATE.decisionBlock.chip} container={colors.secondaryContainer} onContainer={colors.onSecondaryContainer} />
+      <EmbossChip label={PRODUCT_STATE.decisionBlock.chip} container={colors.secondaryContainer} onContainer={colors.onSecondaryContainer} fontSize={SECONDARY_FONT} />
     </div>
 
     {/* evidence block */}

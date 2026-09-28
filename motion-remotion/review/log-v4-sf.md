@@ -109,3 +109,35 @@ Tradeoff, not hidden: side margins are only ~7px, and the headline-to-board gap
 shrank from ~62px to 30px — the price of fitting the full width at ≥ 20px.
 Seen, not fixed (other stills, same defect type, outside this round's scope):
 SF2's out-of-focus panel is cut by the right edge, including its "확정 · 김도윤" chip.
+
+## Round 3 — secondary text below 18px (one defect type)
+
+Defect (whole-frame scan): labels and bodySm read 15.8–17.4px in SF1b/SF2/SF3
+(labelSm 11 → ~16px: 프로젝트, 채널, 오늘, timestamps, 보고됨; labelMd/bodySm 12
+→ ~17.3px: C-ids, 목표, 인수 조건, subtitles, chips, badges, attachments,
+inline lines); sidebar avatar initials 16.1px.
+
+Fix (v4 files only): `ui/typeV4.ts` sets bodySm / labelMd / labelSm to 13
+logical (the smallest board zoom is SF1b's 1.435: 18 / 1.435 = 12.54 → 13),
+line heights unchanged so nothing moves. Used by `BoardV4`, `RightPanelV4`,
+a new `ui/BadgeV4.tsx` (copy of v3 Badge with the 13 label) and a new
+`ui/messages/MessageRendererV4.tsx` (copy of v3 MessageRenderer; only the
+type scale and chip label size differ) now used by `TimelineV4` and the SF2
+hero. EmbossChip labels get `fontSize 13`. Sidebar avatars 28 → 32 logical
+(initials 18.4px). Knock-on fix: the wider plan-card chips put SF2's callout
+dots on the chip text; anchors moved to 3 logical inside the new chip edges
+(732 / 779), dots now 3.5–4px clear of the text.
+
+Result (final revision, measured): smallest on-screen text SF1b 18.4px
+(avatar initial; labels 18.7), SF2 18.6 (18.8 labels), SF3 18.8. Frame-edge
+clipping lists identical to round 2 (SF1b none; SF2 panel at the right edge,
+pre-existing; SF3 left-edge timeline avatars/text, pre-existing) — no new
+clipping. SF1a re-rendered too (same components; exempt from sizes, still
+reads as UI).
+
+Final verification (this revision): `tsc --noEmit` exit 0; `git diff --stat
+0dc8e10 -- motion-remotion/src/v3` empty; StyleFrameV3 f185/f505/f1305 SHA256
+identical to r3/r8/r8; `PitchV3 --frame=600` exit 0. Body text: SF1b 20.1–21.5,
+SF2 20.3–21.8, SF3 20.3–21.3px. Hero: SF2 chips 36.5px tall, SF3 badge 58.3px
+tall. Anchor error 0.01px (SF3 lifted, SF3 rise 0, SF2). Held poses: SF1a
+(0,−40,0) s 0.8; SF1b (0,0,0) s 1.435; SF2/SF3 (0,0,0) s 1.45.

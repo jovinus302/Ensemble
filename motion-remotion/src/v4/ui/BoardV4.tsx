@@ -10,7 +10,8 @@
 // Rail / sidebar / channel header / composer markup is v3's, verbatim.
 import React from 'react';
 import {BOARD_W, BOARD_H, AREAS, TEAM_ROWS, SIDEBAR_TEAM_Y0, SIDEBAR_TEAM_ROW_H, CHANNEL_TITLE, WORKSPACE_TITLE, PROJECT_TITLE} from '../../v3/ui/content';
-import {px, colors, uiType, uiTextStyle} from '../../v3/tokens/video';
+import {px, colors, uiTextStyle} from '../../v3/tokens/video';
+import {uiTypeV4 as uiType, SECONDARY_FONT, SIDEBAR_AVATAR} from './typeV4';
 import {ClayAvatar} from '../../v3/ui/primitives/ClayAvatar';
 import {EmbossChip} from '../../v3/ui/primitives/EmbossChip';
 import {AddIcon, ForumIcon, InfoIcon, AutoAwesomeIcon} from '../../v3/ui/icons';
@@ -90,13 +91,13 @@ export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, 
           <div style={uiTextStyle(uiType.titleSm, colors.onSurface)}>팀원 5</div>
           {TEAM_ROWS.map((row) => (
             <div key={row.id} style={{marginTop: px(10), height: px(SIDEBAR_TEAM_ROW_H), display: 'flex', alignItems: 'center', gap: px(8)}}>
-              <ClayAvatar kind={row.kind} base={rowColor(row.kind)} label={row.name[0]} size={px(28)} frame={frame} />
+              <ClayAvatar kind={row.kind} base={rowColor(row.kind)} label={row.name[0]} size={px(SIDEBAR_AVATAR)} frame={frame} />
               <div style={{flex: 1, minWidth: 0}}>
                 <div style={{...uiTextStyle(uiType.labelLg, colors.onSurface), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{row.name}</div>
                 <div style={{...uiTextStyle(uiType.bodySm, colors.onSurfaceVariant), whiteSpace: 'nowrap'}}>{row.subtitle}</div>
               </div>
               {row.chip && (
-                <EmbossChip label={row.chip.label} container={row.chip.state === 'working' ? colors.infoContainer : colors.surfaceContainerHigh} onContainer={colors.onSurface} />
+                <EmbossChip label={row.chip.label} container={row.chip.state === 'working' ? colors.infoContainer : colors.surfaceContainerHigh} onContainer={colors.onSurface} fontSize={SECONDARY_FONT} />
               )}
             </div>
           ))}

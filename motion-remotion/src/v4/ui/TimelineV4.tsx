@@ -2,10 +2,11 @@
 // One behavioral difference: `excludeIds` — the beat's hero message is not
 // drawn in the flat timeline because v4 draws it once, in the hero layer
 // (HeroLift), with its own scale/Z/shadow. Everything else renders through
-// v3's MessageRenderer, flat (no v3 Riser: hero=false for every row).
+// MessageRendererV4 (v3's renderer with the v4 secondary type size), flat
+// (no v3 Riser: hero=false for every row).
 import React from 'react';
 import {MESSAGES, contentYToBoardY, AREAS} from '../../v3/ui/content';
-import {MessageRenderer} from '../../v3/ui/messages/MessageRenderer';
+import {MessageRendererV4} from './messages/MessageRendererV4';
 
 export interface TimelineV4Props {
   frame: number;
@@ -22,7 +23,7 @@ export const TimelineV4: React.FC<TimelineV4Props> = ({frame, scrollY, excludeId
         const boardYEnd = contentYToBoardY(m.contentY[1], scrollY);
         if (boardYEnd < vy0 - 40 || boardY > vy1 + 40) return null;
         const fade = boardY < vy0 + 16 ? Math.max(0, Math.min(1, (boardY - vy0) / 16)) : 1;
-        const content = <MessageRenderer msg={m} boardY={boardY} frame={frame} />;
+        const content = <MessageRendererV4 msg={m} boardY={boardY} frame={frame} />;
         return fade < 1 ? (
           <div key={m.id} style={{opacity: fade}}>
             {content}
