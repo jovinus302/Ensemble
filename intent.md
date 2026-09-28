@@ -135,9 +135,9 @@ Ensemble은 두 참고 대상에서 요소를 가져와 **AI PM 중심의 프로
 | Buzz | 사람과 Agent가 같은 채널에서 대화하고 결과물을 공유하는 협업 방식 |
 | Argo | 역할별 AI 팀 구성, 공유 기억, 업무 위임, Agent 간 리뷰 |
 
-참고 저장소: Argo = `R2P/argo` (GitHub beyondworks/argo). Argo는 source-available이며 오픈소스가 아니다(package.json license: UNLICENSED). 수정·재배포·서비스 제공에는 저작권자 beyondworks의 서면 동의가 필요하다(법률 조언 아님, 법무 확인 필요). 상세 비교는 `R2P/argo 조사.md` 14.1절.
+참고 저장소: Argo = `R2P/argo` (GitHub beyondworks/argo). 상세 비교는 `docs/argo-survey.md` 14장 "Ensemble 참고 관점".
 
-**규칙:** Argo의 코드·SQL·프롬프트 문장은 옮기지 않는다. 개념·패턴만 클린룸 방식으로 참고한다.
+**규칙:** Argo의 코드·SQL·프롬프트 문장은 옮기지 않는다. 개념·패턴만 참고한다.
 
 Ensemble이 더하는 것은 두 가지다:
 
