@@ -1,0 +1,52 @@
+{
+  "verdict": "PASS",
+  "sampledFrames": 54,
+  "results": [
+    {
+      "name": "착지 직후 PM 답장과 지휘 중",
+      "verdict": "PASS"
+    },
+    {
+      "name": "부족 → 보완 → 인계 → 제작의 순서",
+      "verdict": "PASS"
+    },
+    {
+      "name": "사람의 대화와 권한 결정 뒤 PM 조율",
+      "verdict": "PASS"
+    },
+    {
+      "name": "변경 전달·확인과 결과 반영 분리",
+      "verdict": "PASS"
+    },
+    {
+      "name": "새 메시지 이후 이전 대화가 위로 이동하고 누적 유지",
+      "verdict": "PASS"
+    },
+    {
+      "name": "중앙 카피 2초와 마지막 2초 정지",
+      "verdict": "PASS"
+    },
+    {
+      "name": "회전 통과와 기능 비트 정면",
+      "verdict": "PASS"
+    },
+    {
+      "name": "가독성·콜아웃·부상 투영",
+      "verdict": "PASS"
+    },
+    {
+      "name": "기존 v4 4장·v4-pm 9장 픽셀 회귀",
+      "verdict": "PASS"
+    }
+  ],
+  "measurements": {
+    "oldMessageYBefore": 775,
+    "oldMessageYAfter": 555,
+    "upwardPixels": 220,
+    "rotationIntermediateFrames": 11,
+    "bodyMin": 22.68,
+    "secondaryMin": 19.91,
+    "heroChipHeightMin": 45,
+    "anchorMax": 0.01
+  }
+}

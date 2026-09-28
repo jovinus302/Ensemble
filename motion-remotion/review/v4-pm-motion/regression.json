@@ -1,0 +1,93 @@
+[
+  {
+    "composition": "StyleFrameV4PM",
+    "still": "O1",
+    "sha256": "d39241f521c6071f0ba808fa5090db5b5f5215fb1985eadebd59a211f29a520f",
+    "expected": "d39241f521c6071f0ba808fa5090db5b5f5215fb1985eadebd59a211f29a520f",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4PM",
+    "still": "O2",
+    "sha256": "2f42d3adaa75e00c406e1efb327b08e597dfb1be7b5b22a997feecc84d632244",
+    "expected": "2f42d3adaa75e00c406e1efb327b08e597dfb1be7b5b22a997feecc84d632244",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4PM",
+    "still": "B1",
+    "sha256": "7bf292d0def32ca66b9ef049a3218523e9fc5ff8ad691561ac1ded2b2eac6c63",
+    "expected": "7bf292d0def32ca66b9ef049a3218523e9fc5ff8ad691561ac1ded2b2eac6c63",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4PM",
+    "still": "B2",
+    "sha256": "af1f12d7b3fb470718de2ab0537cb8d9741ce6d89af2292ba4988789055cb04a",
+    "expected": "af1f12d7b3fb470718de2ab0537cb8d9741ce6d89af2292ba4988789055cb04a",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4PM",
+    "still": "B3",
+    "sha256": "239bedd6abe8917603006d0dee4a8ebb5455a70c0b421da3e7166179d0229ab5",
+    "expected": "239bedd6abe8917603006d0dee4a8ebb5455a70c0b421da3e7166179d0229ab5",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4PM",
+    "still": "B4",
+    "sha256": "f3acbda4266f2f59f368a41acd51c3e4eba2b45dce8e2f57bd90c0e1c617e1bf",
+    "expected": "f3acbda4266f2f59f368a41acd51c3e4eba2b45dce8e2f57bd90c0e1c617e1bf",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4PM",
+    "still": "B5",
+    "sha256": "79fd780c4e7b137d02e61b649a2b12fb4bf924cd02562f5317f4654d785db2d2",
+    "expected": "79fd780c4e7b137d02e61b649a2b12fb4bf924cd02562f5317f4654d785db2d2",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4PM",
+    "still": "B6",
+    "sha256": "8d6f18cc54fbf00f049b44538cb07f5602dd828759165fe98f1898f5d5d711e7",
+    "expected": "8d6f18cc54fbf00f049b44538cb07f5602dd828759165fe98f1898f5d5d711e7",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4PM",
+    "still": "OH",
+    "sha256": "3d236dea651ec6159d42bc8693439b2e1d07ebeeb18f8d07819037aa23603fe8",
+    "expected": "3d236dea651ec6159d42bc8693439b2e1d07ebeeb18f8d07819037aa23603fe8",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4",
+    "still": "SF1a",
+    "sha256": "9c8c9a491b5d323abe4b6311aa7579518552d632431b0cf84728989526b5bceb",
+    "expected": "9c8c9a491b5d323abe4b6311aa7579518552d632431b0cf84728989526b5bceb",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4",
+    "still": "SF1b",
+    "sha256": "45289989181c9b5007881d50769eee5ebd4c6cc4a1e7df040ae6d444e8d133f9",
+    "expected": "45289989181c9b5007881d50769eee5ebd4c6cc4a1e7df040ae6d444e8d133f9",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4",
+    "still": "SF2",
+    "sha256": "2f39962dc9673e3d1a98c74ec4d5513bc9929fd4a9e26a1c1974b21ffdbb3261",
+    "expected": "2f39962dc9673e3d1a98c74ec4d5513bc9929fd4a9e26a1c1974b21ffdbb3261",
+    "identical": true
+  },
+  {
+    "composition": "StyleFrameV4",
+    "still": "SF3",
+    "sha256": "cb0ab9e6ed494648f31144d1435d97cd771b6558457ff721145b38c6825ffc9d",
+    "expected": "cb0ab9e6ed494648f31144d1435d97cd771b6558457ff721145b38c6825ffc9d",
+    "identical": true
+  }
+]

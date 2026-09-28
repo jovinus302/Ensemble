@@ -6,6 +6,7 @@ import {PitchV3} from './v3/PitchV3';
 import {StyleFrameV3} from './v3/StyleFrameV3';
 import {StyleFrameV4} from './v4/StyleFrameV4';
 import {StyleFrameV4PM} from './v4pm/StyleFrameV4PM';
+import {PitchV4PM} from './v4pm/PitchV4PM';
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -78,6 +79,7 @@ export const RemotionRoot: React.FC = () => {
         height={1080}
         defaultProps={{still: 'B6' as const, debugProjection: false, heroRise: 1, measure: false}}
       />
+      <Composition id="PitchV4PM" component={PitchV4PM} durationInFrames={1710} fps={30} width={1920} height={1080} defaultProps={{measure: false, debugProjection: false}}/>
     </>
   );
 };

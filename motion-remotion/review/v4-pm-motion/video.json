@@ -1,0 +1,153 @@
+{
+  "metadata": {
+    "streams": [
+      {
+        "index": 0,
+        "codec_name": "h264",
+        "codec_long_name": "unknown",
+        "profile": "100",
+        "codec_type": "video",
+        "codec_tag_string": "avc1",
+        "codec_tag": "0x31637661",
+        "width": 1920,
+        "height": 1080,
+        "coded_width": 1920,
+        "coded_height": 1080,
+        "closed_captions": 0,
+        "film_grain": 0,
+        "has_b_frames": 2,
+        "pix_fmt": "yuv420p",
+        "level": 40,
+        "chroma_location": "left",
+        "field_order": "progressive",
+        "refs": 1,
+        "is_avc": "true",
+        "nal_length_size": "4",
+        "id": "0x1",
+        "r_frame_rate": "30/1",
+        "avg_frame_rate": "30/1",
+        "time_base": "1/90000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "duration_ts": 5130000,
+        "duration": "57.000000",
+        "bit_rate": "718660",
+        "bits_per_raw_sample": "8",
+        "nb_frames": "1710",
+        "extradata_size": 47,
+        "disposition": {
+          "default": 1,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "non_diegetic": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0,
+          "multilayer": 0
+        },
+        "tags": {
+          "language": "und",
+          "handler_name": "VideoHandler",
+          "vendor_id": "[0][0][0][0]"
+        }
+      }
+    ],
+    "format": {
+      "filename": "out/pitch-v4-pm.mp4",
+      "nb_streams": 1,
+      "nb_programs": 0,
+      "nb_stream_groups": 0,
+      "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+      "start_time": "0.000000",
+      "duration": "57.000000",
+      "size": "5139787",
+      "bit_rate": "721373",
+      "probe_score": 100,
+      "tags": {
+        "major_brand": "isom",
+        "minor_version": "512",
+        "compatible_brands": "isomiso2avc1mp41",
+        "encoder": "Lavf61.7.100",
+        "comment": "Made with Remotion 4.0.529"
+      }
+    }
+  },
+  "sha256": "8782e54fb01723258c623ff8055c41e70f666acec53db1e6d06711490b0b7453",
+  "fullDecode": {
+    "codec": "rawvideo",
+    "exitCode": 0
+  },
+  "extractedFrames": [
+    {
+      "frame": 150,
+      "sha256": "ed941ccf19f8c96d1f6f5121060d819a4448db6cca4bf16b76cb4c7a642637fc"
+    },
+    {
+      "frame": 195,
+      "sha256": "2d92205335f0baad28602d25bc3c3e7e8b8cc3f6c4af035f6df50c05a5348eef"
+    },
+    {
+      "frame": 270,
+      "sha256": "40161e8bf02226f3ef07f363769bc9f27aaf6054cdb21a464bc992678fcc244b"
+    },
+    {
+      "frame": 366,
+      "sha256": "cebef60b921d4d30515b1b06b5e559705527a55180d156c90081ba7e661c87aa"
+    },
+    {
+      "frame": 700,
+      "sha256": "ef0ff088fa95f3d14f52ee0124bb28e0e8590967e436beceadb01da64b1a7af6"
+    },
+    {
+      "frame": 830,
+      "sha256": "d3a788c9e24c55ef79a0de9f98a2ca3619b75e81e38b2a48e5644ad2c34fcc7b"
+    },
+    {
+      "frame": 880,
+      "sha256": "1ffc6cd0f12f2673797dbf0d72d9f0fdf8c388cedc67c6f7bcd2ead29dbcae7d"
+    },
+    {
+      "frame": 890,
+      "sha256": "f69d822bde473735b9ecf6db763b44ec615b029b45bc22f06e917e1839ba52de"
+    },
+    {
+      "frame": 1010,
+      "sha256": "bb36043e6539e6dc0e19fd0a040b8e0a80a50a85ad65764351127b26fba655df"
+    },
+    {
+      "frame": 1180,
+      "sha256": "e677142c5b271464617865f06b917b779fe22bfb9342aa47ddaa942c348f9d8a"
+    },
+    {
+      "frame": 1280,
+      "sha256": "c3f6b2eef1ae51f9b36e98ea583d8475234f6ddebc840400c030b57c0ba47f49"
+    },
+    {
+      "frame": 1445,
+      "sha256": "7fc4fbf518a6cd78ece4d1cff0f444843d3854f21df352b290bacea26de33b8c"
+    },
+    {
+      "frame": 1510,
+      "sha256": "47156acaa011f8bff464b166265ce8bdd3e68497ee950682fe4975f400b1495d"
+    },
+    {
+      "frame": 1638,
+      "sha256": "dd011811fae2095fcaf6db023b822bc185bf62ab623faa44cbb9e370dca4762f"
+    },
+    {
+      "frame": 1709,
+      "sha256": "d0bd863254ee59c6e3a0c17b06f52c0e169399fcd88535361347219f60ceb465"
+    }
+  ]
+}

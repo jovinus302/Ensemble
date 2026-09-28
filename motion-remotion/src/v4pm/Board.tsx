@@ -5,21 +5,21 @@ import {DebugDot3D} from '../v4/callouts/CalloutV4';
 import {ANCHOR, CARD, titles, badges, captions, type Beat} from './content';
 
 const box = (x: number, y: number, w?: number, h?: number): React.CSSProperties => ({position: 'absolute', left: px(x), top: px(y), width: w === undefined ? undefined : px(w), height: h === undefined ? undefined : px(h)});
-const Text: React.FC<{children: React.ReactNode; small?: boolean; color?: string; weight?: number; size?: number; style?: React.CSSProperties}> = ({children, small, color = c.onSurface, weight = 400, size, style}) => <div data-pm-text={small ? 'secondary' : 'body'} style={{fontSize: px(size ?? (small ? 16 : 18)), lineHeight: 1.4, color, fontWeight: weight, ...style}}>{children}</div>;
-const Chip: React.FC<{children: React.ReactNode; hero?: boolean; tone?: 'green' | 'blue' | 'amber' | 'neutral'}> = ({children, hero, tone = 'green'}) => {
+export const Text: React.FC<{children: React.ReactNode; small?: boolean; color?: string; weight?: number; size?: number; style?: React.CSSProperties}> = ({children, small, color = c.onSurface, weight = 400, size, style}) => <div data-pm-text={small ? 'secondary' : 'body'} style={{fontSize: px(size ?? (small ? 16 : 18)), lineHeight: 1.4, color, fontWeight: weight, ...style}}>{children}</div>;
+export const Chip: React.FC<{children: React.ReactNode; hero?: boolean; tone?: 'green' | 'blue' | 'amber' | 'neutral'}> = ({children, hero, tone = 'green'}) => {
   const tones = {green: [c.primaryContainer, c.onPrimaryContainer], blue: [c.infoContainer, c.voice2On], amber: [c.warningContainer, c.warning], neutral: [c.surfaceContainer, c.onSurfaceVariant]};
   return <div data-pm-chip={hero ? 'hero' : 'support'} style={{height: px(hero ? 36 : 29), padding: `0 ${px(14)}px`, display: 'inline-flex', alignItems: 'center', borderRadius: px(99), whiteSpace: 'nowrap', background: tones[tone][0], boxShadow: embossChipShadow}}><Text small weight={600} color={tones[tone][1]}>{children}</Text></div>;
 };
-const Avatar: React.FC<{name: string; agent?: boolean; color: string}> = ({name, agent, color}) => <div style={{width: px(36), height: px(36), borderRadius: px(agent ? 10 : 99), background: color, boxShadow: clayInsetShadow, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0}}><Text weight={700} color={c.onSurface}>{name}</Text></div>;
-const Row: React.FC<{y: number; title: string; detail?: string; chip?: string; tone?: 'green' | 'blue' | 'amber' | 'neutral'; avatar?: string; agent?: boolean; color?: string}> = ({y, title, detail, chip, tone, avatar, agent, color = c.humanDesigner}) => <div data-pm-block style={{...box(28, y, 644, 52), display: 'flex', alignItems: 'center', gap: px(14)}}>
+export const Avatar: React.FC<{name: string; agent?: boolean; color: string}> = ({name, agent, color}) => <div style={{width: px(36), height: px(36), borderRadius: px(agent ? 10 : 99), background: color, boxShadow: clayInsetShadow, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0}}><Text weight={700} color={c.onSurface}>{name}</Text></div>;
+export const Row: React.FC<{y: number; title: string; detail?: string; chip?: string; tone?: 'green' | 'blue' | 'amber' | 'neutral'; avatar?: string; agent?: boolean; color?: string}> = ({y, title, detail, chip, tone, avatar, agent, color = c.humanDesigner}) => <div data-pm-block style={{...box(28, y, 644, 52), display: 'flex', alignItems: 'center', gap: px(14)}}>
   {avatar && <Avatar name={avatar} agent={agent} color={color}/>}
   <div style={{flex: 1}}><Text weight={600}>{title}</Text>{detail && <Text small color={c.onSurfaceVariant}>{detail}</Text>}</div>
   {chip && <Chip tone={tone}>{chip}</Chip>}
 </div>;
-const Note: React.FC<{y: number; children: React.ReactNode; tone?: string}> = ({y, children, tone = c.surfaceContainerLow}) => <div data-pm-block style={{...box(28, y, 644), boxSizing: 'border-box', padding: `${px(12)}px ${px(16)}px`, borderRadius: px(12), background: tone}}>{children}</div>;
-const Field: React.FC<{y: number; label: string; value: string; detail?: string}> = ({y, label, value, detail}) => <div data-pm-block style={box(28, y, 644)}><div style={box(0, 0, 96)}><Text small color={c.secondary} weight={600}>{label}</Text></div><div style={{marginLeft: px(108)}}><Text>{value}</Text>{detail && <Text small color={c.onSurfaceVariant}>{detail}</Text>}</div></div>;
+export const Note: React.FC<{y: number; children: React.ReactNode; tone?: string}> = ({y, children, tone = c.surfaceContainerLow}) => <div data-pm-block style={{...box(28, y, 644), boxSizing: 'border-box', padding: `${px(12)}px ${px(16)}px`, borderRadius: px(12), background: tone}}>{children}</div>;
+export const Field: React.FC<{y: number; label: string; value: string; detail?: string}> = ({y, label, value, detail}) => <div data-pm-block style={box(28, y, 644)}><div style={box(0, 0, 96)}><Text small color={c.secondary} weight={600}>{label}</Text></div><div style={{marginLeft: px(108)}}><Text>{value}</Text>{detail && <Text small color={c.onSurfaceVariant}>{detail}</Text>}</div></div>;
 
-const CardBody: React.FC<{beat: Beat}> = ({beat}) => {
+export const CardBody: React.FC<{beat: Beat}> = ({beat}) => {
   if (beat === 'B1') return <>
     <Row y={94} avatar="PM" agent color={c.primaryContainer} title="AI PM" detail="인계 판단 · 조율 · 계획 반영" chip="대화 확인 중"/>
     <Row y={153} avatar="도" color={c.humanDecisionMaker} title="김도윤" detail="사람 · 목표와 범위 결정" chip="결정권자" tone="neutral"/>
@@ -71,7 +71,7 @@ const CardBody: React.FC<{beat: Beat}> = ({beat}) => {
   </>;
 };
 
-export const Board: React.FC<{beat: Beat; rise: number; debug?: boolean; overview?: boolean; landed?: boolean}> = ({beat, rise, debug, overview, landed}) => <div style={{position: 'absolute', width: px(1440), height: px(900), fontFamily: FONT_FAMILY, transformStyle: 'preserve-3d'}}>
+export const Board: React.FC<{beat: Beat; rise: number; debug?: boolean; overview?: boolean; landed?: boolean; timeline?: React.ReactNode; activePM?: boolean; roadmap?: {version: string; title: string; detail: string; status: string}}> = ({beat, rise, debug, overview, landed, timeline, activePM, roadmap}) => <div style={{position: 'absolute', width: px(1440), height: px(900), fontFamily: FONT_FAMILY, transformStyle: 'preserve-3d'}}>
   <div data-pm-board style={{position: 'absolute', inset: 0, background: c.background, borderRadius: px(20), border: `${px(1)}px solid ${c.outlineVariant}`, boxSizing: 'border-box'}}/>
   <div style={{...box(0, 0, 72, 900), background: c.surfaceContainerLow, borderRadius: `${px(20)}px 0 0 ${px(20)}px`}}/>
   <div style={{...box(80, 0, 210, 900), background: c.surfaceContainerLow}}/>
@@ -80,13 +80,13 @@ export const Board: React.FC<{beat: Beat; rise: number; debug?: boolean; overvie
   <div style={box(96, 92)}><Text small color={c.secondary}>프로젝트</Text><Text weight={600}>고객 반응 확인</Text></div>
   <div style={{...box(90, 170, 190, 46), background: c.secondaryContainer, borderRadius: px(12), display: 'flex', alignItems: 'center', paddingLeft: px(10), boxSizing: 'border-box'}}><Text small weight={600}># 고객반응-검증</Text></div>
   <div style={box(96, 264)}><Text small color={c.secondary} weight={600}>팀원 5</Text></div>
-  {['AI PM', '김도윤', '이서연', '조사 Agent', '프로토타입 Agent'].map((name, i) => <div key={name} style={{...box(96, 306 + i * 48), display: 'flex', alignItems: 'center', gap: px(9)}}><div style={{width: px(10), height: px(10), borderRadius: i === 1 || i === 2 ? '50%' : px(3), background: i === 0 ? c.primary : i === 3 ? c.agentResearch : i === 4 ? c.agentPrototype : c.humanDesigner}}/><Text small weight={i === 0 ? 600 : 400}>{name}</Text>{landed && i === 0 && <Chip>지휘 중</Chip>}</div>)}
+  {['AI PM', '김도윤', '이서연', '조사 Agent', '프로토타입 Agent'].map((name, i) => <div key={name} style={{...box(96, 306 + i * 48), display: 'flex', alignItems: 'center', gap: px(9)}}><div style={{width: px(10), height: px(10), borderRadius: i === 1 || i === 2 ? '50%' : px(3), background: i === 0 ? c.primary : i === 3 ? c.agentResearch : i === 4 ? c.agentPrototype : c.humanDesigner}}/><Text small weight={i === 0 ? 600 : 400}>{name}</Text>{(activePM ?? landed) && i === 0 && <Chip>지휘 중</Chip>}</div>)}
   <div style={box(96, 578)}><Text small color={c.secondary}>사람 2 · Agent 2</Text></div>
   <div style={{...box(312, 0, 1100, 72), borderBottom: `${px(1)}px solid ${c.outlineVariant}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}><Text size={24} weight={600}># 고객반응-검증</Text><Text small color={c.secondary}>팀원 5 · 시연 예시</Text></div>
-  <div data-pm-block style={box(330, 97, 1040)}><Text>{landed ? '김도윤 · 2주 안에 이 아이디어의 고객 반응을 확인하자.' : captions[beat]}</Text></div>
-  <div style={box(1110, 376, 282)}><Text small color={c.secondary} weight={600}>고정 로드맵 · {beat === 'B6' ? 'v2' : 'v1'}</Text><div style={{marginTop: px(16)}}><Text weight={600}>{beat === 'B6' ? '상세 설계 + 제작' : beat === 'B4' || beat === 'B5' ? '초안 이후, 병행' : '목표까지 이어지는 일'}</Text></div><div style={{marginTop: px(12)}}><Text small color={c.secondary}>{beat === 'B6' ? '예상 종료 · 기한 안' : beat === 'B5' ? '상세 대기 시 · 2일 지연' : '예상 종료 · 입력 확인 중'}</Text></div><div style={{marginTop: px(12)}}><Text small>{beat === 'B6' ? 'Agent 결과 반영 대기' : beat === 'B3' ? '범위 답변 · 김도윤' : '막힌 곳과 풀 사람을 확인'}</Text></div></div>
+  {timeline === undefined && <div data-pm-block style={box(330, 97, 1040)}><Text>{landed ? '김도윤 · 2주 안에 이 아이디어의 고객 반응을 확인하자.' : captions[beat]}</Text></div>}
+  <div data-motion-roadmap style={{...box(1110, 376, 282), ...(timeline === undefined ? {} : {transform: 'translateZ(2px)', background: c.background, isolation: 'isolate' as const})}}><Text small color={c.secondary} weight={600}>고정 로드맵 · {roadmap?.version ?? (beat === 'B6' ? 'v2' : 'v1')}</Text><div style={{marginTop: px(16)}}><Text weight={600}>{roadmap?.title ?? (beat === 'B6' ? '상세 설계 + 제작' : beat === 'B4' || beat === 'B5' ? '초안 이후, 병행' : '목표까지 이어지는 일')}</Text></div><div style={{marginTop: px(12)}}><Text small color={c.secondary}>{roadmap?.detail ?? (beat === 'B6' ? '예상 종료 · 기한 안' : beat === 'B5' ? '상세 대기 시 · 2일 지연' : '예상 종료 · 입력 확인 중')}</Text></div><div style={{marginTop: px(12)}}><Text small>{roadmap?.status ?? (beat === 'B6' ? 'Agent 결과 반영 대기' : beat === 'B3' ? '범위 답변 · 김도윤' : '막힌 곳과 풀 사람을 확인')}</Text></div></div>
   <div style={{...box(330, 628, 1056, 46), border: `${px(1)}px solid ${c.outlineVariant}`, borderRadius: px(20), background: c.surface, display: 'flex', alignItems: 'center', paddingLeft: px(18), boxSizing: 'border-box'}}><Text small color={c.secondary}>메시지 보내기 · @로 팀원 호출</Text></div>
-  <HeroLift card={CARD} rise={overview ? 0 : rise}>
+  {timeline === undefined && <HeroLift card={CARD} rise={overview ? 0 : rise}>
     <div style={{position: 'absolute', inset: 0, borderRadius: px(28), background: c.surface, boxShadow: `inset 0 ${px(1)}px 0 rgba(255,255,255,.9)`, border: `${px(1)}px solid ${c.outlineVariant}`, boxSizing: 'border-box'}}/>
     <div style={{...box(0, 26, 3, CARD.h - 52), background: c.primary, borderRadius: px(3)}}/>
     <div data-pm-block style={{...box(28, 24, 644, 40), display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: px(12)}}><Text size={22} weight={700} color={c.brandInk}>{landed ? 'AI PM' : titles[beat]}</Text><Chip hero>{landed ? '지휘 중' : badges[beat]}</Chip></div>
@@ -96,5 +96,6 @@ export const Board: React.FC<{beat: Beat; rise: number; debug?: boolean; overvie
       <Row y={327} title="계획 v1 준비" detail="목표 · 2주 안에 고객 반응 확인" chip="답변 대기" tone="amber"/>
     </> : <CardBody beat={beat}/>}
     {debug && <DebugDot3D x={ANCHOR.x - CARD.x} y={ANCHOR.y - CARD.y}/>}
-  </HeroLift>
+  </HeroLift>}
+  {timeline}
 </div>;

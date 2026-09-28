@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ensemble v4-pm 전체 모션</title>
+<style>
+body{margin:0;background:#f4f1ea;color:#173b30;font:16px/1.6 system-ui,sans-serif}main{max-width:1280px;margin:40px auto;padding:0 24px}h1{font-size:32px}video{display:block;width:100%;border-radius:16px;background:#edeae3}nav{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}button,a{font:inherit;color:#173b30}button{padding:8px 14px;background:#d4e9df;border:0;border-radius:99px;cursor:pointer}button:hover{background:#c3ded0}p{color:#52635a}output{font-variant-numeric:tabular-nums}details{margin-top:24px}img{width:100%;border-radius:12px}figure{margin:20px 0}figcaption{color:#52635a}
+</style>
+<main><h1>Ensemble · AI PM이 다음 일을 챙기는 57초</h1>
+<p>1920×1080 · 30fps · 무음. 새 메시지가 하단에 들어오고 이전 대화가 위로 올라갑니다.</p>
+<video id="video" controls preload="metadata" poster="frames/f270.png" src="../../out/pitch-v4-pm.mp4"></video>
+<nav aria-label="장면 바로 보기">
+<button data-time="0">오프닝</button><button data-time="4">③ 중앙 2초</button><button data-time="7">PM 첫 답장</button><button data-time="11">팀</button><button data-time="15">가용 시간과 계획</button><button data-time="21">맥락 인계</button><button data-time="27">초안 보완·시작</button><button data-time="35">대화 속 조율</button><button data-time="44">변경 전달·반영</button><button data-time="51">클로징</button>
+</nav><output id="position">0.00초 · 0f</output>
+<p><a href="../../out/pitch-v4-pm.mp4" download>MP4 다운로드</a> · <a href="../log-v4-pm-motion.md">검증 기록</a> · <a href="verification.json">측정 결과</a> · <a href="../v4-pm/index.html">이전 스타일 프레임</a></p>
+<details><summary>채팅이 위로 올라가는 전후</summary><figure><img loading="lazy" src="frames/f830.png" alt="PM 보완 요청이 아래에 있는 장면"><figcaption>27.67초 · 보완 요청</figcaption></figure><figure><img loading="lazy" src="frames/f890.png" alt="새 보완 답장이 도착하고 이전 PM 요청이 위로 밀린 장면"><figcaption>29.67초 · 이전 PM 요청이 220px 위로 이동하고 보완 답장 도착</figcaption></figure></details>
+</main><script>
+const video=document.querySelector('video'), position=document.querySelector('output');
+document.querySelectorAll('[data-time]').forEach(button=>button.addEventListener('click',()=>{video.currentTime=Number(button.dataset.time);video.play();}));
+video.addEventListener('timeupdate',()=>{position.textContent=`${video.currentTime.toFixed(2)}초 · ${Math.min(1709,Math.floor(video.currentTime*30))}f`;});
+</script></html>
