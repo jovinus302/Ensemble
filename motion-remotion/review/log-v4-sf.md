@@ -88,3 +88,24 @@ Feature zoom s = 1.45 everywhere — the smallest that keeps board body text
 - SF3 marks C1.1 and C2.1 "검증됨" (v3 SF3 showed them "미검증" while the panel
   reads 3/5 with three approved evidence items).
 - "AI PM이" / "PM이" accent includes the particle (KineticHeadline accents whole words).
+
+## Round 2 — SF1b framing: chips/badges cut by the frame edge (one defect type)
+
+Proposition r2 (design-v4.md §4): body ≥ 20px, secondary (bodySm/labels) ≥ 18px,
+hero ≥ 36px; SF1a exempt from text sizes (must still read as UI).
+
+Defect: at s 1.45 centered, the right panel's "미검증"/"보고됨" badges were cut
+at x = 1920 and the 4th team row's "작업 중" chip at y = 1080. The frame must
+hold sidebar text (logical x 84) through the panel badges (x 1412): 1328
+logical, i.e. 1926px at 1.45. Fix (`config.ts`): SF1b zoom 1.435 (bodyMd
+14 → 20.1px), tx 748 (≈7px margin each side), board top 252 → 212 so the
+bottom edge falls between team rows 4 and 5; headline top 72 → 64.
+`measure.ts` gained a whole-frame scan (smallest on-screen text, every text
+element / pill cut by a frame edge).
+
+Result `review/v4/SF1b.png`: clippedByFrame = [] (was 16 entries); body text
+M1 21.5px, panel goal 20.1px; headline ends y 181.6, board starts y 212 (30px).
+Tradeoff, not hidden: side margins are only ~7px, and the headline-to-board gap
+shrank from ~62px to 30px — the price of fitting the full width at ≥ 20px.
+Seen, not fixed (other stills, same defect type, outside this round's scope):
+SF2's out-of-focus panel is cut by the right edge, including its "확정 · 김도윤" chip.

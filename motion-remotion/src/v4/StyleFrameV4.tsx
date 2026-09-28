@@ -70,7 +70,7 @@ const SF1b: React.FC = () => {
             frame={HEADLINE_FRAME}
             variant="T1"
             align="center"
-            top={72}
+            top={64}
           />
         </TypeLayer>
       }

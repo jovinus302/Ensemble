@@ -39,9 +39,18 @@ export const assertHeldPose = (id: string, pose: CameraPose): HeldRotationName =
 // one consistent object across beats.
 export const FEATURE_ZOOM = 1.45;
 
+// SF1b (landed, no hero card) — round 2: the frame must hold the board's full
+// readable width, sidebar text (x 84) through the panel badges (x 1412), so
+// no chip or badge is cut by a frame edge. That span is 1328 logical; at
+// 1.45 it is 1926px (> 1920). 1.435 is the largest zoom that fits it with a
+// ~7px margin per side, and still keeps bodyMd at 14 * 1.435 = 20.1px.
+export const SF1B_ZOOM = 1.435;
+
 // Screen y of the board's top edge in frontal stills: headlines live in the
 // background band above the board, so they can never overlap UI text.
-export const FRONTAL_BOARD_TOP = {SF1b: 252, SF2: 200, SF3: 200} as const;
+// SF1b's board top (212) is set so the bottom frame edge falls in the gap
+// between sidebar team rows 4 and 5 — row 4's "작업 중" chip was cut at 252.
+export const FRONTAL_BOARD_TOP = {SF1b: 212, SF2: 200, SF3: 200} as const;
 
 const frontal = (tx: number, boardTopScreenY: number, s = FEATURE_ZOOM): CameraPose => ({
   // (ax, ay) = stage center; (tx, ty) = the board-logical point shown there.
@@ -62,8 +71,8 @@ export const STILL_POSES: Record<StillId, CameraPose> = {
   // (tx,ty = board center), right edge swung toward camera so the right side
   // face and the detached wall shadow are both in frame.
   SF1a: {tx: 720, ty: 450, s: 0.8, ...HELD_ROTATIONS.openingStart, ax: 880, ay: 520, dz: 0},
-  // Landed: frontal, pushed in to feature zoom, board centered horizontally.
-  SF1b: frontal(720, FRONTAL_BOARD_TOP.SF1b),
+  // Landed: frontal, pushed in; sidebar text and panel badges both in frame.
+  SF1b: frontal(748, FRONTAL_BOARD_TOP.SF1b, SF1B_ZOOM),
   // Beat 2 (plan): board's top-left corner in frame; plan card left of center,
   // callout chips in the empty timeline gap to its right.
   SF2: frontal(607, FRONTAL_BOARD_TOP.SF2),
