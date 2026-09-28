@@ -1,14 +1,15 @@
 // v4 stage: three depth layers — (1) background (v3 Background + the detached
 // wall shadow), (2) the board rig, (3) the hero card, which lives inside the
 // rig at a Z lift (HeroLift.tsx) — plus flat 2D overlays on top (callouts,
-// headlines, noise). The rig transform is v3's rigTransform, pivot pinned to
+// headlines). No film grain: v3's Noise re-offsets a random tile every 2f
+// above the UI, which boils in video (removed in design-v4 r3). The rig
+// transform is v3's rigTransform, pivot pinned to
 // (0,0) exactly like v3's Rig so projectPoint() matches the render.
 import React from 'react';
 import type {CameraPose} from '../../v3/tokens/video';
 import {PERSPECTIVE, STAGE_W, STAGE_H} from '../../v3/tokens/video';
 import {rigTransform} from '../../v3/stage/project';
 import {Background} from '../../v3/stage/Background';
-import {Noise} from '../../v3/stage/Noise';
 import {WallShadow} from '../fx/WallShadow';
 
 export const BoardRig: React.FC<{pose: CameraPose; children: React.ReactNode}> = ({pose, children}) => (
@@ -76,7 +77,6 @@ export const StageV4: React.FC<{
         <div style={{position: 'absolute', inset: 0, perspective: PERSPECTIVE, perspectiveOrigin: '960px 540px', opacity: boardOpacity}}>{layers}</div>
       )}
       {overlay}
-      <Noise frame={frame} />
     </div>
   );
 };

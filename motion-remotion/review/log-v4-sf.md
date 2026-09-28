@@ -200,3 +200,29 @@ Checks (re-rendered `opening-v4.mp4`, frames `opening-f181` (③ centered hold),
 Final verification: `tsc` exit 0; src/v3 diff vs 0dc8e10 empty; v3 SF1/SF2/SF3 SHA256
 identical, PitchV3 f600 exit 0; StyleFrameV4 SF1a/SF1b/SF2/SF3 SHA256-identical to the
 committed PNGs. The stale opening comments were rewritten with the new pins.
+
+## Round 6 (design-v4 r3 A) — boiling grain removed (one defect type)
+
+User: "그리고 왜 지글지글한 배경/그림인지?" Cause: `StageV4` mounted v3's `Noise`
+(random tile re-offset every 2f, multiply .07, above the UI). It boils in
+video and speckles the stills. Fix: removed from `src/v4/stage/StageV4.tsx`
+only; v3 still uses it.
+
+Checks:
+- Stills re-rendered (all four + three debug) vs the previously committed
+  versions (`graincheck.sh`):
+  - Full-res: no pixel changes by > 24/255 in any still (0.000%). Mean |Δ| is
+    7.7–7.8 levels, a uniform brightening.
+  - Layout shift: at 240x135 (area-downsampled) the change is a single uniform
+    gain of 1.034 per channel (the removed multiply layer). After removing that
+    gain, the residual is ≤ 2.6 levels max, 0.54–0.57 mean. Nothing moved.
+- Banding in h264 (`opening-v4.mp4` re-rendered: 24.9 MB → 1.1 MB, since the
+  grain was most of the bitrate). Background columns x 200 / 1750 of f181:
+  - decoded h264 frame: max row-to-row jump 1.1–1.3 levels, max deviation from a
+    31-row local mean 0.7–0.8;
+  - lossless PNG render: 2.0–2.9 / 1.3–1.7.
+  - The gradient stays at 8-bit 1-level steps, and a visual check shows no bands.
+    No dither was added.
+- Opening pins after the change: f317 vs `SF1b.png` mean diff 0.04, pixels > 24 =
+  0.005%; f233 vs `SF1a.png` 0.21 / 0.001%. Only background light drift remains.
+- `tsc` exit 0. The v3 SHA regression is run on the final revision (round 7).
