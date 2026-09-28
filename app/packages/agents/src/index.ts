@@ -28,3 +28,8 @@ export function registerAgentRole(role: AgentRole): void {
   if (agentRoles.has(role.key)) throw new Error(`agent role already registered: ${role.key}`);
   agentRoles.set(role.key, role);
 }
+
+export * from './session.ts';
+export * from './protocol.ts';
+export { CodexSessionConnector } from './codex/connector.ts';
+export type { CodexConnectorOptions } from './codex/connector.ts';
