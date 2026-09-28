@@ -82,6 +82,18 @@ block `position: relative` so it paints above the new surface. Result
 re-rendered byte-identical to r3 (change is gated on `c31Risen && verified`).
 Next rounds, one each: (b) SF3 callout, (c) SF2 headline overlap.
 
+## Round 5 — SF3 callout target (one defect type)
+
+The callout was anchored at `C3_1_CENTER` (row middle) with its chip parked
+over C2.1's "미검증" badge. Fix (`StyleFrameV3.tsx`): anchor moved to the hero
+badge's right edge (board-logical x 1420, same y/z), chip moved into the empty
+stage right of the panel (`chipOffsetX 140`, `chipOffsetY -110`). Result
+`SF3-f1305_r5.png`: dot sits on the badge edge, chip covers nothing, C2.1's
+badge is visible again. SF1/SF2 byte-identical to r3; `tsc` clean.
+Noted, not fixed: `Callout`'s leader stops 60px short of the chip by design
+(`chipX ∓ 60`), which reads as disconnected in SF2 and SF3 alike — changing
+the shared component touches SF2, so it is its own round.
+
 ## Checklist against spec §5 requirements
 
 - **SF1 (f185)**: T1 headline "잇는 건 이제 PM" centered, "PM" primary green,

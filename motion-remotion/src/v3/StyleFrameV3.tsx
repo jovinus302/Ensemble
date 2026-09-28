@@ -99,7 +99,9 @@ const SF3: React.FC<{frame: number; debugProjection?: boolean}> = ({frame, debug
           width={1200}
         />
       </TypeRig>
-      <Callout pose={pose} anchor={{x: C3_1_CENTER.x, y: C3_1_CENTER.y, z: 40 + 70}} label="검증됨" dotColor="#1E7F4F" side="right" chipOffsetX={170} chipOffsetY={-120} />
+      {/* Round-5 fix: anchor on the hero badge's right edge (not the row center) and park the
+          chip in the empty stage right of the panel, so it no longer covers C2.1's badge. */}
+      <Callout pose={pose} anchor={{x: 1420, y: C3_1_CENTER.y, z: 40 + 70}} label="검증됨" dotColor="#1E7F4F" side="right" chipOffsetX={140} chipOffsetY={-110} />
       {debugProjection &&
         (() => {
           const p = projectPoint(pose, C3_1_CENTER.x, C3_1_CENTER.y, 40 + 70);
