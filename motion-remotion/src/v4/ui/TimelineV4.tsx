@@ -18,14 +18,18 @@ export interface TimelineV4Props {
   excludeIds?: string[];
   pmReply?: number; // 0 = not posted yet, 1 = fully shown
   approvedIds?: string[]; // round D: cards drawn in their approved state (product-state driven)
+  // PitchV4: appearance frames in the v4 clock (override content.ts's v3 appearFrame)
+  // and per-message reveal progress 0..1 (opacity + 12-logical rise), like M1b's.
+  appearAt?: Record<string, number>;
+  reveal?: Record<string, number>;
 }
 
-export const TimelineV4: React.FC<TimelineV4Props> = ({frame, scrollY, excludeIds = [], pmReply = 1, approvedIds = []}) => {
+export const TimelineV4: React.FC<TimelineV4Props> = ({frame, scrollY, excludeIds = [], pmReply = 1, approvedIds = [], appearAt, reveal = {}}) => {
   const {y0: vy0, y1: vy1} = AREAS.timelineViewport;
   const reply = pmReply > 0 ? [PM_REPLY] : [];
   return (
     <>
-      {[...MESSAGES_V4.filter((m) => frame >= m.appearFrame), ...reply]
+      {[...MESSAGES_V4.filter((m) => frame >= (appearAt?.[m.id] ?? m.appearFrame)), ...reply]
         .filter((m) => !excludeIds.includes(m.id))
         .map((m) => (approvedIds.includes(m.id) && 'approved' in m.content ? {...m, content: {...m.content, approved: true}} : m))
         .map((m) => {
@@ -34,8 +38,9 @@ export const TimelineV4: React.FC<TimelineV4Props> = ({frame, scrollY, excludeId
           if (boardYEnd < vy0 - 40 || boardY > vy1 + 40) return null;
           const fade = boardY < vy0 + 16 ? Math.max(0, Math.min(1, (boardY - vy0) / 16)) : 1;
           const isReply = m.id === PM_REPLY.id;
-          const opacity = fade * (isReply ? pmReply : 1);
-          const rise = isReply ? (1 - pmReply) * 12 : 0;
+          const shown = isReply ? pmReply : reveal[m.id] ?? 1;
+          const opacity = fade * shown;
+          const rise = (1 - shown) * 12;
           const content = <MessageRendererV4 msg={m} boardY={boardY} frame={frame} />;
           return opacity < 1 || rise > 0 ? (
             <div key={m.id} style={{opacity, transform: rise > 0 ? `translateY(${px(rise)}px)` : undefined}}>

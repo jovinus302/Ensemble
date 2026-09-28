@@ -69,7 +69,8 @@ export const CriterionHeroRow: React.FC<{id: string; verified: boolean; reported
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,.9), 0 0 0 1px rgba(23,59,48,.06)',
       }}
     >
-      {/* soft success glow behind the badge — filter-free radial gradient, like v3's risen row */}
+      {/* soft success glow behind the badge — only once the row is verified (PitchV4 shows this row before its verdict too) */}
+      {verified && (
       <div
         style={{
           position: 'absolute',
@@ -78,6 +79,7 @@ export const CriterionHeroRow: React.FC<{id: string; verified: boolean; reported
           background: 'radial-gradient(circle 150px at 78% 50%, rgba(30,127,79,.28) 0%, rgba(30,127,79,.08) 50%, transparent 100%)',
         }}
       />
+      )}
       <div
         style={{
           position: 'absolute',

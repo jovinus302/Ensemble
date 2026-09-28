@@ -331,3 +331,89 @@ Result (re-rendered all stills, opening frames and the clip):
 - SF1a/SF1b/SF2 panels now show only the goal, 0/5 and five 미검증 rows. SF1b/SF2 team lists read AI PM 지휘 중 and everyone else 대기. SF3's M14 is approved; its visible part is only its title row.
 - Smallest text: 18.4 / 18.6 / 18.8. Anchor error 0.01px.
 - Pins: f330 vs `SF1b.png` 0.01% of pixels > 24; f233 vs `SF1a.png` 0.001%.
+
+## PitchV4 — full motion (storyboard-v4, 1834f)
+
+Built:
+- `src/v4/PitchV4.tsx`, registered as `PitchV4`, 1834f.
+- `pitch/pitchTimeline.ts`:
+  - camera keys: 24f frontal pan/zoom moves;
+  - product stage per frame (`stateV4`);
+  - v4 message clock + reveal;
+  - hero windows, callout windows, headline windows, veils, closing.
+- `pitch/FeatureScene.tsx`, `pitch/BeatHeadline.tsx`: KineticHeadline + an 8f exit + an optional strike.
+- The opening is `OpeningScene` (from `OpeningV4.tsx`); PitchV4 exits its top-band ③ 8f before ①'s move.
+- `TimelineV4`/`BoardV4` gained `appearAt` / `reveal`. Omitted in the stills, so the DOM is unchanged there.
+- Every non-moving frame goes through `assertHeldPose`, so a non-frontal held pose fails the render.
+
+Per beat (check frames rendered to tmp and viewed; one defect type per round):
+- ① (f384 exit, f400 move, f480/f520 hold):
+  - Headline in the timeline's empty area. Three team callouts, at most two at once. Main and panel veiled.
+  - No defects found.
+- ② (f570 move, f714 pin, f764 approved, f790 move):
+  - f714 vs `SF2.png`: 0.006% of pixels > 24.
+  - At f758 "계획 승인": the done chip replaces the buttons, and 김도윤 and 조사 Agent switch to 작업 중.
+  - No defects found.
+- ③ (f830, f900, f940):
+  - M10 lifted. "맥락 5요소" / "결정 이유까지" sit in the sidebar's empty band; the leaders run to the card edge.
+  - 이서연 switches 대기 → 작업 중 at f914.
+  - No defects found.
+- ④ (f1068, f1120, f1190):
+  - M11 (결과 제출) → M12 (PM 확인, "T3 인계 조건 충족") → M13 (프로토타입 Agent 작업 중) are all on screen together, with no human message between them.
+  - Callouts, and the "'시작해'" strike at f1164.
+  - No defects found.
+- ⑤ (f1245, f1300, f1345, f1414 pin):
+  - Round: before the verdict (f1300), the C3.1 hero row already showed the green success glow behind its "미검증 · 보고됨" badges. The glow is now drawn only when verified (`RightPanelV4`). SF3 is unaffected.
+  - f1414 vs `SF3.png`: 0.000% of pixels > 24 (mean diff 0.2, light drift).
+- ⑥ (f1480, f1560, f1620):
+  - Round: the goal-check card kept v3's 268 slot, leaving an empty lower third. It is now fitted to its content (212, `MessageRendererV4` `GOAL_CARD_H`); the hero rect follows.
+- Closing (f1668, f1700, f1740, f1800):
+  - Round: the closing line entered at f1674 but started to collapse, and the camera started to shrink, at f1724. That gave 50f of reading < 55f, with the camera moving during the read.
+  - The collapse, shrink and board fade now start at f1732; the wordmark is f1744–1760 and the tagline f1766. Storyboard updated.
+  - The closing board is shown whole at s 0.62 while it shrinks away, so its UI text is < 20px. Like SF1a, it is a non-reading shot.
+
+Deviations from storyboard-v4:
+- ① and ④ use callouts without a hero lift.
+- ③'s context token is replaced by 이서연's row switching 대기 → 작업 중 at f914.
+- The harmony dot inside the wordmark's first "e" is omitted.
+
+Full render: `out/pitch-v4.mp4`, h264 crf 20, 1834f = 61.1s, 6.0 MB.
+- Wall time was 116s on 32 logical cores (Remotion default concurrency). That is 0.063s per frame of wall time, or about 1.0s per frame per worker.
+- Single-worker samples (12 frames each, launch overhead included), in ms/frame:
+
+| Segment | Frames | ms/frame |
+|---|---|---|
+| Opening rotation | 240–251 | 861 |
+| Landed opening | 300–311 | 826 |
+| ① | 480–491 | 818 |
+| ② | 700–711 | 826 |
+| ③ | 900–911 | 837 |
+| ④ | 1150–1161 | 814 |
+| ⑤ | 1400–1411 | 859 |
+| ⑥ | 1600–1611 | 798 |
+| Closing | 1740–1751 | 860 |
+
+- Every segment is under 1s/frame, so no fallback (veil-for-blur, static background) was applied.
+
+Final verification (this revision):
+- `tsc` exit 0. src/v3 diff vs 0dc8e10 is empty.
+- v3 SF1/SF2/SF3 SHA256 identical; PitchV3 f600 exit 0.
+- StyleFrameV4 SF1a/SF1b/SF2/SF3 re-renders are SHA256-identical to the committed PNGs.
+- PitchV4 pinned frames vs stills (% of pixels > 24, mean diff):
+  - f233 vs SF1a: 0.001%, 0.21
+  - f330 vs SF1b: 0.01%, 0.05
+  - f714 vs SF2: 0.006%, 0.02
+  - f1414 vs SF3: 0.000%, 0.20
+- Rotation: the opening frames come from the same `openingPose` as OpeningV4, so |ry| is in 5–25° for 9 frames (f246–254). No popping (round 5 frame diffs).
+- Held poses (`heldPoses()`): the only rotated hold is the opening start, SF1a (0,−40,0) s 0.8. Every other hold is (0,0,0), camera pan/zoom only:
+
+| Hold | tx | ty | s |
+|---|---|---|---|
+| O / SF1b | 748 | 228.6 | 1.435 |
+| ① | 668 | 429.7 | 1.45 |
+| ② | 607 | 251.0 | 1.45 |
+| ③ | 692 | 234.5 | 1.45 |
+| ④ | 692 | 234.5 | 1.45 |
+| ⑤ | 1068 | 234.5 | 1.45 |
+| ⑥ | 692 | 234.5 | 1.45 |
+| C | 720 | 450 | 0.62 → 0.4 |

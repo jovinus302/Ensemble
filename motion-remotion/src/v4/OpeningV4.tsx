@@ -11,6 +11,7 @@ import {RevealUnit} from '../primitives/Headline';
 import {type as typeScale, inkColor, accentColor} from '../v3/tokens/video';
 import {KineticHeadline} from '../v3/type/KineticHeadline';
 import {StageV4, TypeLayer} from './stage/StageV4';
+import {HeadlineExit} from './pitch/BeatHeadline';
 import {BoardV4} from './ui/BoardV4';
 import {STATES} from './stateV4';
 import {BoardThickness} from './ui/BoardThickness';
@@ -46,7 +47,7 @@ const measureT1 = (text: string) => {
   return ctx.measureText(text).width;
 };
 
-const OpeningType: React.FC<{frame: number}> = ({frame}) => {
+const OpeningType: React.FC<{frame: number; lineCExitAt?: number}> = ({frame, lineCExitAt}) => {
   const OLD = '사람이';
   const NEW = 'AI PM이';
   const widths = useMemo(() => ({old: measureT1(OLD), next: measureT1(NEW)}), []);
@@ -99,6 +100,7 @@ const OpeningType: React.FC<{frame: number}> = ({frame}) => {
       )}
       {/* ③ re-set in the SF1b headline band — same component/props as StyleFrameV4 SF1b */}
       {frame >= OPENING.lineC.enter && (
+        <HeadlineExit frame={frame} at={lineCExitAt}>
         <KineticHeadline
           words={COPY.opening3.split(' ').map((text) => ({text, accent: text === 'AI' || text === 'PM이'}))}
           frame={frame - OPENING.lineC.enter}
@@ -107,13 +109,15 @@ const OpeningType: React.FC<{frame: number}> = ({frame}) => {
           top={64}
           stagger={OPENING.lineC.stagger}
         />
+        </HeadlineExit>
       )}
     </>
   );
 };
 
-const OpeningInner: React.FC<{measure?: boolean}> = ({measure}) => {
-  const frame = useCurrentFrame();
+// The opening as a scene at an explicit frame, reused by PitchV4 (which exits
+// the top-band ③ 8f before its first camera move).
+export const OpeningScene: React.FC<{frame: number; measure?: boolean; lineCExitAt?: number}> = ({frame, measure, lineCExitAt}) => {
   const pose = openingPose(frame);
   const enter = boardEnterProgress(frame);
   const boardVisible = frame >= OPENING.boardEnter.from;
@@ -132,12 +136,14 @@ const OpeningInner: React.FC<{measure?: boolean}> = ({measure}) => {
       board={<BoardV4 frame={frame} scrollY={0} state={frame < OPENING.pmPop.from ? STATES.pre : STATES.replied} pmReply={pmReplyProgress(frame)} pmActivation={pmPopProgress(frame)} />}
       overlay={
         <TypeLayer>
-          <OpeningType frame={frame} />
+          <OpeningType frame={frame} lineCExitAt={lineCExitAt} />
         </TypeLayer>
       }
     />
   );
 };
+
+const OpeningFromClock: React.FC<{measure?: boolean}> = ({measure}) => <OpeningScene frame={useCurrentFrame()} measure={measure} />;
 
 export const OpeningV4: React.FC<{measure?: boolean}> = ({measure}) => {
   const [handle] = useState(() => delayRender('loading fonts (OpeningV4)'));
@@ -155,5 +161,5 @@ export const OpeningV4: React.FC<{measure?: boolean}> = ({measure}) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (!ready) return <AbsoluteFill style={{backgroundColor: '#F4F1EA'}} />;
-  return <OpeningInner measure={measure} />;
+  return <OpeningFromClock measure={measure} />;
 };

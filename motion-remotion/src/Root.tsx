@@ -7,6 +7,8 @@ import {StyleFrameV3} from './v3/StyleFrameV3';
 import {StyleFrameV4} from './v4/StyleFrameV4';
 import {OpeningV4} from './v4/OpeningV4';
 import {OPENING} from './v4/opening';
+import {PitchV4} from './v4/PitchV4';
+import {PITCH_TOTAL} from './v4/pitch/pitchTimeline';
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -80,6 +82,8 @@ export const RemotionRoot: React.FC = () => {
         height={1080}
         defaultProps={{measure: false}}
       />
+      {/* v4 full pitch video (storyboard-v4.md, 1834f = 61.1s). */}
+      <Composition id="PitchV4" component={PitchV4} durationInFrames={PITCH_TOTAL} fps={30} width={1920} height={1080} />
     </>
   );
 };

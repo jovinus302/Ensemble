@@ -33,6 +33,8 @@ export interface BoardV4Props {
   // design-v4 r3 B: the AI PM's landing reply (M1b) and its "지휘 중" switch.
   pmReply?: number; // M1b reveal 0..1 (default 1: already in the thread)
   pmActivation?: number; // AI PM row: 0 = "대기", (0,1) = POP in progress, 1 / undefined = "지휘 중"
+  appearAt?: Record<string, number>; // PitchV4 message clock (see TimelineV4)
+  reveal?: Record<string, number>;
 }
 
 
@@ -82,7 +84,7 @@ const TEAM_CHIP: Record<Exclude<TeamStatus, null>, {label: string; container: st
 const TeamChip: React.FC<{status: TeamStatus}> = ({status}) =>
   status ? <EmbossChip label={TEAM_CHIP[status].label} container={TEAM_CHIP[status].container} onContainer={colors.onSurface} fontSize={SECONDARY_FONT} /> : null;
 
-export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, heroRowId, state, overlay, pmReply = 1, pmActivation}) => (
+export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, heroRowId, state, overlay, pmReply = 1, pmActivation, appearAt, reveal}) => (
   <>
     <div
       style={{
@@ -163,7 +165,7 @@ export const BoardV4: React.FC<BoardV4Props> = ({frame, scrollY, heroMessageId, 
       </div>
 
       {/* timeline (drawn before the header band so the band covers scrolled rows) */}
-      <TimelineV4 frame={frame} scrollY={scrollY} excludeIds={heroMessageId ? [heroMessageId] : []} pmReply={pmReply} approvedIds={state.approvedMessages} />
+      <TimelineV4 frame={frame} scrollY={scrollY} excludeIds={heroMessageId ? [heroMessageId] : []} pmReply={pmReply} approvedIds={state.approvedMessages} appearAt={appearAt} reveal={reveal} />
 
       {/* channel header — opaque band; covers rows scrolled above y=64 by paint
           order (drawn after the timeline), so it needs no Z of its own (v3 used Z+4) */}

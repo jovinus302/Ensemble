@@ -22,6 +22,7 @@ const EmbossChip: React.FC<React.ComponentProps<typeof EmbossChipV3>> = (p) => <
 
 const CARD_X = TIMELINE_CONTENT_X0;
 const CARD_W = TIMELINE_CONTENT_W;
+export const GOAL_CARD_H = 212;
 
 export interface MessageRenderV4Props {
   msg: TimelineMessage;
@@ -325,9 +326,10 @@ export const MessageRendererV4: React.FC<MessageRenderV4Props> = ({msg, boardY, 
     );
   }
 
-  // goalCheckCard
+  // goalCheckCard — fitted to its content (padding 20 + 24 + 8 + 21 + 10 + 24 + 14 + 21 + 10 + 40 + 20 = 212),
+  // like v3 round 7 did for the plan card: the 268 slot left an empty band.
   return (
-    <Wrap x={CARD_X} y={boardY} w={CARD_W} h={h} hero={hero} z={hero ? heroZ : 0} radius={20} background={colors.brandInk}>
+    <Wrap x={CARD_X} y={boardY} w={CARD_W} h={Math.min(h, GOAL_CARD_H)} hero={hero} z={hero ? heroZ : 0} radius={20} background={colors.brandInk}>
       <div style={{padding: px(20)}}>
         <div style={uiTextStyle(uiType.titleMd, '#E3EDE7')}>{c.title}</div>
         <div style={{marginTop: px(8), ...uiTextStyle(uiType.bodyMd, '#E3EDE7'), fontVariantNumeric: 'tabular-nums'}}>{c.progressLabel}</div>

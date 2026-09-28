@@ -8,7 +8,8 @@
 //   pre        opening, before the AI PM speaks          (SF1a)
 //   replied    M1b posted, plan not yet proposed/approved (SF1b, ①, ② until approval = SF2)
 //   approved   ② "계획 승인": 조사 Agent + 김도윤 start, 이서연/프로토타입 wait (plan card rows)
-//   decided    ③ research + interviews done, D1 decided, context handed to 이서연
+//   deciding   ③ research + interviews done (M5/M6), D1 decided (M8), handoff not yet arrived
+//   decided    ③ context handed to 이서연 (M10 token arrives): 이서연 작업 중
 //   submitted  ④ C1.1/C2.1 verified (2/5); M11 draft submitted -> C3.1 "보고됨",
 //              이서연 완료, 프로토타입 Agent still 대기
 //   started    ④ M12 PM confirms -> M13 프로토타입 Agent 대기 -> 작업 중 (no re-instruction)
@@ -17,7 +18,7 @@
 import type {MemberId} from './ui/membersV4';
 
 export type TeamStatus = 'directing' | 'working' | 'waiting' | 'done' | null;
-export type StageId = 'pre' | 'replied' | 'approved' | 'decided' | 'submitted' | 'started' | 'verified' | 'goalCheck';
+export type StageId = 'pre' | 'replied' | 'approved' | 'deciding' | 'decided' | 'submitted' | 'started' | 'verified' | 'goalCheck';
 
 export interface ProductState {
   team: Record<MemberId, TeamStatus>;
@@ -36,6 +37,7 @@ export const STATES: Record<StageId, ProductState> = {
   pre: {team: team('waiting', 'waiting', 'waiting', 'waiting', 'waiting'), planApproved: false, progress: 0, verifiedIds: [], reportedIds: [], showDecision: false, evidenceCount: 0, approvedMessages: []},
   replied: {team: team('directing', 'waiting', 'waiting', 'waiting', 'waiting'), planApproved: false, progress: 0, verifiedIds: [], reportedIds: [], showDecision: false, evidenceCount: 0, approvedMessages: []},
   approved: {team: team('directing', 'working', 'waiting', 'working', 'waiting'), planApproved: true, progress: 0, verifiedIds: [], reportedIds: [], showDecision: false, evidenceCount: 0, approvedMessages: ['M2']},
+  deciding: {team: team('directing', 'done', 'waiting', 'done', 'waiting'), planApproved: true, progress: 0, verifiedIds: [], reportedIds: [], showDecision: true, evidenceCount: 0, approvedMessages: ['M2']},
   decided: {team: team('directing', 'done', 'working', 'done', 'waiting'), planApproved: true, progress: 0, verifiedIds: [], reportedIds: [], showDecision: true, evidenceCount: 0, approvedMessages: ['M2']},
   submitted: {team: team('directing', 'done', 'done', 'done', 'waiting'), planApproved: true, progress: 2, verifiedIds: ['C1.1', 'C2.1'], reportedIds: ['C3.1'], showDecision: true, evidenceCount: 2, approvedMessages: ['M2']},
   started: {team: team('directing', 'done', 'done', 'done', 'working'), planApproved: true, progress: 2, verifiedIds: ['C1.1', 'C2.1'], reportedIds: ['C3.1'], showDecision: true, evidenceCount: 2, approvedMessages: ['M2']},
