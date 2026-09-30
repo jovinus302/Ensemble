@@ -1,5 +1,6 @@
 import type { Id, LedgerEvent } from "./ledger.ts";
 import type { AnyEvent, EventPayloads, TaskSpec } from "./events.ts";
+import { isAutomationAction } from './action-limit.ts';
 
 export type UpdateStatus = "sent" | "acknowledged" | "rejected";
 export interface TaskUpdate { updateId: Id; toVersion: number; status: UpdateStatus; droppedItems: string[] }
@@ -60,10 +61,23 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
     automation: { actionsSinceResume: 0, limitReached: false },
     messages: [], openTopics: [], decisions: new Map(), pendingAuthority: new Map(), pendingPlans: new Map(), notified: new Set(),
   };
+  const concludedMessages = new Set<string>();
   for (const original of events) {
     const event = structuredClone(original) as AnyEvent;
     state.lastSeq = event.seq;
-    if (event.actor.kind === "pm" && event.type !== "action_limit_reached") state.automation.actionsSinceResume++;
+    const conclusion = event.type === 'decision_recorded' && event.payload.sourceMessageIds.filter(id =>
+      !concludedMessages.has(id) && state.messages.some(m => m.messageId === id && m.authorId === state.goal?.decider && state.members.get(m.authorId)?.kind === 'human'));
+    const cardApproved = event.type === 'plan_decided' && event.payload.approved
+      && state.pendingPlans.get(event.payload.proposalId)?.forMemberId === event.payload.memberId
+      && state.members.get(event.payload.memberId)?.kind === 'human';
+    const authorityApproved = event.type === 'authority_granted' && event.payload.granted
+      && state.pendingAuthority.get(event.payload.requestId)?.personId === event.payload.personId
+      && state.members.get(event.payload.personId)?.kind === 'human';
+    if ((conclusion && conclusion.length > 0) || cardApproved || authorityApproved) {
+      state.automation = { actionsSinceResume: 0, limitReached: false };
+      if (conclusion) conclusion.forEach(id => concludedMessages.add(id));
+    }
+    if (isAutomationAction(event)) state.automation.actionsSinceResume++;
     switch (event.type) {
       case "member_joined": state.members.set(event.payload.memberId, event.payload); break;
       case "goal_set": state.goal = event.payload; break;

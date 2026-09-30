@@ -157,9 +157,9 @@ it('reports an error to a person after one retry when the model returns nothing,
 });
 
 it('stops at the automation cap: no start, one limit event and notice', async () => {
-  const chatter = Array.from({ length: 10 }, (_, i): NewLedgerEvent => ({ ...ctx, type: 'pm_spoke', actor: { kind: 'pm', id: 'pm' },
-    payload: { considerationId: `c${i}`, messageId: `pm${i}`, text: `말 ${i}`, kind: 'fact' } }));
-  const { store, connector, dispatcher } = await fixture([metIssue], chatter);
+  const changes = Array.from({ length: 12 }, (_, i): NewLedgerEvent => ({ ...ctx, type: 'change_notified', actor: { kind: 'pm', id: 'pm' },
+    payload: { changeId: `c${i}`, planVersion: 1, recipientId: 'designer', text: `변경 ${i}`, via: 'channel' } }));
+  const { store, connector, dispatcher } = await fixture([metIssue], changes);
   await store.append([submit('T3', 'r1', ['flow-v2.md'], 'designer')]);
   const outcome = await dispatcher.onResultSubmitted('T3', 'r1');
   expect(outcome).toMatchObject({ kind: 'checked', started: [], notices: [], limitNotice: expect.stringContaining('상한') });

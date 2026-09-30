@@ -1,4 +1,5 @@
-import { affectedMembers, automationGate, diffPlans, forecastFromState, limitReachedEvent, project, applyOps, opAuthority } from '@ensemble/core';
+import { affectedMembers, automationGate, diffPlans, forecastFromState, isAutomationAction, limitReachedEvent, project, applyOps, opAuthority } from '@ensemble/core';
+import { createHash } from 'node:crypto';
 import type { AnyEvent, EventContext, EventPayloads, EventType, LedgerEvent, NewLedgerEvent, PlanOp, ProjectState } from '@ensemble/core';
 import type { SessionConnector, UpdateInstructionsInput } from '@ensemble/agents';
 import type { LlmProvider, ToolSpec } from '@ensemble/llm';
@@ -10,6 +11,8 @@ export interface CoordinationInterpretation {
   summary: string;
   ops: PlanOp[];
   conflicts: string[];
+  conversation?: { questionMessageId: string | null; waitingOnMemberIds: string[]; directedToPm: boolean };
+  factMentions?: { messageId: string; factIds: string[] }[];
 }
 export interface CoordinationJudgement {
   whoseAction: string | null;
@@ -19,19 +22,34 @@ export interface CoordinationJudgement {
   reason: string;
   openTopics: string[];
   text: string;
+  targetMemberIds?: string[];
+  changesOpenQuestionAnswer?: boolean;
+  answerFactIds?: string[];
+  /** Code-owned fingerprints, persisted with the consideration for replay. */
+  factVersions?: Record<string, string>;
 }
 export interface CoordinationResult { posts: { text: string; kind: EventPayloads['pm_spoke']['kind'] }[]; events: LedgerEvent[] }
 export interface CoordinatorOptions extends EventContext { model?: string; clock?: () => Date }
 const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string' && x.length > 0);
 const stringArray = { type: 'array', items: { type: 'string' } };
+function validConversation(value: unknown, state: ProjectState, lastHumanId?: string): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return (v.questionMessageId === null || v.questionMessageId === lastHumanId)
+    && strings(v.waitingOnMemberIds) && v.waitingOnMemberIds.every(id => state.members.get(id)?.kind === 'human' && id !== state.messages.find(m => m.messageId === lastHumanId)?.authorId)
+    && typeof v.directedToPm === 'boolean'
+    && (v.questionMessageId !== null || (!v.waitingOnMemberIds.length && !v.directedToPm));
+}
 function interpretationTool(state: ProjectState): ToolSpec {
   const ids = (values: string[]) => ({ type: 'string', enum: values });
   const sourceMessageIds = { type: 'array', minItems: 1, items: ids(state.messages.filter(m => state.members.get(m.authorId)?.kind === 'human').map(m => m.messageId)) };
   const taskId = ids(state.plan?.tasks.map(t => t.id) ?? []);
   const memberId = ids([...state.members.keys()]);
   const op = (type: string, properties: Record<string, unknown>) => ({ type: 'object', additionalProperties: false, required: ['type', 'sourceMessageIds', ...Object.keys(properties)], properties: { type: { const: type }, sourceMessageIds, ...properties } });
-  return { name: 'interpret_coordination', description: '발언에서 근거가 있는 변경 연산만 추출한다. 결론과 권한은 코드가 판단한다.', inputSchema: { type: 'object', additionalProperties: false, required: ['category', 'summary', 'ops', 'conflicts'], properties: {
+  return { name: 'interpret_coordination', description: '발언에서 근거가 있는 변경 연산과 대화 상대, 사실 언급을 추출한다. 결론과 권한은 코드가 판단한다.', inputSchema: { type: 'object', additionalProperties: false, required: ['category', 'summary', 'ops', 'conflicts', 'conversation', 'factMentions'], properties: {
     category: { type: 'string' }, summary: { type: 'string' }, conflicts: stringArray,
+    conversation: { type: 'object', additionalProperties: false, required: ['questionMessageId', 'waitingOnMemberIds', 'directedToPm'], properties: { questionMessageId: { type: ['string', 'null'], description: '마지막 사람 메시지의 질문·제안 ID, 없으면 null' }, waitingOnMemberIds: { type: 'array', items: memberId, description: '답을 기다리는 다른 사람 ID. 질문자 자신은 금지. directedToPm=true이면 반드시 빈 배열 []' }, directedToPm: { type: 'boolean', description: 'PM에게 계산·기록의 답을 묻는 질문이면 true. 사람에게 허락을 구하는 제안은 false' } } },
+    factMentions: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['messageId', 'factIds'], properties: { messageId: { type: 'string' }, factIds: stringArray } } },
     ops: { type: 'array', items: { oneOf: [
       op('set_availability', { memberId: ids([...state.members.values()].filter(m => m.kind === 'human').map(m => m.memberId)), weeklyHours: { type: 'number', minimum: 0 } }),
       op('exclude_scope', { taskId, item: { type: 'string', minLength: 1 } }),
@@ -71,9 +89,11 @@ function describeOp(op: PlanOp): string {
 function operationKey(op: PlanOp): string {
   return JSON.stringify(Object.entries(op).filter(([key]) => key !== 'sourceMessageIds').sort(([a], [b]) => a.localeCompare(b)));
 }
-const judgementTool: ToolSpec = { name: 'judge_coordination', description: '세 원칙 질문에 답하고 발언 또는 침묵을 결정한다', inputSchema: { type: 'object', required: ['whoseAction', 'alreadyKnows', 'evidence', 'decision', 'reason', 'openTopics', 'text'], properties: {
+const judgementTool: ToolSpec = { name: 'judge_coordination', description: '세 원칙 질문에 답하고 발언 또는 침묵을 결정한다', inputSchema: { type: 'object', required: ['whoseAction', 'alreadyKnows', 'evidence', 'decision', 'reason', 'openTopics', 'text', 'targetMemberIds', 'changesOpenQuestionAnswer', 'answerFactIds'], properties: {
   whoseAction: { type: ['string', 'null'] }, alreadyKnows: { enum: ['yes', 'no', 'unknown'] }, evidence: stringArray, decision: { enum: ['speak', 'silent'] }, reason: { type: 'string' }, openTopics: stringArray, text: { type: 'string' },
+  targetMemberIds: stringArray, changesOpenQuestionAnswer: { type: 'boolean' }, answerFactIds: stringArray,
 } } };
+const fingerprint = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 /** Fixed operations preserve task identity; authority and calculations stay in code. */
 export class Coordinator {
@@ -98,7 +118,7 @@ export class Coordinator {
       try {
         const response = await this.llm.complete({ model: this.options.model ?? 'pm', system: PM_SYSTEM_PROMPT, forceTool: tool.name, tools: [tool], messages: [{ role: 'user', content: JSON.stringify({ facts, attempt }) }] });
         const call = response.toolCalls.length === 1 ? response.toolCalls[0] : undefined;
-        if (call?.name === tool.name && call.input && valid(call.input)) return call.input as T;
+        if (call?.name === tool.name && call.input && valid(call.input)) return structuredClone(call.input) as T;
       } catch { /* Transport and malformed output receive the same bounded retry. */ }
     }
     return undefined;
@@ -117,11 +137,23 @@ export class Coordinator {
     const prior = events.filter(e => e.type === 'pm_considered' && events.some(s => s.type === 'pm_spoke' && s.payload.considerationId === e.payload.considerationId));
     const forecastInputs = events.filter(e => ['plan_committed', 'availability_updated', 'estimate_updated', 'goal_set', 'task_checked'].includes(e.type)).map(e => e.id);
     const current = forecastFromState(state, now);
-    const facts = { messageId, planVersion: version, now, messages: state.messages, plan: state.plan, members: [...state.members.values()], activeTurns: [...state.activeTurn], availability: [...state.availability], estimates: [...state.estimates], goal: state.goal, currentForecast: current, forecastInputIds: forecastInputs, decisions: [...state.decisions.values()], pendingAuthority: [...state.pendingAuthority.values()], previousSpeech: prior, openTopics: state.openTopics };
+    const knownFacts = [
+      { id: 'forecast:current', value: current },
+      ...(state.plan?.tasks ?? []).map(t => ({ id: `task:${t.id}`, value: t })),
+      ...[...state.availability].map(([id, hours]) => ({ id: `availability:${id}`, value: hours })),
+      ...[...state.decisions.values()].map(d => ({ id: `decision:${d.decisionId}`, value: d })),
+    ];
+    const humanMessages = state.messages.filter(m => state.members.get(m.authorId)?.kind === 'human');
+    const lastHuman = humanMessages.at(-1);
+    const facts = { messageId, planVersion: version, now, messages: state.messages, knownFacts, plan: state.plan, members: [...state.members.values()], activeTurns: [...state.activeTurn], availability: [...state.availability], estimates: [...state.estimates], goal: state.goal, currentForecast: current, forecastInputIds: forecastInputs, decisions: [...state.decisions.values()], pendingAuthority: [...state.pendingAuthority.values()], previousSpeech: prior, openTopics: state.openTopics };
     if (confirmed && (!confirmed.every(op => validOp(op, state) && opAuthority(state, op).allowed))) throw new Error('Invalid or unauthorized confirmed operation');
     const interpretation = confirmed ? { category: 'authority', summary: 'Approved authority request', ops: confirmed, conflicts: [] } : await this.call<CoordinationInterpretation>(interpretationTool(state), facts, v =>
-      Object.keys(v).every(k => ['category', 'summary', 'ops', 'conflicts'].includes(k)) && typeof v.category === 'string' && typeof v.summary === 'string' && Array.isArray(v.ops) && v.ops.every(op => validOp(op, state)) && strings(v.conflicts) && v.conflicts.every(id => state.decisions.has(id)));
+      Object.keys(v).every(k => ['category', 'summary', 'ops', 'conflicts', 'conversation', 'factMentions'].includes(k)) && typeof v.category === 'string' && typeof v.summary === 'string' && Array.isArray(v.ops) && v.ops.every(op => validOp(op, state)) && strings(v.conflicts) && v.conflicts.every(id => state.decisions.has(id))
+      && validConversation(v.conversation, state, lastHuman?.messageId)
+      && Array.isArray(v.factMentions) && v.factMentions.every(mention => mention && typeof mention === 'object' && humanMessages.some(m => m.messageId === mention.messageId) && strings(mention.factIds) && mention.factIds.every((id: string) => knownFacts.some(f => f.id === id))));
     const ops = interpretation?.ops ?? [];
+    const conversation = interpretation?.conversation ?? { questionMessageId: null, waitingOnMemberIds: [], directedToPm: false };
+    const openHumanQuestion = conversation.questionMessageId !== null && conversation.waitingOnMemberIds.length > 0 && !conversation.directedToPm;
     const candidate = structuredClone(state);
     if (candidate.plan) candidate.plan.tasks = applyOps(candidate.plan.tasks, ops);
     for (const op of ops) {
@@ -132,6 +164,9 @@ export class Coordinator {
     const assessed = ops.map(op => ({ op, ...opAuthority(state, op) }));
     const applied = assessed.filter(a => a.allowed).map(a => a.op).filter(op => {
       if (op.type === 'set_availability') return state.availability.get(op.memberId) !== op.weeklyHours;
+      // A question/proposal awaiting a person is not a confirmed plan change,
+      // even when its author would have authority to make that change.
+      if (openHumanQuestion && op.sourceMessageIds.includes(conversation.questionMessageId!)) return false;
       if (op.type === 'set_deadline') return state.goal?.deadline !== op.date;
       if (op.type === 'change_goal') return state.goal?.text !== op.text;
       return JSON.stringify(applyOps(state.plan?.tasks ?? [], [op])) !== JSON.stringify(state.plan?.tasks ?? []);
@@ -157,14 +192,34 @@ export class Coordinator {
       ...absent.map(id => ({ id: `absent:${id}`, description: '변경 영향이 있지만 대화에 없는 담당자', value: id })),
     ];
     const validIds = new Set(factList.map(f => f.id));
+    const factVersions = Object.fromEntries(factList.map(f => [f.id, fingerprint(f.value)]));
+    const knowledge = factList.map(f => {
+      const posted = prior.some(p => p.type === 'pm_considered' && p.payload.evidence.includes(f.id)
+        && (!(p.payload as Pick<CoordinationJudgement, 'factVersions'>).factVersions?.[f.id] || (p.payload as Pick<CoordinationJudgement, 'factVersions'>).factVersions?.[f.id] === factVersions[f.id]));
+      const mentionedBy = humanMessages.filter(m => interpretation?.factMentions?.some(mention => mention.messageId === m.messageId && mention.factIds.includes(f.id))).map(m => m.authorId);
+      return { factId: f.id, posted, knownBy: [...new Set([...mentionedBy, ...(posted ? humanMessages.map(m => m.authorId) : [])])] };
+    });
     const tool = structuredClone(judgementTool);
     (tool.inputSchema.properties as Record<string, unknown>).evidence = { type: 'array', items: { type: 'string', enum: [...validIds] } };
-    let judgement: CoordinationJudgement | undefined = confirmed ? { whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: 'Person approved the recorded operation', openTopics: state.openTopics, text: '승인한 변경을 반영했습니다.' } : interpretation ? await this.call<CoordinationJudgement>(tool, { ...facts, factList, interpretation, impact }, v => (v.whoseAction === null || typeof v.whoseAction === 'string') && ['yes', 'no', 'unknown'].includes(String(v.alreadyKnows)) && strings(v.evidence) && v.evidence.every(id => validIds.has(id)) && ['speak', 'silent'].includes(String(v.decision)) && typeof v.reason === 'string' && strings(v.openTopics) && typeof v.text === 'string' && (v.decision !== 'speak' || v.text.trim().length > 0)) : undefined;
+    let judgement: CoordinationJudgement | undefined = confirmed ? { whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: 'Person approved the recorded operation', openTopics: state.openTopics, text: '승인한 변경을 반영했습니다.' } : interpretation ? await this.call<CoordinationJudgement>(tool, { ...facts, factList, interpretation, impact, knowledge, conversation, openHumanQuestion }, v => (v.whoseAction === null || typeof v.whoseAction === 'string') && ['yes', 'no', 'unknown'].includes(String(v.alreadyKnows)) && strings(v.evidence) && v.evidence.every(id => validIds.has(id)) && ['speak', 'silent'].includes(String(v.decision)) && typeof v.reason === 'string' && strings(v.openTopics) && typeof v.text === 'string' && (v.decision !== 'speak' || v.text.trim().length > 0)
+      && strings(v.targetMemberIds) && v.targetMemberIds.every(id => state.members.has(id)) && (v.decision !== 'speak' || v.targetMemberIds.length > 0)
+      && typeof v.changesOpenQuestionAnswer === 'boolean'
+      && strings(v.answerFactIds) && v.answerFactIds.every(id => validIds.has(id) && (v.evidence as string[]).includes(id))) : undefined;
     const validJudgement = !!judgement;
     judgement ??= { whoseAction: null, alreadyKnows: 'unknown', evidence: [], decision: 'silent', reason: '판단 불가', openTopics: state.openTopics, text: '' };
+    judgement.factVersions = factVersions;
     judgement.openTopics = [...new Set([...judgement.openTopics, ...pending.map(a => `${describeOp(a.op)} — ${a.personId ?? '결정권자'} 확인 필요`)])];
     if (judgement.decision === 'speak' && (!judgement.whoseAction?.trim() || judgement.alreadyKnows === 'yes' || !judgement.evidence.length)) judgement = { ...judgement, decision: 'silent', reason: '행동 변화 또는 새로운 근거 없음' };
-    if (judgement.decision === 'speak' && prior.some(p => p.type === 'pm_considered' && JSON.stringify([...p.payload.evidence].sort()) === JSON.stringify([...judgement!.evidence].sort()))) judgement = { ...judgement, decision: 'silent', reason: '이미 전달한 근거' };
+    const computedEvidence = judgement.evidence.filter(id => !id.startsWith('msg:'));
+    const targets = judgement.targetMemberIds?.length ? judgement.targetMemberIds : state.members.has(judgement.whoseAction ?? '') ? [judgement.whoseAction!] : [];
+    const known = (id: string) => knowledge.some(k => k.factId === id && (k.posted || (targets.length > 0 && targets.every(target => k.knownBy.includes(target)))));
+    const newFacts = computedEvidence.filter(id => !known(id));
+    const directAnswer = conversation.directedToPm && judgement.answerFactIds?.some(id => id !== `msg:${conversation.questionMessageId}`);
+    if (!confirmed && judgement.decision === 'speak') {
+      if (!computedEvidence.length && !directAnswer) judgement = { ...judgement, decision: 'silent', reason: '이미 나온 말의 반복: 대화 밖에서 계산한 새 사실 없음' };
+      else if ((computedEvidence.length > 0 && !newFacts.length) || (!computedEvidence.length && judgement.evidence.every(known))) judgement = { ...judgement, alreadyKnows: 'yes', decision: 'silent', reason: '이미 전달한 근거: 대상자가 이미 아는 사실' };
+      else if (openHumanQuestion && (!newFacts.length || judgement.changesOpenQuestionAnswer !== true)) judgement = { ...judgement, decision: 'silent', reason: '사람 사이 질문의 답을 바꾸는 새 사실 없음' };
+    }
     let post: CoordinationResult['posts'][number] | undefined = judgement.decision === 'speak' ? { text: judgement.text, kind: 'answer' } : undefined;
     const append: NewLedgerEvent[] = [];
     if (confirmed && requestId) {
@@ -226,9 +281,13 @@ export class Coordinator {
       const latest = project(fresh);
       if (confirmed && latest.lastSeq !== state.lastSeq) throw new Error('Ledger changed while applying approval; retry');
       if (latest.lastSeq !== state.lastSeq) { judgement = { ...judgement!, decision: 'silent', reason: '기록이 변경되어 재판단 필요' }; post = undefined; append.length = 0; deliveries.length = 0; }
-      const gate = automationGate(latest);
-      const cost = (post ? 1 : 0) + append.filter(e => e.actor.kind === 'pm').length + deliveries.length;
-      if (!gate.allowed || cost > gate.remaining) {
+      // Human approvals and decider conclusions start a new window before its changes.
+      const approvals = append.filter(e => ['authority_granted', 'decision_recorded'].includes(e.type));
+      const budgetState = project([...fresh, ...approvals.map((e, i) => ({ ...e, id: `budget:${i}`, seq: latest.lastSeq + i + 1, at: now.toISOString() }))]);
+      const gate = automationGate(budgetState);
+      // Each successful delivery records both update_sent and change_notified.
+      const cost = append.filter(isAutomationAction).length + deliveries.length * 2;
+      if (cost > gate.remaining) {
         if (confirmed) throw new Error('Automation limit reached; resume before applying approval');
         judgement = { ...judgement!, decision: 'silent', reason: '자동 행동 상한' }; post = undefined; append.length = 0; deliveries.length = 0;
         if (!latest.automation.limitReached) {
