@@ -1,0 +1,85 @@
+import { getRuntime, type Upload } from '../../../lib/runtime';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+type Context = { params: Promise<{ path: string[] }> };
+const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+class InputError extends Error {}
+function text(value: unknown, field: string): string { if (typeof value !== 'string' || !value.trim()) throw new InputError(`${field} is required`); return value; }
+function uploads(value: unknown): Upload[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new InputError('Invalid attachments');
+  return value.map(a => {
+    if (!a || typeof a !== 'object') throw new InputError('Invalid attachment');
+    const name = text(a.name, 'name'), mimeType = text(a.mimeType, 'mimeType');
+    if (typeof a.contentBase64 !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(a.contentBase64)) throw new InputError('Invalid base64 attachment');
+    return { name, mimeType, contentBase64: a.contentBase64 };
+  });
+}
+function errorResponse(error: unknown) {
+  // Provider exceptions may contain request details: never serialize them to the browser/log.
+  return json({ error: error instanceof InputError ? error.message : '요청을 처리하지 못했습니다. 현재 상태를 확인한 뒤 다시 시도해 주세요.' }, error instanceof InputError ? 400 : 500);
+}
+
+export async function GET(request: Request, context: Context) {
+  try {
+    const parts = (await context.params).path, route = parts.join('/'), app = getRuntime();
+    if (route === 'state') return json(await app.state(new URL(request.url).searchParams.get('me') ?? 'owner'));
+    if (route === 'events') {
+      let cleanup = () => {};
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const encoder = new TextEncoder();
+          const changed = () => controller.enqueue(encoder.encode('event: changed\ndata: {}\n\n'));
+          const timer = setInterval(() => controller.enqueue(encoder.encode(': heartbeat\n\n')), 15000);
+          cleanup = () => { clearInterval(timer); app.listeners.delete(changed); request.signal.removeEventListener('abort', abort); };
+          const abort = () => { cleanup(); controller.close(); };
+          app.listeners.add(changed); request.signal.addEventListener('abort', abort, { once: true }); changed();
+          if (request.signal.aborted) abort();
+        }, cancel() { cleanup(); },
+      });
+      return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' } });
+    }
+    if (parts[0] === 'attachments' && parts.length === 2) {
+      const file = await app.attachment(parts[1]!);
+      if (!file) return json({ error: 'Attachment not found' }, 404);
+      return new Response(new Uint8Array(file.data), { headers: { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`, 'X-Content-Type-Options': 'nosniff' } });
+    }
+    return json({ error: 'Not found' }, 404);
+  } catch (error) { return errorResponse(error); }
+}
+
+export async function POST(request: Request, context: Context) {
+  try {
+    const parts = (await context.params).path, route = parts.join('/');
+    if (!['messages', 'availability', 'free/start', 'scenario/start', 'scenario/next'].includes(route) && !(parts[0] === 'cards' && parts.length === 2)) return json({ error: 'Not found' }, 404);
+    let parsed: unknown;
+    try { parsed = await request.json(); } catch { throw new InputError('Invalid JSON'); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new InputError('Expected an object');
+    const body = parsed as Record<string, unknown>;
+    const app = getRuntime();
+    const me = typeof body.me === 'string' ? body.me : typeof body.memberId === 'string' ? body.memberId : typeof body.authorId === 'string' ? body.authorId : 'owner';
+    await app.run(async () => {
+      if (route === 'messages') {
+        const author = text(body.authorId, 'authorId');
+        if (typeof body.text !== 'string') throw new InputError('text is required');
+        const attachments = uploads(body.attachments);
+        if (!body.text.trim() && !attachments.length) throw new InputError('Message is empty');
+        await app.message(author, body.text, attachments);
+      } else if (route === 'availability') {
+        const member = text(body.memberId, 'memberId');
+        if (typeof body.weeklyHours !== 'number' || !Number.isFinite(body.weeklyHours) || body.weeklyHours < 0) throw new InputError('Invalid weeklyHours');
+        await app.pm.setAvailability(member, body.weeklyHours);
+      } else if (parts[0] === 'cards') {
+        if (typeof body.approve !== 'boolean') throw new InputError('approve must be boolean');
+        await app.pm.decideCard(parts[1]!, text(body.memberId, 'memberId'), body.approve);
+      } else if (route === 'free/start') {
+        const goal = text(body.goal, 'goal');
+        if (body.deadline !== undefined && (typeof body.deadline !== 'string' || !Number.isFinite(Date.parse(body.deadline)))) throw new InputError('Invalid deadline');
+        await app.startFree(goal, body.deadline as string | undefined, me);
+      } else if (route === 'scenario/start') await app.startScenario(text(body.name, 'name'));
+      else await app.scenarioNext();
+    });
+    return json(await app.state(me));
+  } catch (error) { return errorResponse(error); }
+}

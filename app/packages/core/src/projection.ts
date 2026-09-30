@@ -33,6 +33,7 @@ export interface ProjectState {
   decisions: Map<Id, EventPayloads["decision_recorded"]>;
   /** Authority requests still waiting for the person's answer. */
   pendingAuthority: Map<Id, EventPayloads["authority_requested"]>;
+  pendingPlans: Map<Id, EventPayloads["plan_proposed"]>;
   /** `${changeId}:${recipientId}` pairs already notified. */
   notified: Set<string>;
 }
@@ -57,7 +58,7 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
     lastSeq: 0, members: new Map(), tasks: new Map(), availability: new Map(),
     estimates: new Map(), activeTurn: new Map(), sessions: new Map(), reservedStartKeys: new Set(),
     automation: { actionsSinceResume: 0, limitReached: false },
-    messages: [], openTopics: [], decisions: new Map(), pendingAuthority: new Map(), notified: new Set(),
+    messages: [], openTopics: [], decisions: new Map(), pendingAuthority: new Map(), pendingPlans: new Map(), notified: new Set(),
   };
   for (const original of events) {
     const event = structuredClone(original) as AnyEvent;
@@ -66,6 +67,8 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
     switch (event.type) {
       case "member_joined": state.members.set(event.payload.memberId, event.payload); break;
       case "goal_set": state.goal = event.payload; break;
+      case "plan_proposed": state.pendingPlans.set(event.payload.proposalId, event.payload); break;
+      case "plan_decided": state.pendingPlans.delete(event.payload.proposalId); break;
       case "plan_committed": {
         const p = event.payload;
         state.plan = { version: p.version, tasks: p.tasks, reason: p.reason, approvedBy: p.approvedBy };

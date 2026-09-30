@@ -4,6 +4,8 @@ export interface TaskSpec { id: Id; title: string; assignee: Id; dependsOn: Id[]
 export interface EventPayloads {
   member_joined: { memberId: Id; kind: "human" | "agent"; displayName: string; role?: string };
   goal_set: { text: string; deadline?: string; decider: Id; delegation: { pmMayApply: ChangeKind[] } };
+  plan_proposed: { proposalId: Id; version: number; tasks: TaskSpec[]; estimates: { taskId: Id; hours: { min: number; max: number } }[]; reason: string; forMemberId: Id };
+  plan_decided: { proposalId: Id; memberId: Id; approved: boolean };
   plan_committed: { version: number; basedOn: number | null; tasks: TaskSpec[]; reason: string; approvedBy: Id; sourceMessageIds: Id[] };
   availability_updated: { memberId: Id; weeklyHours: number };
   estimate_updated: { taskId: Id; hours: { min: number; max: number }; source: "human" | "pm" | "measured" };

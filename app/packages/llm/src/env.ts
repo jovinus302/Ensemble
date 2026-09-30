@@ -9,6 +9,10 @@ const DEFAULT_MODEL = "claude-sonnet-5";
  * Values already present in process.env win.
  */
 export function loadEnv(start: string = process.cwd()): string | undefined {
+  if (process.env.ENSEMBLE_ENV_FILE) {
+    process.loadEnvFile(process.env.ENSEMBLE_ENV_FILE);
+    return process.env.ENSEMBLE_ENV_FILE;
+  }
   let dir = start;
   for (;;) {
     const candidate = join(dir, ".env");
