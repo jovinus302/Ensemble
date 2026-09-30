@@ -33,7 +33,7 @@ export interface EventPayloads {
   pm_considered: { considerationId: Id; triggerId: Id; whoseAction: string | null; alreadyKnows: "yes" | "no" | "unknown"; evidence: string[]; decision: "speak" | "silent"; reason: string; openTopics: string[] };
   pm_spoke: { considerationId: Id; messageId: Id; text: string; kind: "fact" | "summary" | "ask" | "answer" | "nudge" };
   decision_recorded: { decisionId: Id; summary: string; sourceMessageIds: Id[]; approvedBy: Id; changeKinds: ChangeKind[] };
-  authority_requested: { requestId: Id; decisionId?: Id; personId: Id; changeKinds: ChangeKind[]; text: string };
+  authority_requested: { requestId: Id; decisionId?: Id; operationKey?: string; personId: Id; changeKinds: ChangeKind[]; text: string };
   authority_granted: { requestId: Id; personId: Id; granted: boolean };
   /** One change delivered to one recipient. */
   change_notified: { changeId: Id; planVersion: number; recipientId: Id; text: string; via: "channel" | "steer" | "next_turn" };

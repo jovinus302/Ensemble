@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { MemoryLedgerStore } from '@ensemble/store';
 import { project } from '@ensemble/core';
-import type { AnyEvent, EventPayloads, EventType, TaskSpec } from '@ensemble/core';
+import type { AnyEvent, EventPayloads, EventType, TaskSpec, PlanOp } from '@ensemble/core';
 import type { LlmProvider, LlmRequest, LlmResponse } from '@ensemble/llm';
 import { Coordinator } from '../src/coordination.ts';
 import type { CoordinationInterpretation, CoordinationJudgement } from '../src/coordination.ts';
@@ -9,8 +9,9 @@ import type { CoordinationInterpretation, CoordinationJudgement } from '../src/c
 const ctx = { projectId: 'coordination', targetProductId: 'product', clock: () => new Date('2026-09-28T00:00:00Z') };
 const task = (id: string, assignee: string, conditions: string[] = []): TaskSpec => ({ id, title: id, assignee, dependsOn: [], handoffConditions: conditions });
 const initialTasks = [task('prototype', 'agent', ['초안', '결제']), task('design', 'designer', ['초안', '결제']), task('review', 'outside', ['결제'])];
-const interpret = (patch: Partial<CoordinationInterpretation> = {}): CoordinationInterpretation => ({ category: 'question', conclusion: false, sourceMessageIds: ['m1'], summary: '결제 제외, 초안으로 계속', changeKinds: [], drop: [], conflicts: [], ...patch });
-const judge = (patch: Partial<CoordinationJudgement> = {}): CoordinationJudgement => ({ whoseAction: 'designer: 다음 작업 선택', alreadyKnows: 'no', evidence: ['m1'], decision: 'speak', reason: '계산된 영향으로 다음 행동을 고른다', openTopics: [], text: '계산 결과를 확인해 주세요.', ...patch });
+const interpret = (patch: Partial<CoordinationInterpretation> = {}): CoordinationInterpretation => ({ category: 'question', summary: '결제 제외, 초안으로 계속', ops: [], conflicts: [], ...patch });
+const exclusions = (sourceMessageIds = ['m1']): PlanOp[] => initialTasks.map(t => ({ type: 'exclude_scope', taskId: t.id, item: '결제', sourceMessageIds }));
+const judge = (patch: Partial<CoordinationJudgement> = {}): CoordinationJudgement => ({ whoseAction: 'designer: 다음 작업 선택', alreadyKnows: 'no', evidence: ['msg:m1'], decision: 'speak', reason: '계산된 영향으로 다음 행동을 고른다', openTopics: [], text: '계산 결과를 확인해 주세요.', ...patch });
 function fake(responses: (object | null | ((r: LlmRequest) => object | null))[]) {
   responses = [...responses];
   const calls: LlmRequest[] = [];
@@ -22,7 +23,7 @@ function fake(responses: (object | null | ((r: LlmRequest) => object | null))[])
   } };
   return { llm, calls };
 }
-async function fixture(responses: Parameters<typeof fake>[0], tasks = initialTasks, messageText = 'ㅇㅋ 결제는 빼자') {
+async function fixture(responses: Parameters<typeof fake>[0], tasks = initialTasks, messageText = 'ㅇㅋ 결제는 빼자', authorId = 'owner') {
   const store = new MemoryLedgerStore();
   const add = async <K extends EventType>(type: K, payload: EventPayloads[K], pm = false) => store.append([{ projectId: ctx.projectId, targetProductId: ctx.targetProductId, actor: { kind: pm ? 'pm' : 'human', id: 'owner' }, type, payload }]);
   for (const memberId of ['owner', 'designer', 'outside', 'agent']) await add('member_joined', { memberId, kind: memberId === 'agent' ? 'agent' : 'human', displayName: memberId });
@@ -35,7 +36,7 @@ async function fixture(responses: Parameters<typeof fake>[0], tasks = initialTas
     await add('task_started', { taskId: 'prototype', turnId: 'turn-1' });
   }
   const message = (messageId = 'm1', authorId = 'owner', text = 'ㅇㅋ 결제는 빼자') => add('message_recorded', { messageId, authorId, text, attachmentIds: [] });
-  await message('m1', 'owner', messageText);
+  await message('m1', authorId, messageText);
   const { llm, calls } = fake(responses);
   const connector = { sendUpdate: vi.fn(async () => ({ sent: true as boolean, reason: 'finished' })) };
   const coordinator = new Coordinator(store, llm, connector, ctx);
@@ -44,34 +45,35 @@ async function fixture(responses: Parameters<typeof fake>[0], tasks = initialTas
 }
 
 it('records silence and the three answers while people coordinate a vacation', async () => {
-  const f = await fixture([interpret({ category: 'availability', availability: [{ memberId: 'designer', weeklyHours: 5 }] }), judge({ decision: 'silent', whoseAction: null, alreadyKnows: 'yes', text: '', reason: '사람들이 조율 중', openTopics: ['휴가 후 초안'] })], initialTasks, '목요일에 휴가라 상세는 다음 주에 드려도 될까요?');
+  const f = await fixture([interpret({ category: 'availability', ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 5, sourceMessageIds: ['m1'] }] }), judge({ decision: 'silent', whoseAction: null, alreadyKnows: 'yes', text: '', reason: '사람들이 조율 중', openTopics: ['휴가 후 초안'] })], initialTasks, '목요일에 휴가라 상세는 다음 주에 드려도 될까요?', 'designer');
   const r = await f.coordinator.onMessage('m1');
   expect(r.posts).toEqual([]);
-  expect(r.events).toEqual([expect.objectContaining({ type: 'pm_considered', payload: expect.objectContaining({ decision: 'silent', whoseAction: null, alreadyKnows: 'yes', evidence: ['m1'], openTopics: ['휴가 후 초안'] }) })]);
+  expect(r.events.filter(e => e.type === 'pm_considered')).toEqual([expect.objectContaining({ type: 'pm_considered', payload: expect.objectContaining({ decision: 'silent', whoseAction: null, alreadyKnows: 'yes', evidence: ['msg:m1'], openTopics: ['휴가 후 초안'] }) })]);
   expect(project(await f.read()).automation.actionsSinceResume).toBe(0);
 });
 
-it('answers using code-calculated seven-day delay and cites forecast input IDs', async () => {
-  const f = await fixture([interpret({ availability: [{ memberId: 'designer', weeklyHours: 5 }] }), request => {
+it('answers using code-calculated seven-day delay and cites the forecast fact', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 5, sourceMessageIds: ['m1'] }] }), request => {
     const { facts } = JSON.parse(request.messages[0]!.content);
     expect(facts.impact.deltaDays.max).toBe(7);
     expect(facts.impact.proposed.lateness.maxDays).toBe(7);
-    return judge({ text: `주 5시간이면 ${facts.impact.deltaDays.max}일 늦어져요. 초안으로 먼저 진행할까요?`, evidence: facts.impact.forecastInputIds });
-  }], initialTasks, '그럼 프로토타입이 밀리나?');
+    return judge({ text: `주 5시간이면 ${facts.impact.deltaDays.max}일 늦어져요. 초안으로 먼저 진행할까요?`, evidence: ['forecast:candidate'] });
+  }], initialTasks, '주 5시간이면 프로토타입이 밀리나?', 'designer');
   const r = await f.coordinator.onMessage('m1');
   expect(r.posts[0]?.text).toContain('7일');
   const considered = r.events.find(e => e.type === 'pm_considered') as AnyEvent;
-  expect(considered.payload).toMatchObject({ evidence: expect.arrayContaining([(await f.read()).find(e => e.type === 'estimate_updated')!.id]) });
+  expect(considered.payload).toMatchObject({ evidence: ['forecast:candidate'] });
   expect(f.calls.every(r => r.forceTool && r.messages[0]!.content.includes('"planVersion":1') && r.messages[0]!.content.includes('"messageId":"m1"'))).toBe(true);
 });
 
 const reduced = initialTasks.map(t => ({ ...t, handoffConditions: t.handoffConditions.filter(c => c !== '결제') }));
 it('summarises, commits v2, notifies absent changed people and steers with payment dropped once', async () => {
-  const f = await fixture([interpret({ conclusion: true, tasks: reduced, changeKinds: ['scope_reduce'], drop: ['결제'], sourceMessageIds: ['m1', 'designer-agrees'] }), judge()]);
+  const f = await fixture([interpret({ ops: exclusions(['m1', 'designer-agrees']) }), judge()]);
   await f.message('designer-agrees', 'designer', '초안으로 먼저 가세요');
   const r = await f.coordinator.onMessage('m1');
   expect(r.posts[0]).toMatchObject({ kind: 'summary', text: expect.stringContaining('정리하면:') });
   expect(project(await f.read()).plan?.version).toBe(2);
+  expect(project(await f.read()).plan?.tasks.map(t => t.title)).toEqual(initialTasks.map(t => t.title));
   expect(f.connector.sendUpdate).toHaveBeenCalledExactlyOnceWith('agent', expect.objectContaining({ fromVersion: 1, toVersion: 2, drop: ['결제'] }));
   expect(r.events.filter(e => e.type === 'change_notified').map(e => (e.payload as EventPayloads['change_notified']).recipientId).sort()).toEqual(['agent', 'outside']);
   expect(r.events.find(e => e.type === 'plan_committed')?.payload).toMatchObject({ sourceMessageIds: ['m1', 'designer-agrees'], basedOn: 1 });
@@ -79,8 +81,9 @@ it('summarises, commits v2, notifies absent changed people and steers with payme
   expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
 });
 
-it('asks the decider about a deadline conclusion and leaves the plan unchanged', async () => {
-  const f = await fixture([interpret({ conclusion: true, deadline: '2026-10-10', changeKinds: ['deadline_change'] }), judge()]);
+it('asks the decider about another person’s deadline proposal and leaves the plan unchanged', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'set_deadline', date: '2026-10-10', sourceMessageIds: ['proposal'] }] }), judge()]);
+  await f.message('proposal', 'designer', '기한을 옮기면 좋겠어요');
   const r = await f.coordinator.onMessage('m1');
   expect(r.events.find(e => e.type === 'authority_requested')?.payload).toMatchObject({ personId: 'owner', changeKinds: ['deadline_change'] });
   expect(r.posts[0]?.kind).toBe('ask');
@@ -89,7 +92,7 @@ it('asks the decider about a deadline conclusion and leaves the plan unchanged',
 });
 
 it('does not repeat an answer supported by the same evidence', async () => {
-  const f = await fixture([interpret(), judge(), interpret({ sourceMessageIds: ['m2'] }), judge()]);
+  const f = await fixture([interpret(), judge(), interpret(), judge()]);
   await f.coordinator.onMessage('m1');
   await f.message('m2', 'owner', '다시 질문');
   const r = await f.coordinator.onMessage('m2');
@@ -105,27 +108,27 @@ it.each([[null, null], [interpret(), null, null], [{ conclusion: true }, { concl
   expect(f.calls.length).toBe(responses.length);
 });
 
-it('steers an agent whose running task was removed and records next_turn on rejection', async () => {
-  const f = await fixture([interpret({ conclusion: true, tasks: initialTasks.filter(t => t.id !== 'prototype'), changeKinds: ['scope_reduce'], drop: ['결제'] }), judge()]);
+it('records next_turn on steer rejection without cancelling the task', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['m1'] }] }), judge()]);
   f.connector.sendUpdate.mockResolvedValue({ sent: false, reason: 'turn completed' });
   const r = await f.coordinator.onMessage('m1');
-  expect(f.connector.sendUpdate).toHaveBeenCalledWith('agent', expect.objectContaining({ drop: ['결제', 'prototype'], change: [expect.stringContaining('작업 중단')] }));
+  expect(f.connector.sendUpdate).toHaveBeenCalledWith('agent', expect.objectContaining({ drop: ['결제'] }));
   expect(r.events.find(e => e.type === 'change_notified')?.payload).toMatchObject({ recipientId: 'agent', via: 'next_turn' });
-  expect(project(await f.read()).tasks.get('prototype')?.status).toBe('cancelled');
+  expect(project(await f.read()).tasks.get('prototype')?.status).toBe('running');
 });
 
 it('cannot relabel a human commitment as a delegated reorder', async () => {
-  const f = await fixture([interpret({ conclusion: true, availability: [{ memberId: 'designer', weeklyHours: 20 }], changeKinds: ['reorder'] }), judge()]);
+  const f = await fixture([interpret({ ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 20, sourceMessageIds: ['m1'] }] }), judge()]);
   const r = await f.coordinator.onMessage('m1');
   expect(r.events.find(e => e.type === 'authority_requested')?.payload).toMatchObject({ personId: 'designer' });
   expect(project(await f.read()).availability.get('designer')).toBe(10);
 });
 
 it('rejects a stale snapshot when a plan is committed during model judgement', async () => {
-  const f = await fixture([interpret({ conclusion: true, tasks: reduced, changeKinds: ['scope_reduce'] }), judge()]);
+  const f = await fixture([interpret({ ops: exclusions() }), judge()]);
   const llm: LlmProvider = { async complete(request) {
     if (request.forceTool === 'judge_coordination') await f.add('plan_committed', { version: 2, basedOn: 1, tasks: initialTasks, approvedBy: 'owner', reason: 'concurrent', sourceMessageIds: [] });
-    return { text: '', model: 'fake', responseId: 'r', usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [{ name: request.forceTool!, input: (request.forceTool === 'interpret_coordination' ? interpret({ conclusion: true, tasks: reduced, changeKinds: ['scope_reduce'] }) : judge()) as unknown as Record<string, unknown> }] };
+    return { text: '', model: 'fake', responseId: 'r', usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [{ name: request.forceTool!, input: (request.forceTool === 'interpret_coordination' ? interpret({ ops: exclusions() }) : judge()) as unknown as Record<string, unknown> }] };
   } };
   const r = await new Coordinator(f.store, llm, f.connector, ctx).onMessage('m1');
   expect(r.posts).toEqual([]);
@@ -135,7 +138,7 @@ it('rejects a stale snapshot when a plan is committed during model judgement', a
 });
 
 it('stops at the automation limit, notifies once, and never commits or steers', async () => {
-  const f = await fixture([interpret({ conclusion: true, tasks: reduced, changeKinds: ['scope_reduce'] }), judge(), interpret(), judge({ evidence: ['m2'] })]);
+  const f = await fixture([interpret({ ops: exclusions() }), judge(), interpret(), judge({ evidence: ['msg:m2'] })]);
   for (let i = 0; i < 12; i++) await f.add('reply_recorded', { memberId: 'pm', text: `prior ${i}` }, true);
   const first = await f.coordinator.onMessage('m1');
   await f.message('m2');
@@ -149,7 +152,7 @@ it('stops at the automation limit, notifies once, and never commits or steers', 
 
 it('preserves prior decisions and plans when a correction becomes v3', async () => {
   const corrected = reduced.map(t => t.id === 'review' ? { ...t, dependsOn: ['prototype'] } : t);
-  const f = await fixture([interpret({ conclusion: true, tasks: reduced, changeKinds: ['scope_reduce'] }), judge(), interpret({ conclusion: true, tasks: corrected, changeKinds: ['reorder'], sourceMessageIds: ['m2'], summary: '검토는 프로토타입 다음' }), judge({ evidence: ['m2'] })]);
+  const f = await fixture([interpret({ ops: exclusions() }), judge(), interpret({ ops: [{ type: 'handoff_early', taskId: 'review', sourceMessageIds: ['m2'] }], summary: '초안 단계 인계' }), judge({ evidence: ['msg:m2'] })]);
   await f.coordinator.onMessage('m1');
   await f.message('m2', 'owner', '아니, 검토는 프로토타입 다음이야');
   await f.coordinator.onMessage('m2');
@@ -160,7 +163,7 @@ it('preserves prior decisions and plans when a correction becomes v3', async () 
 });
 
 it('records next-turn context for a changed agent that is not running', async () => {
-  const f = await fixture([interpret({ conclusion: true, tasks: reduced, changeKinds: ['scope_reduce'], drop: ['결제'] }), judge()]);
+  const f = await fixture([interpret({ ops: exclusions() }), judge()]);
   await f.add('turn_finished', { agentId: 'agent', taskId: 'prototype' });
   const r = await f.coordinator.onMessage('m1');
   expect(r.events.find(e => e.type === 'change_notified' && (e.payload as EventPayloads['change_notified']).recipientId === 'agent')?.payload).toMatchObject({ via: 'next_turn', text: expect.stringContaining('결제') });
@@ -168,11 +171,11 @@ it('records next-turn context for a changed agent that is not running', async ()
   expect(r.posts.some(p => p.text.startsWith('{'))).toBe(false);
 });
 
-it('does not commit a candidate with broken dependencies', async () => {
-  const f = await fixture([interpret({ conclusion: true, tasks: reduced.map(t => ({ ...t, dependsOn: ['missing'] })), changeKinds: ['scope_reduce', 'reorder'] }), judge()]);
+it('rejects free-form rewrites and unknown task operations', async () => {
+  const f = await fixture([{ ...interpret(), tasks: reduced }, interpret({ ops: [{ type: 'handoff_early', taskId: 'missing', sourceMessageIds: ['m1'] }] })]);
   const r = await f.coordinator.onMessage('m1');
   expect(r.posts).toEqual([]);
-  expect(r.events[0]?.payload).toMatchObject({ reason: '후보 계획의 선후 관계 오류' });
+  expect(r.events[0]?.payload).toMatchObject({ reason: '판단 불가' });
   expect(project(await f.read()).plan?.version).toBe(1);
 });
 
@@ -184,10 +187,91 @@ it('rejects fabricated evidence after one retry', async () => {
 });
 
 it('concurrent duplicate deliveries produce one decision and one steer', async () => {
-  const responses = [interpret({ conclusion: true, tasks: reduced, changeKinds: ['scope_reduce'] }), judge()];
+  const responses = [interpret({ ops: exclusions() }), judge()];
   const f = await fixture(responses);
   const second = new Coordinator(f.store, fake(responses).llm, f.connector, ctx);
   const results = await Promise.all([f.coordinator.onMessage('m1'), second.onMessage('m1')]);
   expect(results.flatMap(r => r.events).filter(e => e.type === 'plan_committed')).toHaveLength(1);
   expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
+});
+
+it('retries evidence outside the enum and speaks with a valid forecast fact', async () => {
+  const f = await fixture([interpret(), judge({ evidence: ['impact.deltaDays'] }), request => {
+    const { facts } = JSON.parse(request.messages[0]!.content);
+    const property = (request.tools![0]!.inputSchema.properties as Record<string, any>).evidence;
+    expect(property.items.enum).toContain('forecast:current');
+    expect(property.items.enum).not.toContain('impact.deltaDays');
+    const forecast = facts.factList.find((f: { id: string }) => f.id === 'forecast:current').value;
+    return judge({ evidence: ['forecast:current'], text: `현재 최대 ${forecast.days.max}일 걸립니다.` });
+  }]);
+  const r = await f.coordinator.onMessage('m1');
+  expect(f.calls).toHaveLength(3);
+  expect(r.posts[0]?.text).toMatch(/현재 최대 \d+일/);
+});
+
+it('records a person’s own availability without asking them again or changing plan version', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 5, sourceMessageIds: ['self'] }] }), judge({ decision: 'silent', text: '' })]);
+  await f.message('self', 'designer', '이번 주 가용 시간은 5시간이에요');
+  const r = await f.coordinator.onMessage('self');
+  expect(r.events.filter(e => e.type === 'availability_updated')).toHaveLength(1);
+  expect(r.events.some(e => e.type === 'authority_requested')).toBe(false);
+  expect(project(await f.read()).availability.get('designer')).toBe(5);
+  expect(project(await f.read()).plan?.version).toBe(1);
+});
+
+it('keeps a designer’s scope suggestion open even when the model wants to speak', async () => {
+  const f = await fixture([interpret({ ops: exclusions(['suggestion']) }), judge()]);
+  await f.message('suggestion', 'designer', '결제는 빼면 좋겠어요');
+  await f.coordinator.onMessage('suggestion');
+  const state = project(await f.read());
+  expect(state.plan?.version).toBe(1);
+  expect(state.openTopics.join(' ')).toContain('결제');
+  expect(state.openTopics.join(' ')).toContain('owner');
+  expect(f.connector.sendUpdate).not.toHaveBeenCalled();
+});
+
+it('applies consented availability separately from a scope approval request', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 5, sourceMessageIds: ['self'] }, ...exclusions(['self'])] }), judge()]);
+  await f.message('self', 'designer', '주 5시간이고 결제는 빼면 좋겠어요');
+  const r = await f.coordinator.onMessage('self');
+  expect(project(await f.read()).availability.get('designer')).toBe(5);
+  const requests = r.events.filter(e => e.type === 'authority_requested');
+  expect(requests).toHaveLength(3);
+  for (const e of requests) expect(e.payload).toMatchObject({ personId: 'owner', changeKinds: ['scope_reduce'] });
+  expect(r.posts.every(p => !p.text.includes('가용 시간'))).toBe(true);
+});
+
+it('does not apply a plan operation when both judgement attempts cite invalid evidence', async () => {
+  const f = await fixture([interpret({ ops: exclusions() }), judge({ evidence: ['impact.deltaDays'] }), judge({ evidence: ['bad'] })]);
+  const r = await f.coordinator.onMessage('m1');
+  expect(r.posts).toEqual([]);
+  expect(project(await f.read()).plan?.version).toBe(1);
+  expect(f.connector.sendUpdate).not.toHaveBeenCalled();
+});
+
+it('applies the decider’s deadline and goal messages without an unnecessary second approval', async () => {
+  const f = await fixture([interpret({ ops: [
+    { type: 'set_deadline', date: '2026-10-12', sourceMessageIds: ['m1'] },
+    { type: 'change_goal', text: '고객 반응 확인', sourceMessageIds: ['m1'] },
+  ] }), judge()]);
+  const r = await f.coordinator.onMessage('m1');
+  expect(project(await f.read()).goal).toMatchObject({ text: '고객 반응 확인', deadline: '2026-10-12' });
+  expect(project(await f.read()).plan?.version).toBe(1);
+  expect(r.events.some(e => e.type === 'authority_requested')).toBe(false);
+});
+
+it('settles only the matching approval request when the decider confirms the operation', async () => {
+  const f = await fixture([
+    interpret({ ops: [{ type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['suggestion'] }, { type: 'set_deadline', date: '2026-10-12', sourceMessageIds: ['suggestion'] }] }), judge({ evidence: ['msg:suggestion'] }),
+    interpret({ ops: [{ type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['agreement'] }] }), judge({ evidence: ['msg:agreement'] }),
+  ]);
+  await f.message('suggestion', 'designer', '결제는 빼고 기한은 늦추면 좋겠어요');
+  await f.coordinator.onMessage('suggestion');
+  expect(project(await f.read()).pendingAuthority.size).toBe(2);
+  await f.message('agreement', 'owner', '결제만 빼자');
+  await f.coordinator.onMessage('agreement');
+  const state = project(await f.read());
+  expect(state.pendingAuthority.size).toBe(1);
+  expect([...state.pendingAuthority.values()][0]?.changeKinds).toEqual(['deadline_change']);
+  expect(state.plan?.version).toBe(2);
 });

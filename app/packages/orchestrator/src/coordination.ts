@@ -1,5 +1,5 @@
-import { affectedMembers, automationGate, diffPlans, forecastFromState, limitReachedEvent, project, whoApproves } from '@ensemble/core';
-import type { AnyEvent, ChangeKind, EventContext, EventPayloads, EventType, LedgerEvent, NewLedgerEvent, TaskSpec } from '@ensemble/core';
+import { affectedMembers, automationGate, diffPlans, forecastFromState, limitReachedEvent, project, applyOps, opAuthority } from '@ensemble/core';
+import type { AnyEvent, EventContext, EventPayloads, EventType, LedgerEvent, NewLedgerEvent, PlanOp, ProjectState } from '@ensemble/core';
 import type { SessionConnector, UpdateInstructionsInput } from '@ensemble/agents';
 import type { LlmProvider, ToolSpec } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
@@ -7,15 +7,8 @@ import { PM_SYSTEM_PROMPT } from './pm-prompt.ts';
 
 export interface CoordinationInterpretation {
   category: string;
-  conclusion: boolean;
-  sourceMessageIds: string[];
   summary: string;
-  tasks?: TaskSpec[];
-  availability?: { memberId: string; weeklyHours: number }[];
-  deadline?: string;
-  goalText?: string;
-  changeKinds: ChangeKind[];
-  drop: string[];
+  ops: PlanOp[];
   conflicts: string[];
 }
 export interface CoordinationJudgement {
@@ -30,24 +23,59 @@ export interface CoordinationJudgement {
 export interface CoordinationResult { posts: { text: string; kind: EventPayloads['pm_spoke']['kind'] }[]; events: LedgerEvent[] }
 export interface CoordinatorOptions extends EventContext { model?: string; clock?: () => Date }
 const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string' && x.length > 0);
-const kinds: ChangeKind[] = ['reorder', 'split_task', 'reassign_agent', 'scope_reduce', 'scope_add', 'deadline_change', 'goal_change', 'human_commitment'];
 const stringArray = { type: 'array', items: { type: 'string' } };
-const interpretationTool: ToolSpec = { name: 'interpret_coordination', description: '대화의 후보 변경과 결론을 해석한다', inputSchema: { type: 'object', required: ['category', 'conclusion', 'sourceMessageIds', 'summary', 'changeKinds', 'drop', 'conflicts'], properties: {
-  category: { type: 'string' }, conclusion: { type: 'boolean' }, sourceMessageIds: stringArray, summary: { type: 'string' }, changeKinds: { type: 'array', items: { type: 'string', enum: kinds } }, drop: stringArray, conflicts: stringArray,
-  tasks: { type: 'array', items: { type: 'object', required: ['id', 'title', 'assignee', 'dependsOn', 'handoffConditions'], properties: { id: { type: 'string' }, title: { type: 'string' }, assignee: { type: 'string' }, dependsOn: stringArray, handoffConditions: stringArray } } },
-  availability: { type: 'array', items: { type: 'object', required: ['memberId', 'weeklyHours'], properties: { memberId: { type: 'string' }, weeklyHours: { type: 'number', minimum: 0 } } } }, deadline: { type: 'string' }, goalText: { type: 'string' },
-} } };
+function interpretationTool(state: ProjectState): ToolSpec {
+  const ids = (values: string[]) => ({ type: 'string', enum: values });
+  const sourceMessageIds = { type: 'array', minItems: 1, items: ids(state.messages.filter(m => state.members.get(m.authorId)?.kind === 'human').map(m => m.messageId)) };
+  const taskId = ids(state.plan?.tasks.map(t => t.id) ?? []);
+  const memberId = ids([...state.members.keys()]);
+  const op = (type: string, properties: Record<string, unknown>) => ({ type: 'object', additionalProperties: false, required: ['type', 'sourceMessageIds', ...Object.keys(properties)], properties: { type: { const: type }, sourceMessageIds, ...properties } });
+  return { name: 'interpret_coordination', description: '발언에서 근거가 있는 변경 연산만 추출한다. 결론과 권한은 코드가 판단한다.', inputSchema: { type: 'object', additionalProperties: false, required: ['category', 'summary', 'ops', 'conflicts'], properties: {
+    category: { type: 'string' }, summary: { type: 'string' }, conflicts: stringArray,
+    ops: { type: 'array', items: { oneOf: [
+      op('set_availability', { memberId: ids([...state.members.values()].filter(m => m.kind === 'human').map(m => m.memberId)), weeklyHours: { type: 'number', minimum: 0 } }),
+      op('exclude_scope', { taskId, item: { type: 'string', minLength: 1 } }),
+      op('handoff_early', { taskId }), op('reassign', { taskId, assignee: memberId }),
+      op('set_deadline', { date: { type: 'string' } }), op('change_goal', { text: { type: 'string', minLength: 1 } }),
+    ] } },
+  } } };
+}
+function validOp(value: unknown, state: ProjectState): value is PlanOp {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  if (!strings(v.sourceMessageIds) || !v.sourceMessageIds.length || !v.sourceMessageIds.every(id => state.messages.some(m => m.messageId === id && state.members.get(m.authorId)?.kind === 'human'))) return false;
+  const fields: Record<string, string[]> = { set_availability: ['memberId', 'weeklyHours'], exclude_scope: ['taskId', 'item'], handoff_early: ['taskId'], reassign: ['taskId', 'assignee'], set_deadline: ['date'], change_goal: ['text'] };
+  const allowed = fields[String(v.type)];
+  if (!allowed || Object.keys(v).some(k => !['type', 'sourceMessageIds', ...allowed].includes(k))) return false;
+  if (allowed.includes('taskId') && !state.plan?.tasks.some(t => t.id === v.taskId)) return false;
+  switch (v.type) {
+    case 'set_availability': return state.members.get(String(v.memberId))?.kind === 'human' && typeof v.weeklyHours === 'number' && Number.isFinite(v.weeklyHours) && v.weeklyHours >= 0;
+    case 'exclude_scope': return typeof v.item === 'string' && !!v.item.trim();
+    case 'handoff_early': return true;
+    case 'reassign': return state.members.has(String(v.assignee));
+    case 'set_deadline': return typeof v.date === 'string' && Number.isFinite(Date.parse(v.date));
+    case 'change_goal': return typeof v.text === 'string' && !!v.text.trim();
+    default: return false;
+  }
+}
+function describeOp(op: PlanOp): string {
+  switch (op.type) {
+    case 'set_availability': return `${op.memberId} 가용 시간 주 ${op.weeklyHours}시간`;
+    case 'exclude_scope': return `${op.taskId}에서 ${op.item} 제외`;
+    case 'handoff_early': return `${op.taskId} 초안 단계에서 인계 가능`;
+    case 'reassign': return `${op.taskId} 담당 ${op.assignee}`;
+    case 'set_deadline': return `기한 ${op.date}`;
+    case 'change_goal': return `목표 ${op.text}`;
+  }
+}
+function operationKey(op: PlanOp): string {
+  return JSON.stringify(Object.entries(op).filter(([key]) => key !== 'sourceMessageIds').sort(([a], [b]) => a.localeCompare(b)));
+}
 const judgementTool: ToolSpec = { name: 'judge_coordination', description: '세 원칙 질문에 답하고 발언 또는 침묵을 결정한다', inputSchema: { type: 'object', required: ['whoseAction', 'alreadyKnows', 'evidence', 'decision', 'reason', 'openTopics', 'text'], properties: {
   whoseAction: { type: ['string', 'null'] }, alreadyKnows: { enum: ['yes', 'no', 'unknown'] }, evidence: stringArray, decision: { enum: ['speak', 'silent'] }, reason: { type: 'string' }, openTopics: stringArray, text: { type: 'string' },
 } } };
 
-/**
- * COMMITTED CHANGE proposition: record every judgement; apply only evidenced, delegated
- * conclusions, preserve old versions, and contact only changed recipients. SOUND:
- * two model judgements separate interpretation from code-owned forecast and authority.
- * Verification: coordination.test.ts exercises silence, forecast, commits, steering,
- * authority, repeats, invalid output, stale snapshots and the automation boundary.
- */
+/** Fixed operations preserve task identity; authority and calculations stay in code. */
 export class Coordinator {
   private queue: Promise<unknown> = Promise.resolve();
   constructor(private store: LedgerStore, private llm: LlmProvider, private connector: Pick<SessionConnector, 'sendUpdate'>, private options: CoordinatorOptions) {}
@@ -83,93 +111,100 @@ export class Coordinator {
     const forecastInputs = events.filter(e => ['plan_committed', 'availability_updated', 'estimate_updated', 'goal_set', 'task_checked'].includes(e.type)).map(e => e.id);
     const current = forecastFromState(state, now);
     const facts = { messageId, planVersion: version, now, messages: state.messages, plan: state.plan, members: [...state.members.values()], activeTurns: [...state.activeTurn], availability: [...state.availability], estimates: [...state.estimates], goal: state.goal, currentForecast: current, forecastInputIds: forecastInputs, decisions: [...state.decisions.values()], pendingAuthority: [...state.pendingAuthority.values()], previousSpeech: prior, openTopics: state.openTopics };
-    const interpretation = await this.call<CoordinationInterpretation>(interpretationTool, facts, v => {
-      if (typeof v.category !== 'string' || typeof v.conclusion !== 'boolean' || typeof v.summary !== 'string' || !strings(v.sourceMessageIds) || !v.sourceMessageIds.every(id => state.messages.some(m => m.messageId === id)) || !strings(v.changeKinds) || !v.changeKinds.every(k => kinds.includes(k as ChangeKind)) || !strings(v.drop) || !strings(v.conflicts) || !v.conflicts.every(id => state.decisions.has(id))) return false;
-      if (v.tasks !== undefined && (!Array.isArray(v.tasks) || !v.tasks.every(t => t && typeof t.id === 'string' && typeof t.title === 'string' && state.members.has(t.assignee) && strings(t.dependsOn) && strings(t.handoffConditions)) || new Set(v.tasks.map(t => t.id)).size !== v.tasks.length)) return false;
-      if (v.availability !== undefined && (!Array.isArray(v.availability) || !v.availability.every(a => a && state.members.get(a.memberId)?.kind === 'human' && Number.isFinite(a.weeklyHours) && a.weeklyHours >= 0))) return false;
-      return (v.deadline === undefined || (typeof v.deadline === 'string' && Number.isFinite(Date.parse(v.deadline)))) && (v.goalText === undefined || typeof v.goalText === 'string');
-    });
+    const interpretation = await this.call<CoordinationInterpretation>(interpretationTool(state), facts, v =>
+      Object.keys(v).every(k => ['category', 'summary', 'ops', 'conflicts'].includes(k)) && typeof v.category === 'string' && typeof v.summary === 'string' && Array.isArray(v.ops) && v.ops.every(op => validOp(op, state)) && strings(v.conflicts) && v.conflicts.every(id => state.decisions.has(id)));
+    const ops = interpretation?.ops ?? [];
     const candidate = structuredClone(state);
-    const tasks = interpretation?.tasks ?? state.plan?.tasks ?? [];
-    if (candidate.plan) candidate.plan.tasks = tasks;
-    for (const spec of tasks) { const task = candidate.tasks.get(spec.id); if (task?.status === 'cancelled') task.status = 'waiting'; }
-    for (const a of interpretation?.availability ?? []) candidate.availability.set(a.memberId, a.weeklyHours);
-    if (candidate.goal && interpretation?.deadline) candidate.goal.deadline = interpretation.deadline;
+    if (candidate.plan) candidate.plan.tasks = applyOps(candidate.plan.tasks, ops);
+    for (const op of ops) {
+      if (op.type === 'set_availability') candidate.availability.set(op.memberId, op.weeklyHours);
+      if (op.type === 'set_deadline' && candidate.goal) candidate.goal.deadline = op.date;
+    }
     const proposed = forecastFromState(candidate, now);
+    const assessed = ops.map(op => ({ op, ...opAuthority(state, op) }));
+    const applied = assessed.filter(a => a.allowed).map(a => a.op).filter(op => {
+      if (op.type === 'set_availability') return state.availability.get(op.memberId) !== op.weeklyHours;
+      if (op.type === 'set_deadline') return state.goal?.deadline !== op.date;
+      if (op.type === 'change_goal') return state.goal?.text !== op.text;
+      return JSON.stringify(applyOps(state.plan?.tasks ?? [], [op])) !== JSON.stringify(state.plan?.tasks ?? []);
+    });
+    const pending = assessed.filter(a => !a.allowed);
+    const tasks = applyOps(state.plan?.tasks ?? [], applied);
     const diff = diffPlans(state.plan?.tasks, tasks);
-    const shiftedTaskIds = current.ok && proposed.ok ? proposed.tasks.filter(t => {
-      const old = current.tasks.find(p => p.taskId === t.taskId);
-      return old && (JSON.stringify(old.min) !== JSON.stringify(t.min) || JSON.stringify(old.max) !== JSON.stringify(t.max));
-    }).map(t => t.taskId) : [];
-    const affected = [...new Set([...affectedMembers(state, diff), ...(interpretation?.availability ?? []).map(a => a.memberId), ...tasks.filter(t => shiftedTaskIds.includes(t.id)).map(t => t.assignee)])];
-    const sources = state.messages.filter(m => interpretation?.sourceMessageIds.includes(m.messageId));
-    const participants = new Set(sources.map(m => m.authorId));
+    const planChanged = diff.changed.length > 0;
+    const affected = affectedMembers(state, diff);
+    const participants = new Set(state.messages.filter(m => state.members.get(m.authorId)?.kind === 'human').map(m => m.authorId));
     const absent = affected.filter(id => !participants.has(id));
-    // Infer authority categories from actual changes too: model labels cannot grant authority.
-    const changes = new Set<ChangeKind>(interpretation?.changeKinds ?? []);
-    if (diff.removed.length) changes.add('scope_reduce');
-    if (diff.added.length) changes.add('scope_add');
-    for (const c of diff.changed) {
-      if (c.fields.includes('assignee')) changes.add(state.members.get(c.next.assignee)?.kind === 'human' ? 'human_commitment' : 'reassign_agent');
-      if (c.fields.includes('dependsOn')) changes.add('reorder');
-      if (c.fields.includes('title')) { changes.add('scope_reduce'); changes.add('scope_add'); }
-      if (c.prev.handoffConditions.some(x => !c.next.handoffConditions.includes(x))) changes.add('scope_reduce');
-      if (c.next.handoffConditions.some(x => !c.prev.handoffConditions.includes(x))) changes.add('scope_add');
-    }
-    if (interpretation?.availability?.length) changes.add('human_commitment');
-    if (interpretation?.deadline !== undefined) changes.add('deadline_change');
-    if (interpretation?.goalText !== undefined) changes.add('goal_change');
-    const approvers = new Set<string>();
-    if (state.goal) for (const kind of changes) {
-      const people = kind === 'human_commitment' ? [...new Set([...(interpretation?.availability ?? []).map(a => a.memberId), ...diff.changed.filter(c => c.fields.includes('assignee') && state.members.get(c.next.assignee)?.kind === 'human').map(c => c.next.assignee)])] : [undefined];
-      if (!people.length) approvers.add(state.goal.decider);
-      for (const person of people) { const approval = whoApproves({ kind, affectedPerson: person }, state.goal); if (approval.by === 'person') approvers.add(approval.personId); }
-    }
-    // Surface potentially overlapping confirmed decisions without pretending code can
-    // settle a semantic contradiction. The model identifies the specific conflict.
-    const overlappingDecisions = [...state.decisions.values()].filter(d => d.changeKinds.some(k => changes.has(k)));
-    const impact = { current, proposed, deltaDays: current.ok && proposed.ok ? { min: proposed.days.min - current.days.min, max: proposed.days.max - current.days.max } : null, diff, affected, absent, conflicts: interpretation?.conflicts ?? [], overlappingDecisions, approvers: [...approvers], forecastInputIds: forecastInputs };
-    const validIds = new Set([...events.map(e => e.id), ...state.messages.map(m => m.messageId)]);
-    let judgement = interpretation ? await this.call<CoordinationJudgement>(judgementTool, { ...facts, interpretation, impact }, v => (v.whoseAction === null || typeof v.whoseAction === 'string') && ['yes', 'no', 'unknown'].includes(String(v.alreadyKnows)) && strings(v.evidence) && v.evidence.every(id => validIds.has(id)) && ['speak', 'silent'].includes(String(v.decision)) && typeof v.reason === 'string' && strings(v.openTopics) && typeof v.text === 'string' && (v.decision !== 'speak' || v.text.trim().length > 0)) : undefined;
+    const impact = { current, proposed, deltaDays: current.ok && proposed.ok ? { min: proposed.days.min - current.days.min, max: proposed.days.max - current.days.max } : null, diff, affected, absent, operations: assessed, conflicts: interpretation?.conflicts ?? [] };
+    const lastAvailability = events.findLastIndex(e => e.type === 'availability_updated');
+    const beforeAvailability = lastAvailability >= 0 ? forecastFromState(project(events.slice(0, lastAvailability)), now) : undefined;
+    const factList = [
+      ...state.messages.map(m => ({ id: `msg:${m.messageId}`, description: '기록된 사실', value: m })),
+      ...[...state.decisions.values()].map(d => ({ id: `decision:${d.decisionId}`, description: '기록된 사실', value: d })),
+      { id: 'forecast:current', description: '현재 계획의 계산 결과', value: current },
+      { id: 'forecast:candidate', description: '후보 연산 적용 시 계산 결과와 현재 대비 일수 차이', value: { forecast: proposed, deltaDays: impact.deltaDays } },
+      ...(beforeAvailability?.ok ? [{ id: 'forecast:before_availability', description: '마지막 가용 시간 기록 직전의 계획을 현재 시각으로 계산한 결과', value: beforeAvailability }] : []),
+      ...(state.plan?.tasks ?? []).map(t => ({ id: `task:${t.id}`, description: '현재 작업', value: t })),
+      ...[...state.availability].map(([id, hours]) => ({ id: `availability:${id}`, description: '주간 가용 시간', value: hours })),
+      ...absent.map(id => ({ id: `absent:${id}`, description: '변경 영향이 있지만 대화에 없는 담당자', value: id })),
+    ];
+    const validIds = new Set(factList.map(f => f.id));
+    const tool = structuredClone(judgementTool);
+    (tool.inputSchema.properties as Record<string, unknown>).evidence = { type: 'array', items: { type: 'string', enum: [...validIds] } };
+    let judgement = interpretation ? await this.call<CoordinationJudgement>(tool, { ...facts, factList, interpretation, impact }, v => (v.whoseAction === null || typeof v.whoseAction === 'string') && ['yes', 'no', 'unknown'].includes(String(v.alreadyKnows)) && strings(v.evidence) && v.evidence.every(id => validIds.has(id)) && ['speak', 'silent'].includes(String(v.decision)) && typeof v.reason === 'string' && strings(v.openTopics) && typeof v.text === 'string' && (v.decision !== 'speak' || v.text.trim().length > 0)) : undefined;
+    const validJudgement = !!judgement;
     judgement ??= { whoseAction: null, alreadyKnows: 'unknown', evidence: [], decision: 'silent', reason: '판단 불가', openTopics: state.openTopics, text: '' };
+    judgement.openTopics = [...new Set([...judgement.openTopics, ...pending.map(a => `${describeOp(a.op)} — ${a.personId ?? '결정권자'} 확인 필요`)])];
     if (judgement.decision === 'speak' && (!judgement.whoseAction?.trim() || judgement.alreadyKnows === 'yes' || !judgement.evidence.length)) judgement = { ...judgement, decision: 'silent', reason: '행동 변화 또는 새로운 근거 없음' };
     if (judgement.decision === 'speak' && prior.some(p => p.type === 'pm_considered' && JSON.stringify([...p.payload.evidence].sort()) === JSON.stringify([...judgement!.evidence].sort()))) judgement = { ...judgement, decision: 'silent', reason: '이미 전달한 근거' };
-    const conclusion = interpretation?.conclusion && changes.size > 0 && sources.some(m => m.authorId === state.goal?.decider || affected.includes(m.authorId));
-    if (interpretation?.conclusion && !conclusion) judgement = { ...judgement, decision: 'silent', reason: '결론의 당사자 근거 없음' };
-    if (!proposed.ok && proposed.reasons.some(r => r.kind === 'cycle' || r.kind === 'unknown_dependency')) judgement = { ...judgement, decision: 'silent', reason: '후보 계획의 선후 관계 오류' };
-    let post: CoordinationResult['posts'][number] | undefined;
+    let post: CoordinationResult['posts'][number] | undefined = judgement.decision === 'speak' ? { text: judgement.text, kind: 'answer' } : undefined;
     const append: NewLedgerEvent[] = [];
     const changeId = `${key}:change`;
     const deliveries: { agentId: string; taskId: string; input: UpdateInstructionsInput }[] = [];
-    if (judgement.decision === 'speak') {
-      post = { text: judgement.text, kind: 'answer' };
-      if (conclusion && interpretation && state.plan && state.goal) {
-        if (approvers.size) {
-          post = { text: `${[...approvers].join(', ')}님, ${interpretation.summary} 변경을 승인하시겠어요?`, kind: 'ask' };
-          for (const personId of approvers) append.push(make('authority_requested', { requestId: `${changeId}:${personId}`, personId, changeKinds: [...changes], text: post.text }, `authority:${personId}`));
-        } else {
-          post = { text: `정리하면: ${interpretation.summary}`, kind: 'summary' };
-          append.push(make('decision_recorded', { decisionId: changeId, summary: interpretation.summary, sourceMessageIds: interpretation.sourceMessageIds, approvedBy: 'pm', changeKinds: [...changes] }));
-          append.push(make('plan_committed', { version: version + 1, basedOn: version, tasks, reason: interpretation.summary, approvedBy: 'pm', sourceMessageIds: interpretation.sourceMessageIds }, 'plan_committed', true));
-          for (const id of absent.filter(id => state.members.get(id)?.kind === 'human')) {
-            const own = [...diff.added, ...diff.removed, ...diff.changed.flatMap(c => [c.prev, c.next]), ...tasks.filter(t => shiftedTaskIds.includes(t.id))].filter(t => t.assignee === id);
-            const details = own.map(t => {
-              const next = tasks.find(n => n.id === t.id && n.assignee === id);
-              return next ? `${next.title}: ${next.handoffConditions.join(', ') || '인계 조건 없음'}` : `${t.title}: 담당 작업에서 제외`;
-            });
-            const text = `${id}님, 계획 v${version + 1}: ${[...new Set(details)].join('; ')}`;
-            append.push(make('change_notified', { changeId, planVersion: version + 1, recipientId: id, text, via: 'channel' }, `notify:${id}`));
-            append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:speech:${id}`, text, kind: 'nudge' }, `speech:${id}`, true));
-          }
-          for (const id of affected.filter(id => state.members.get(id)?.kind === 'agent' && !state.activeTurn.has(id))) {
-            append.push(make('change_notified', { changeId, planVersion: version + 1, recipientId: id, text: JSON.stringify({ summary: interpretation.summary, tasks: tasks.filter(t => t.assignee === id), drop: interpretation.drop }), via: 'next_turn' }, `notify:${id}`));
-          }
-          for (const [agentId, taskId] of state.activeTurn) {
-            if (!diff.changed.some(c => c.taskId === taskId) && !diff.removed.some(t => t.id === taskId)) continue;
-            const removed = diff.removed.find(t => t.id === taskId);
-            deliveries.push({ agentId, taskId, input: { updateId: `${changeId}:${agentId}`, fromVersion: version, toVersion: version + 1, keep: diff.unchanged.filter(t => t.assignee === agentId).map(t => t.title), change: removed ? ['작업 중단; 기존 산출물은 보존하되 다음 인계에서 제외'] : diff.changed.filter(c => c.taskId === taskId).map(c => JSON.stringify(c.next)), drop: [...new Set([...interpretation.drop, ...(removed ? [removed.title] : [])])], reason: interpretation.summary } });
-          }
+    const summary = applied.map(describeOp).join(', ');
+    const sourceMessageIds = [...new Set(applied.flatMap(op => op.sourceMessageIds))];
+    const dropFor = (taskId: string) => applied.filter((op): op is Extract<PlanOp, { type: 'exclude_scope' }> => op.type === 'exclude_scope' && op.taskId === taskId).map(op => op.item);
+    for (const [index, a] of pending.entries()) {
+      if (judgement.decision !== 'speak' || !a.personId) continue;
+      const text = `${a.personId}님, ${describeOp(a.op)} 변경을 승인하시겠어요?`;
+      append.push(make('authority_requested', { requestId: `${changeId}:${index}:${a.personId}`, operationKey: operationKey(a.op), personId: a.personId, changeKinds: [a.kind], text }, `authority:${index}`));
+      append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:ask:${index}`, text, kind: 'ask' }, `ask:${index}`, true));
+      post = undefined;
+    }
+    if (validJudgement && applied.length && state.goal && state.plan) {
+      for (const request of state.pendingAuthority.values()) {
+        if (applied.some(op => request.operationKey === operationKey(op) && state.messages.some(m => op.sourceMessageIds.includes(m.messageId) && m.authorId === request.personId))) {
+          append.push(make('authority_granted', { requestId: request.requestId, personId: request.personId, granted: true }, `granted:${request.requestId}`));
         }
+      }
+      for (const [index, op] of applied.entries()) {
+        if (op.type === 'set_availability') append.push(make('availability_updated', { memberId: op.memberId, weeklyHours: op.weeklyHours }, `availability:${index}`));
+      }
+      const goal = { ...state.goal };
+      for (const op of applied) {
+        if (op.type === 'set_deadline') goal.deadline = op.date;
+        if (op.type === 'change_goal') goal.text = op.text;
+      }
+      const goalChanged = JSON.stringify(goal) !== JSON.stringify(state.goal);
+      if (goalChanged) append.push(make('goal_set', goal, 'goal', true));
+      if (planChanged || goalChanged) {
+        post = { text: `정리하면: ${summary}`, kind: 'summary' };
+        judgement = { ...judgement, decision: 'speak', whoseAction: affected.join(', ') || state.goal.decider, alreadyKnows: 'no', evidence: sourceMessageIds.map(id => `msg:${id}`), reason: '확인된 변경을 계획과 담당자에게 반영', text: post.text };
+        append.push(make('decision_recorded', { decisionId: changeId, summary, sourceMessageIds, approvedBy: 'pm', changeKinds: [...new Set(applied.map(op => opAuthority(state, op).kind))] }));
+        if (planChanged) append.push(make('plan_committed', { version: version + 1, basedOn: version, tasks, reason: summary, approvedBy: 'pm', sourceMessageIds }, 'plan_committed', true));
+      }
+      for (const id of absent.filter(id => state.members.get(id)?.kind === 'human')) {
+        const details = diff.changed.filter(c => c.prev.assignee === id || c.next.assignee === id).map(c => `${c.next.title}: ${c.next.assignee === id ? c.next.handoffConditions.join(', ') : '담당 작업에서 제외'}`);
+        const text = `${id}님, 계획 v${version + 1}: ${details.join('; ')}`;
+        append.push(make('change_notified', { changeId, planVersion: version + 1, recipientId: id, text, via: 'channel' }, `notify:${id}`));
+        append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:speech:${id}`, text, kind: 'nudge' }, `speech:${id}`, true));
+      }
+      for (const id of affected.filter(id => state.members.get(id)?.kind === 'agent' && !state.activeTurn.has(id))) {
+        append.push(make('change_notified', { changeId, planVersion: version + 1, recipientId: id, text: JSON.stringify({ summary, tasks: tasks.filter(t => t.assignee === id), drop: tasks.filter(t => t.assignee === id).flatMap(t => dropFor(t.id)) }), via: 'next_turn' }, `notify:${id}`));
+      }
+      for (const [agentId, taskId] of state.activeTurn) {
+        if (!diff.changed.some(c => c.taskId === taskId)) continue;
+        deliveries.push({ agentId, taskId, input: { updateId: `${changeId}:${agentId}`, fromVersion: version, toVersion: version + 1, keep: diff.unchanged.filter(t => t.assignee === agentId).map(t => t.title), change: diff.changed.filter(c => c.taskId === taskId).map(c => JSON.stringify(c.next)), drop: dropFor(taskId), reason: summary } });
       }
     }
     const tx = await this.store.transaction(this.options.projectId, fresh => {
@@ -196,6 +231,7 @@ export class Coordinator {
     if (!tx.result) return { posts: [], events: [] };
     const result: CoordinationResult = { posts: post ? [post] : [], events: tx.appended };
     for (const e of tx.appended as AnyEvent[]) if (e.type === 'change_notified' && e.payload.via === 'channel') result.posts.push({ text: e.payload.text, kind: 'nudge' });
+    for (const e of tx.appended as AnyEvent[]) if (e.type === 'pm_spoke' && e.idempotencyKey?.startsWith(`${key}:ask:`)) result.posts.push({ text: e.payload.text, kind: 'ask' });
     if (tx.appended.some(e => e.type === 'action_limit_reached')) result.posts.push({ text: '자동 행동 상한에 도달했습니다. 계속하려면 재개해 주세요.', kind: 'ask' });
     for (const delivery of deliveries) {
       let sent = false;

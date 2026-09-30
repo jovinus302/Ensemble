@@ -7,3 +7,4 @@ export * from "./action-limit.ts";
 export * from "./forecast.ts";
 export * from "./forecast-state.ts";
 export * from "./plan-diff.ts";
+export * from "./plan-ops.ts";

@@ -65,11 +65,11 @@ it('scene 2: insufficient draft requests revision, supplemented draft starts pro
 
 const interpretation = (stage: number): Reply => request => {
   const { facts } = JSON.parse(request.messages[0]!.content);
-  return { category: stage === 1 ? 'question' : 'scope', conclusion: stage === 3, sourceMessageIds: stage === 3 ? facts.messages.filter((m: { authorId: string }) => ['designer', 'owner'].includes(m.authorId)).slice(-2).map((m: { messageId: string }) => m.messageId) : [facts.messageId], summary: '초안으로 계속하고 결제는 제외합니다', changeKinds: stage === 3 ? ['scope_reduce'] : [], drop: stage === 3 ? ['결제'] : [], conflicts: [], ...(stage === 1 ? { availability: [{ memberId: 'designer', weeklyHours: 5 }] } : {}), ...(stage === 3 ? { tasks: sceneTasks.map(t => ({ ...t, handoffConditions: t.handoffConditions.filter(c => c !== '결제') })) } : {}) };
+  return { category: stage === 1 ? 'question' : 'scope', summary: '초안으로 계속하고 결제는 제외합니다', conflicts: [], ops: stage === 0 ? [{ type: 'set_availability', memberId: 'designer', weeklyHours: 5, sourceMessageIds: [facts.messages.find((m: { authorId: string }) => m.authorId === 'designer').messageId] }] : stage === 3 ? sceneTasks.filter(t => t.handoffConditions.includes('결제')).map(t => ({ type: 'exclude_scope', taskId: t.id, item: '결제', sourceMessageIds: [facts.messageId] })) : [] };
 };
 const judgement = (stage: number): Reply => request => {
   const { facts } = JSON.parse(request.messages[0]!.content);
-  return { whoseAction: stage === 0 || stage === 2 ? null : '담당자가 다음 작업 범위를 결정', alreadyKnows: 'no', evidence: stage === 1 ? facts.impact.forecastInputIds : [facts.messageId], decision: stage === 0 || stage === 2 ? 'silent' : 'speak', reason: stage === 0 || stage === 2 ? '사람들이 조율 중' : '계산과 합의를 다음 작업에 반영', openTopics: [], text: stage === 1 ? `가용 시간 변경 시 종료 범위가 ${facts.impact.deltaDays.max}일 늦어집니다.` : '정리하면: 결제는 제외합니다.' };
+  return { whoseAction: stage === 0 || stage === 2 ? null : '담당자가 다음 작업 범위를 결정', alreadyKnows: 'no', evidence: stage === 1 ? ['forecast:current', 'forecast:before_availability'] : [`msg:${facts.messageId}`], decision: stage === 0 || stage === 2 ? 'silent' : 'speak', reason: stage === 0 || stage === 2 ? '사람들이 조율 중' : '계산과 합의를 다음 작업에 반영', openTopics: [], text: stage === 1 ? `가용 시간 변경 시 종료 범위가 ${facts.factList.find((f: { id: string }) => f.id === 'forecast:current').value.days.max - facts.factList.find((f: { id: string }) => f.id === 'forecast:before_availability').value.days.max}일 늦어집니다.` : '정리하면: 결제는 제외합니다.' };
 };
 it('scene 3: silence, forecast answer, then summary/v2/targeted notifications and steer', async () => {
   const f = await setup(3, [0, 1, 2, 3].flatMap(stage => [interpretation(stage), judgement(stage)]));
