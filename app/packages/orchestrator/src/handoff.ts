@@ -4,6 +4,7 @@ import { particle } from './channel-text.ts';
 // and becomes either task_checked or a concrete revision request.
 import { checkResult, handoffBlockers, requestRevision, type EventContext, type EventPayloads, type Id, type NewLedgerEvent, type ProjectState } from '@ensemble/core';
 import type { LlmProvider, LlmRequest, ToolSpec } from '@ensemble/llm';
+import { taskScope } from './context.ts';
 
 export type HandoffReview = EventPayloads['handoff_reviewed'];
 export type SubmittedResult = EventPayloads['result_submitted'];
@@ -18,6 +19,8 @@ export interface JudgeInput {
   decisions: Decision[];
   llm: LlmProvider;
   model: string;
+  /** What a person asked for on a checked result they reopened (M11 T3): judged like the conditions. */
+  requests?: string[];
 }
 export type CitationFailure = NonNullable<HandoffReview['citationFailures']>[number];
 /**
@@ -42,6 +45,7 @@ const reviewTool: ToolSpec = {
         file: { type: 'string', description: '근거가 있는 결과 파일 경로' },
         quote: { type: 'string', description: '근거 문장을 결과 파일에서 그대로 인용' },
         missing: { type: 'string', description: '미충족이면 무엇을 보완해야 하는지 한 문장' },
+        excluded: { type: 'boolean', description: '조건 전체가 제외 범위(또는 한정 범위 밖)만 요구해 요구하지 않는 조건이면 true. 금지 제약에는 쓰지 않는다.' },
       } } },
       decisionConflicts: { type: 'array', items: { type: 'object', required: ['decisionId', 'detail'], properties: {
         decisionId: { type: 'string' }, detail: { type: 'string' },
@@ -57,6 +61,16 @@ const SYSTEM = [
   '- 결과가 확정 결정과 어긋나면 decisionConflicts에 결정 ID와 어긋난 내용을 쓴다.',
   `- 반드시 ${REVIEW_TOOL} 도구로만 답한다.`,
 ].join('\n');
+/** Added only when people cut the task's scope: the conditions stay as written and the cut is judged here (M11 T2). */
+const SCOPE_RULES = [
+  '## 범위 제외·한정 규칙',
+  '- 사람이 정한 제외 범위(또는 한정 범위 밖)를 요구하는 조건이나 그 부분은 요구하지 않은 것으로 본다. 그 부분이 결과에 없어도 미충족이 아니다.',
+  '- 조건의 나머지 부분은 그대로 판단한다. 예: 조건이 "가입·시간 선택·결제 화면"이고 결제가 제외면 가입·시간 선택은 여전히 결과에 있어야 한다.',
+  '- 조건 전체가 제외 범위(또는 한정 범위 밖)만 요구하면 met=true, excluded=true로 두고 quote는 비워 둔다.',
+  '- "…하지 않는다", "…없음", "…아님", "금지" 같은 금지 제약은 범위 제외와 관계없이 그대로 적용한다. 금지 제약에는 excluded를 쓰지 않는다.',
+].join('\n');
+/** A condition that forbids something holds whatever scope was cut; the model may never waive it. */
+const PROHIBITION = /(금지|하지\s*않|않는다|않음|않을|아님|아니다|없음|없어야|없다|없이|말\s*것)/;
 
 export const normalizeCitation = (text: string) => text.normalize('NFC')
   .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
@@ -119,15 +133,39 @@ export function quoteInText(quote: string, text: string): boolean {
   return true;
 }
 
-/** How a revision item names a condition: its number and a short name, never the whole text again. */
-const shortName = (text: string) => (text.length <= 20 ? text : `${text.slice(0, 18).trimEnd()}…`);
+/**
+ * How a revision item names a condition: its number and a short name, never the whole text again.
+ * A cut never leaves a bracket open inside the label's own parentheses (QA4 Z7).
+ */
+const shortName = (text: string) => {
+  if (text.length <= 20) return text;
+  let cut = text.slice(0, 18).trimEnd();
+  const open: number[] = [];
+  for (let i = 0; i < cut.length; i++) {
+    if ('([{「『“'.includes(cut[i]!)) open.push(i);
+    else if (')]}」』”'.includes(cut[i]!)) open.pop();
+  }
+  if (open.length) cut = open[0]! >= 4 ? cut.slice(0, open[0]).trimEnd() : cut.replace(/[()[\]{}「」『』“”]/g, '').trimEnd();
+  return `${cut}…`;
+};
+
+/** Core's handoff blockers in words people read in a revision request (they are shown in the channel). */
+function blockerText(blocker: string): string {
+  if (/^Stale result/.test(blocker)) return '결과가 작업 명세가 바뀌기 전에 만들어졌습니다. 바뀐 명세에 맞춰 결과를 다시 제출해 주세요.';
+  if (/not yet acknowledged/.test(blocker)) return '전달한 변경을 아직 확인(acknowledge_update)하지 않은 채 제출한 결과입니다. 변경을 확인한 뒤 결과를 다시 제출해 주세요.';
+  if (/acknowledgement rejected/.test(blocker)) return '전달한 변경의 확인이 올바르지 않았습니다. 변경을 다시 확인한 뒤 결과를 다시 제출해 주세요.';
+  const version = /based on v(\d+), before acknowledged v(\d+)/.exec(blocker);
+  if (version) return `결과가 계획 v${version[1]} 기준이라 확인한 변경(v${version[2]})이 빠져 있습니다. v${version[2]} 기준으로 다시 제출해 주세요.`;
+  if (/must be submitted/.test(blocker)) return '이 결과는 지금 검토할 제출 상태가 아닙니다.';
+  return /[가-힣]/.test(blocker) ? blocker : '결과를 지금 인계 검토할 수 없는 상태입니다.';
+}
 export function conditionLabel(index: number, condition: string): string {
   return `조건 ${index + 1}(${shortName(condition)})`;
 }
 
 /** Code-only checks that need no model: result files present, result current, no unconfirmed update. */
 export function structuralProblems(state: ProjectState, result: SubmittedResult, content: ResultContent): string[] {
-  const problems = handoffBlockers(state, result.taskId, result.resultId);
+  const problems = handoffBlockers(state, result.taskId, result.resultId).map(blockerText);
   if (result.artifactIds.length === 0) problems.push(`제출한 결과에 결과 파일이 없습니다. 결과 파일을 첨부해 다시 제출해 주세요.`);
   for (const path of result.artifactIds) {
     if (typeof content[path] !== 'string') problems.push(`결과 파일 ${path}${particle(path)} 찾을 수 없습니다. 파일을 작업 폴더에 두고 다시 제출해 주세요.`);
@@ -138,19 +176,23 @@ export function structuralProblems(state: ProjectState, result: SubmittedResult,
 function buildRequest(input: JudgeInput, conditions: string[]): LlmRequest {
   const { result, resultContent, decisions, state, model } = input;
   const files = result.artifactIds.map((path) => `### 파일: ${path}\n${resultContent[path] ?? ''}`);
+  const { exclusions, limits } = taskScope(state.tasks.get(result.taskId)?.spec ?? {});
   const body = [
     // The IDs keep a proxy response cache from reusing a verdict for a different result.
     `taskId: ${result.taskId} · resultId: ${result.resultId} · planVersion: ${result.planVersion}`,
     `작업: ${state.tasks.get(result.taskId)?.spec.title ?? result.taskId}`,
     '## 인계 조건', ...conditions.map((condition, i) => `${i + 1}. ${condition}`),
+    ...(exclusions.length ? ['## 제외 범위 (요구하지 않음)', ...exclusions.map((item) => `- ${item}`)] : []),
+    ...(limits.length ? ['## 한정 범위 (여기까지만 요구)', ...limits.map((item) => `- ${item}`)] : []),
     '## 확정 결정', ...(decisions.length ? decisions.map((d) => `- ${d.decisionId}: ${d.summary}`) : ['- 없음']),
     '## 결과 요약', result.summary,
     '## 결과 파일', ...files,
   ].join('\n');
-  return { model, system: SYSTEM, messages: [{ role: 'user', content: body }], tools: [reviewTool], forceTool: REVIEW_TOOL, maxTokens: 2000 };
+  const system = exclusions.length || limits.length ? `${SYSTEM}\n${SCOPE_RULES}` : SYSTEM;
+  return { model, system, messages: [{ role: 'user', content: body }], tools: [reviewTool], forceTool: REVIEW_TOOL, maxTokens: 2000 };
 }
 
-interface ConditionVerdict { index: number; met: boolean; file?: string; quote?: string; missing?: string }
+interface ConditionVerdict { index: number; met: boolean; file?: string; quote?: string; missing?: string; excluded?: boolean }
 interface ModelVerdict { conditions: ConditionVerdict[]; conflicts: { decisionId: string; detail: string }[] }
 
 function parseVerdict(input: Record<string, unknown> | undefined): ModelVerdict | null {
@@ -161,7 +203,7 @@ function parseVerdict(input: Record<string, unknown> | undefined): ModelVerdict 
     const item = raw as Record<string, unknown>;
     if (!Number.isInteger(item.index) || typeof item.met !== 'boolean') return null;
     const text = (key: string) => (typeof item[key] === 'string' ? item[key] as string : undefined);
-    conditions.push({ index: item.index as number, met: item.met, file: text('file'), quote: text('quote'), missing: text('missing') });
+    conditions.push({ index: item.index as number, met: item.met, file: text('file'), quote: text('quote'), missing: text('missing'), ...(item.excluded === true ? { excluded: true } : {}) });
   }
   const conflicts = Array.isArray(input.decisionConflicts) ? input.decisionConflicts.flatMap((raw) => {
     const item = raw as Record<string, unknown> | null;
@@ -226,22 +268,32 @@ function rejudgeRequest(request: LlmRequest, failed: { index: number; condition:
   return { ...request, messages: [{ ...first!, content: `${first!.content}\n${note}` }, ...rest] };
 }
 
+/** What a person can do about a review that could not finish (M11 T1): both are buttons and chat requests. */
+const RECOVERY = "'다시 검토'로 검토를 다시 돌리거나, 결정권자가 결과를 보고 '이대로 확인'할 수 있어요.";
+const JUDGE_FAILED = `결과 인계 판단을 마치지 못했습니다(결과 내용이 아니라 검토 과정의 문제예요). ${RECOVERY}`;
+
 export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
   const { state, result, resultContent, decisions } = input;
   const base = { taskId: result.taskId, resultId: result.resultId };
   const problems = structuralProblems(state, result, resultContent);
   if (problems.length) return { ok: true, llmCalls: 0, review: { ...base, verdict: 'insufficient', met: [], missing: problems, evidence: [] } };
-  const conditions = state.tasks.get(result.taskId)?.spec.handoffConditions ?? [];
+  const conditions = [...(state.tasks.get(result.taskId)?.spec.handoffConditions ?? []), ...(input.requests ?? [])];
   if (!conditions.length && !decisions.length) return { ok: true, llmCalls: 0, review: { ...base, verdict: 'sufficient', met: [], missing: [], evidence: [] } };
 
   const request = buildRequest(input, conditions);
   const first = await askModel(input, request);
   let llmCalls = first.calls;
-  if (!first.verdict) return { ok: false, llmCalls, error: `결과 인계 판단을 마치지 못했습니다. 사람이 확인해 주세요.` };
+  if (!first.verdict) return { ok: false, llmCalls, error: JUDGE_FAILED };
   const items = new Map(first.verdict.conditions.map((entry) => [entry.index, entry]));
-  const check = (i: number) => {
+  const { exclusions, limits } = taskScope(state.tasks.get(result.taskId)?.spec ?? {});
+  const scoped = exclusions.length > 0 || limits.length > 0;
+  // A condition that only asks for what people cut is not required; a prohibition never is waived.
+  const waived = (i: number) => { const item = items.get(i + 1); return !!(scoped && item?.met && item.excluded && !PROHIBITION.test(conditions[i]!)); };
+  const check = (i: number): CitationCheck | null => {
     const item = items.get(i + 1);
-    return item?.met ? checkCitation(item.file, item.quote, resultContent, result.artifactIds) : null;
+    if (!item?.met || waived(i)) return null;
+    if (item.excluded && !item.quote?.trim()) return { kind: 'technical', file: item.file ?? '', reason: scoped ? '금지 제약이라 범위 제외로 면제할 수 없음 — 결과에서 근거를 인용해야 함' : '제외 범위가 없는데 조건을 면제함' };
+    return checkCitation(item.file, item.quote, resultContent, result.artifactIds);
   };
   const citationFailures: CitationFailure[] = [];
   const record = (i: number, c: CitationCheck, prefix = '') => {
@@ -266,6 +318,11 @@ export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
   const unverified: string[] = [];
   conditions.forEach((condition, i) => {
     const item = items.get(i + 1);
+    if (waived(i)) {
+      met.push(condition);
+      evidence.push(`조건 ${i + 1}은 제외·한정 범위만 요구해 요구하지 않음: ${condition}`);
+      return;
+    }
     const c = check(i);
     // The model's "met" counts only when its quote is really in a result file.
     if (c?.kind === 'verified') {
@@ -292,7 +349,7 @@ export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
   // With a real gap the revision covers it and the unverified condition is judged again on resubmission;
   // with none, an unverifiable "met" is neither a pass nor the person's fault, so a person decides.
   if (unverified.length && !missing.length) {
-    return { ok: false, llmCalls, ...failures, error: `결과 인계 판단 중 인계 조건 ${unverified.map((c) => `"${c}"`).join(', ')}의 근거 인용을 결과 파일에 연결하지 못했습니다. 결과 내용의 문제가 아니라 확인 과정의 문제이니 사람이 결과를 확인해 주세요.` };
+    return { ok: false, llmCalls, ...failures, error: `결과 인계 판단 중 ${unverified.map((c) => conditionLabel(conditions.indexOf(c), c)).join(', ')}의 근거 인용을 결과 파일에 연결하지 못했습니다. 결과 내용이 아니라 검토 과정의 문제예요. ${RECOVERY}` };
   }
   return { ok: true, llmCalls, review: { ...base, verdict: missing.length || unverified.length ? 'insufficient' : 'sufficient', met, missing, evidence, ...failures } };
 }
@@ -302,7 +359,7 @@ export const reviewKey = (resultId: Id) => `handoff:${resultId}`;
 
 /** The review record plus its consequence; re-checks blockers against the state it is appended to. */
 export function handoffEvents(state: ProjectState, review: HandoffReview, ctx: EventContext): NewLedgerEvent[] {
-  const blockers = review.verdict === 'sufficient' ? handoffBlockers(state, review.taskId, review.resultId) : [];
+  const blockers = review.verdict === 'sufficient' ? handoffBlockers(state, review.taskId, review.resultId).map(blockerText) : [];
   const final: HandoffReview = blockers.length ? { ...review, verdict: 'insufficient', missing: [...review.missing, ...blockers] } : review;
   const recorded: NewLedgerEvent = { ...ctx, type: 'handoff_reviewed', actor: pm, idempotencyKey: reviewKey(review.resultId), payload: final };
   const outcome = final.verdict === 'sufficient'

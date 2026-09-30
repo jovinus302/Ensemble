@@ -81,11 +81,11 @@ export class SessionRunner {
       await this.store.transaction(this.context.projectId, events => {
         const state = project(events);
         const task = state.tasks.get(input.taskId);
-        if (!task || task.spec.assignee !== agentId) throw new Error('Task is not assigned to this agent');
-        if (input.planVersion !== state.plan?.version) throw new Error('Task instructions do not match the current plan');
+        if (!task || task.spec.assignee !== agentId) throw new Error('이 Agent가 맡은 작업이 아닙니다');
+        if (input.planVersion !== state.plan?.version) throw new Error('작업 지시가 현재 계획 버전과 맞지 않습니다');
         const occupied = state.activeTurn.get(agentId);
-        if (occupied && occupied !== input.taskId) throw new Error('Agent already reserved for another task');
-        if (task.status !== 'ready' && task.status !== 'reserved') throw new Error(`Task cannot start from ${task.status}`);
+        if (occupied && occupied !== input.taskId) throw new Error('Agent가 다른 작업을 맡고 있습니다');
+        if (task.status !== 'ready' && task.status !== 'reserved') throw new Error(`지금 상태(${task.status})에서는 작업을 시작할 수 없습니다`);
         return { append: task.status === 'ready' ? [{ ...this.context, actor: { kind: 'system' as const, id: 'session-runner' },
           type: 'task_start_reserved', idempotencyKey: `start:${input.taskId}:v${task.specVersion}`,
           payload: { taskId: input.taskId, specVersion: task.specVersion, trigger: 'session-runner' } }] : [], result: undefined };
@@ -102,7 +102,7 @@ export class SessionRunner {
       } catch (error) {
         // Preserve the reservation on ambiguous delivery; never retry automatically.
         await this.append([this.event(agentId, 'task_blocked', { taskId: input.taskId,
-          reason: `Session start failed; reconcile before retry: ${error instanceof Error ? error.message : 'unknown error'}` },
+          reason: `Agent 작업을 시작하지 못했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}. 상태를 확인한 뒤 다시 맡겨 주세요` },
         `start-failed:${this.context.projectId}:${input.taskId}:v${input.planVersion}`)]);
         throw error;
       }
@@ -120,7 +120,7 @@ export class SessionRunner {
   sendUpdate(agentId: string, input: UpdateInstructionsInput) {
     return this.enqueue(async () => {
       const run = this.runs.get(agentId);
-      if (!run) return { sent: false as const, reason: 'No task started' };
+      if (!run) return { sent: false as const, reason: '시작한 작업이 없습니다' };
       // The PM's own steer: its one update_sent counts as the PM's automatic action.
       return this.steer(run, input, true, { kind: 'pm', id: 'pm' });
     });
@@ -131,7 +131,7 @@ export class SessionRunner {
     const previous = run.updates.get(input.updateId);
     if (previous) {
       if (JSON.stringify(previous.input) !== JSON.stringify(input)) throw new Error('Update ID reused with different content');
-      return previous.sent ? { sent: true as const } : { sent: false as const, reason: 'Previous delivery was rejected or remains uncertain' };
+      return previous.sent ? { sent: true as const } : { sent: false as const, reason: '이전 전달이 거절됐거나 확인되지 않았습니다' };
     }
     const update: UpdateRecord = { input: structuredClone(input), sent: false, dropped: [] };
     run.updates.set(input.updateId, update);
@@ -157,7 +157,7 @@ export class SessionRunner {
     return this.enqueue(async (): Promise<Delivery> => {
       const events = await this.store.read({ projectId: this.context.projectId });
       if (events.some(e => e.idempotencyKey === `update:${update.updateId}:sent`)) return { via: 'next_turn', sent: true };
-      if (events.some(e => e.idempotencyKey === `update:${update.updateId}:rejected`)) return { via: 'next_turn', sent: false, reason: 'Previous delivery was rejected' };
+      if (events.some(e => e.idempotencyKey === `update:${update.updateId}:rejected`)) return { via: 'next_turn', sent: false, reason: '이전 전달이 거절됐습니다' };
       const run = this.runs.get(agentId);
       if (run && run.input.taskId === taskId && run.turnId && !run.finished && !run.blocked) {
         const steered = await this.steer(run, update, false);
@@ -166,10 +166,10 @@ export class SessionRunner {
       const state = project(events);
       const task = state.tasks.get(taskId);
       // A revising task waits for exactly this: the PM's revision request, carried by a new turn.
-      if (!task || task.spec.assignee !== agentId || (task.status !== 'running' && task.status !== 'revising')) return { via: 'next_turn', sent: false, reason: 'Task is not running; its next start carries the change' };
+      if (!task || task.spec.assignee !== agentId || (task.status !== 'running' && task.status !== 'revising')) return { via: 'next_turn', sent: false, reason: '작업이 진행 중이 아니라 다음 시작 때 함께 전달됩니다' };
       const occupied = state.activeTurn.get(agentId);
-      if (occupied && occupied !== taskId) return { via: 'next_turn', sent: false, reason: 'Agent is working on another task' };
-      if (!this.connector.continueTask) return { via: 'next_turn', sent: false, reason: 'This runtime cannot start a follow-up turn' };
+      if (occupied && occupied !== taskId) return { via: 'next_turn', sent: false, reason: 'Agent가 다른 작업을 하고 있어 그 작업이 끝나면 전달됩니다' };
+      if (!this.connector.continueTask) return { via: 'next_turn', sent: false, reason: '이 Agent 실행 환경은 이어서 작업하는 턴을 시작할 수 없습니다' };
       if (!this.workspaces.has(agentId)) {
         const session = await this.connector.startSession(agentId, this.context.projectId);
         this.workspaces.set(agentId, session.workspace);
@@ -177,7 +177,7 @@ export class SessionRunner {
       }
       let input: TaskInstructionsInput;
       try { input = buildTaskContext(state, taskId, events); } catch (error) {
-        if (run?.input.taskId !== taskId) return { via: 'next_turn', sent: false, reason: error instanceof Error ? error.message : 'Task context unavailable' };
+        if (run?.input.taskId !== taskId) return { via: 'next_turn', sent: false, reason: error instanceof Error ? error.message : '작업 지시를 만들 수 없습니다' };
         input = run.input; // The thread already holds this task's instructions.
       }
       const next: TaskRun = { agentId, input: structuredClone(input), updates: run?.input.taskId === taskId ? run.updates : new Map() };
@@ -263,13 +263,13 @@ export class SessionRunner {
       return;
     }
     if (event.type === 'parse_error') {
-      await this.append([reply(`Invalid agent report: ${event.error.reason}`, `${event.itemId}:error:${event.index}`)]); return;
+      await this.append([reply(`Agent 보고 형식 오류: ${event.error.reason}`, `${event.itemId}:error:${event.index}`)]); return;
     }
     const report = event.report;
     if (report.type === 'acknowledge_update') {
       const update = run.updates.get(report.updateId);
       const validation = update?.sent ? validateAck(report, { updateId: update.input.updateId, planVersion: update.input.toVersion, drop: update.input.drop })
-        : { ok: false as const, reasons: ['No matching update was sent for this turn'] };
+        : { ok: false as const, reasons: ['이 턴에 보낸 변경 중 일치하는 것이 없습니다'] };
       if (validation.ok && update) update.dropped = report.dropped;
       await this.append([validation.ok
         ? this.event(agentId, 'update_acknowledged', { updateId: report.updateId, taskId, planVersion: report.planVersion,
@@ -281,13 +281,13 @@ export class SessionRunner {
         dropped: updates.flatMap(update => [...update.input.drop, ...update.dropped]) });
       // Reported paths are workspace-relative, never arbitrary absolute or parent paths.
       const invalidPaths = report.files.filter(file => !file.path || /^(?:[a-z]:|[\\/])/i.test(file.path) || file.path.split(/[\\/]/).includes('..'));
-      const reasons = validation.ok ? invalidPaths.length ? ['Artifact paths must stay inside the workspace'] : [] : validation.reasons;
+      const reasons = validation.ok ? invalidPaths.length ? ['결과 파일 경로는 작업 폴더 안이어야 합니다'] : [] : validation.reasons;
       const resultId = `result:${turnId}:${event.index}`;
       if (!reasons.length && (await this.store.read({ projectId: this.context.projectId })).some(e => e.idempotencyKey === resultId)) return;
       const files = reasons.length ? [] : await this.readFiles(agentId, report);
       if (!Array.isArray(files)) reasons.push(...files.rejected);
       if (reasons.length || !Array.isArray(files)) {
-        await this.append([reply(`Rejected result: ${reasons.join('; ')}`, `result:${event.index}:rejected`)]);
+        await this.append([reply(`결과를 받지 못했습니다: ${reasons.join('; ')}`, `result:${event.index}:rejected`)]);
         await this.block(run, `Agent 결과를 받지 못했습니다: ${reasons.join('; ')}`);
         return;
       }
@@ -302,21 +302,21 @@ export class SessionRunner {
   /** Reads every reported file from the agent's workspace; any unsafe, missing or oversized file rejects the result. */
   private async readFiles(agentId: string, report: ResultReport): Promise<ResultFile[] | { rejected: string[] }> {
     const workspace = this.workspaces.get(agentId) ?? project(await this.store.read({ projectId: this.context.projectId })).sessions.get(agentId)?.workspace;
-    if (!workspace) return { rejected: ['Agent workspace is unknown'] };
+    if (!workspace) return { rejected: ['Agent 작업 폴더를 알 수 없습니다'] };
     const limit = this.options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;
     const rejected: string[] = [];
     const files: ResultFile[] = [];
     let root: string;
-    try { root = await realpath(workspace); } catch { return { rejected: ['Agent workspace is missing'] }; }
+    try { root = await realpath(workspace); } catch { return { rejected: ['Agent 작업 폴더가 없습니다'] }; }
     for (const file of report.files) {
       let real: string;
-      try { real = await realpath(path.resolve(root, file.path)); } catch { rejected.push(`Result file not found: ${file.path}`); continue; }
+      try { real = await realpath(path.resolve(root, file.path)); } catch { rejected.push(`결과 파일을 찾지 못했습니다: ${file.path}`); continue; }
       // Symlinks and junctions may not lead out of the workspace.
       const relative = path.relative(root, real);
-      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) { rejected.push(`Result file is outside the workspace: ${file.path}`); continue; }
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) { rejected.push(`결과 파일이 작업 폴더 밖에 있습니다: ${file.path}`); continue; }
       const info = await stat(real);
-      if (!info.isFile()) { rejected.push(`Result path is not a file: ${file.path}`); continue; }
-      if (info.size > limit) { rejected.push(`Result file exceeds ${limit} bytes: ${file.path}`); continue; }
+      if (!info.isFile()) { rejected.push(`결과 경로가 파일이 아닙니다: ${file.path}`); continue; }
+      if (info.size > limit) { rejected.push(`결과 파일이 ${limit}바이트를 넘습니다: ${file.path}`); continue; }
       files.push({ path: file.path, data: await readFile(real) });
     }
     return rejected.length ? { rejected } : files;

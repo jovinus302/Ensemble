@@ -34,6 +34,10 @@ export interface TaskInstructionsInput {
   decisions: SourcedItem[];
   inputs: SourcedItem[];
   openQuestions: SourcedItem[];
+  /** Scope people excluded from this task ("결제 화면"); conditions that ask for it are not required. */
+  exclusions?: SourcedItem[];
+  /** How far people limited this task ("가입·시간 선택·예약 확인까지"). */
+  limits?: SourcedItem[];
   /** Files the connector writes into the workspace; the inputs slot names their paths. */
   files?: InputFile[];
 }
@@ -102,6 +106,23 @@ const list = (items: SourcedItem[]) => (items.length ? items.map((item) => `- ${
 const plain = (items: string[]) => (items.length ? items.map((item) => `- ${item}`).join("\n") : "- 없음");
 const block = (value: object) => ["```" + REPORT_FENCE, JSON.stringify(value, null, 2), "```"].join("\n");
 
+/**
+ * The scope people cut, kept apart from the handoff conditions (which are never rewritten): what not to
+ * build, how far to go, and that prohibitions in the conditions still hold. Empty when nothing was cut.
+ */
+export function scopeSection(input: Pick<TaskInstructionsInput, "exclusions" | "limits">): string[] {
+  const exclusions = input.exclusions ?? [];
+  const limits = input.limits ?? [];
+  if (!exclusions.length && !limits.length) return [];
+  return [
+    "## 범위 제외·한정 (사람이 정한 범위)",
+    ...(exclusions.length ? ["제외 범위 — 만들지 않습니다:", ...exclusions.map((item) => `- ${cite(item)}`)] : []),
+    ...(limits.length ? ["한정 범위 — 여기까지만 만듭니다:", ...limits.map((item) => `- ${cite(item)}`)] : []),
+    "- 인계 조건 중 제외 범위(또는 한정 범위 밖)를 요구하는 조건이나 그 부분은 만들지 않습니다. 조건의 나머지 부분은 그대로 채웁니다.",
+    '- "…하지 않는다", "…없음", "금지" 같은 금지 제약은 범위와 관계없이 그대로 지킵니다.',
+  ];
+}
+
 export function taskInstructions(input: TaskInstructionsInput): string {
   const hasFiles = (input.files?.length ?? 0) > 0;
   const result = block({ type: "result_report", taskId: input.taskId, planVersion: input.planVersion, summary: "무엇을 만들었는지 한두 문장", files: [{ path: "작업 폴더 기준 상대 경로", description: "이 파일의 내용" }], limitations: ["확인하지 못한 점 (없으면 생략)"] });
@@ -116,6 +137,7 @@ export function taskInstructions(input: TaskInstructionsInput): string {
     `- ${cite(input.taskTitle)}`,
     "## 3. 인계 조건",
     list(input.handoffConditions),
+    ...scopeSection(input),
     "## 4. 확정 결정·제외 범위",
     list(input.decisions),
     "## 5. 입력 자료",
@@ -178,6 +200,8 @@ export function continueInstructions(input: ContinueTaskInput, includeTask: bool
     ...(includeTask ? [taskInstructions(input.task), "", "---", ""] : []),
     updateInstructions(input.update),
     "",
+    // The thread may have seen the task before its scope was cut: the current cut goes with every turn.
+    ...(includeTask ? [] : scopeSection(input.task).flatMap((line, i, all) => (i === all.length - 1 ? [line, ""] : [line]))),
     "## 이어서 할 일",
     `acknowledge_update 블록을 먼저 쓴 뒤, 작업 ID ${input.taskId} 작업을 멈춘 지점부터 이어서 진행하세요.`,
     `끝나면 result_report 블록을 정확히 하나 쓰세요. planVersion은 ${input.planVersion}입니다. 또 막히면 추측하지 말고 question 블록을 쓰고 멈추세요.`,

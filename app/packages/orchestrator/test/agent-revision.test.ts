@@ -120,7 +120,7 @@ it('S1: past two revision requests the agent task stops for the decider with one
   expect(events.find(e => e.type === 'task_blocked')?.payload).toMatchObject({ taskId: 'research', reason: '보완을 2회 요청했지만 인계 조건을 채우지 못했습니다', unblockBy: 'owner' });
   expect(await status(f, 'research')).toBe('blocked');
   const stop = channel(events).filter(t => t.startsWith('@사용자'));
-  expect(stop).toEqual(['@사용자 조사 Agent의 "예약 서비스 대안 조사" 결과가 보완 2회 뒤에도 인계 조건을 채우지 못해 작업을 멈췄습니다. 결과를 직접 확인하거나 다시 맡겨 주세요. 남은 문제: 조건 1(대안 2개가 표로 비교되어 있다): 대안 B와의 비교표가 없습니다. 대안 2개를 표로 비교해 주세요.']);
+  expect(stop).toEqual([`@사용자 조사 Agent의 "예약 서비스 대안 조사" 결과가 보완 2회 뒤에도 인계 조건을 채우지 못해 작업을 멈췄습니다. 지금 결과를 '이대로 확인'하거나 요청을 적어 '다시 맡기기'로 다시 맡겨 주세요. 남은 문제: 조건 1(대안 2개가 표로 비교되어 있다): 대안 B와의 비교표가 없습니다. 대안 2개를 표로 비교해 주세요.`]);
   await f.pm.deliverPendingChanges(); await f.pm.flush();
   expect((await f.events()).filter(e => e.type === 'task_started')).toHaveLength(3);
 });

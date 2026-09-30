@@ -126,7 +126,7 @@ it('sends a technical judge failure to the decider, not the submitter, keeps the
   const f = await fixture('inputs', '');
   const posts = await f.handOver();
   expect(posts).toHaveLength(1);
-  expect(posts[0]).toMatchObject({ kind: 'ask', text: expect.stringMatching(/^@사용자 "흐름 설계" 결과: .*사람이 결과를 확인해 주세요.$/) });
+  expect(posts[0]).toMatchObject({ kind: 'ask', text: expect.stringMatching(/^@사용자 "흐름 설계" 결과: .*검토 과정의 문제예요\. '다시 검토'로 검토를 다시 돌리거나, 결정권자가 결과를 보고 '이대로 확인'할 수 있어요\.$/) });
   expect(posts[0]!.text).not.toMatch(/@디자이너|보완/);
   const events = await f.events();
   const considered = events.find(e => e.type === 'pm_considered' && e.payload.considerationId.startsWith('handoff-notice:'));

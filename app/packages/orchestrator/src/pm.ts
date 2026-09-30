@@ -1,12 +1,12 @@
 import { channelText, particle } from './channel-text.ts';
 import { randomUUID } from 'node:crypto';
-import { automationGate, project, type AnyEvent, type EventContext, type NewLedgerEvent } from '@ensemble/core';
+import { automationGate, project, type AnyEvent, type EventContext, type NewLedgerEvent, type ProjectState, type TaskState } from '@ensemble/core';
 import type { SessionConnector, SessionEvent } from '@ensemble/agents';
 import type { LlmProvider } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
 import { Coordinator, type CoordinationResult } from './coordination.ts';
 import { Dispatcher, type ResultOutcome } from './dispatch.ts';
-import { MAX_AGENT_REVISIONS, pendingChangeUpdate, revisionChangeId, revisionCount, revisionUpdate, taskQuestions } from './context.ts';
+import { MAX_REVISIONS, pendingChangeUpdate, retryKey, revisionCount, revisionUpdate, taskQuestions } from './context.ts';
 import type { ResultContent, SubmittedResult } from './handoff.ts';
 import { SessionRunner, type BlockedTurn } from './session-runner.ts';
 import { startFreeProject, decidePlan } from './planning.ts';
@@ -24,6 +24,33 @@ export interface ProjectManagerOptions extends EventContext {
   turnTimeoutMs?: number;
 }
 export type PmPost = CoordinationResult['posts'][number];
+
+/** How a person resolves a stopped task (M11 T1): accept the current result, hand it back, or re-run its review. */
+export type ResolveAction = 'accept' | 'retry' | 'recheck';
+export interface ResolveTaskInput { action: ResolveAction; by: string; note?: string }
+/** A request the PM refuses, in words the person reads (Korean). `status` is the HTTP status that fits it. */
+export class TaskResolutionError extends Error {
+  readonly status: number;
+  constructor(readonly code: 'not_found' | 'forbidden' | 'invalid_state' | 'invalid_input', message: string) {
+    super(message);
+    this.name = 'TaskResolutionError';
+    this.status = code === 'not_found' ? 404 : code === 'forbidden' ? 403 : code === 'invalid_input' ? 400 : 409;
+  }
+}
+/** What the coordinator (coordination.ts) reads out of a person's message for the PM to carry out. */
+type Resolution = { taskId: string; action: ResolveAction; note?: string };
+type Reopen = { taskId: string; reason: string };
+/** The recorded reason of a review that could not finish; the web recognizes the stuck result by it. */
+export const JUDGE_FAILURE_REASON = '결과 내용이 아니라 판단 과정의 문제라 사람이 결과를 확인해야 한다';
+/** A result left in "submitted" after its handoff review failed technically (QA4 C1): nothing will judge it on its own. */
+function reviewFailed(events: readonly AnyEvent[], task: TaskState): boolean {
+  const resultId = task.results.at(-1)?.resultId;
+  return task.status === 'submitted' && !!resultId && !events.some(e => e.idempotencyKey === `handoff:${resultId}`)
+    && events.some(e => e.type === 'pm_considered' && e.idempotencyKey === `handoff-notice:${resultId}` && e.payload.reason === JUDGE_FAILURE_REASON);
+}
+/** A person's note ends as a sentence when the PM quotes it before its own next sentence. */
+const sentence = (text: string) => (/[.!?。…~]$/.test(text) ? text : `${text}.`);
+const STATUS_LABEL: Record<string, string> = { waiting: '시작 전', ready: '시작 전', reserved: '진행 중', running: '진행 중', submitted: '검토 중', revising: '보완 중', checked: '확인됨', blocked: '멈춤', cancelled: '취소됨' };
 
 /** COMMITTED CHANGE, SOUND: one ledger-first entrypoint, identical scene/free-input routing.
  * pm-scenes.test.ts verifies handoff, acknowledgement barriers and conversational decisions.
@@ -145,18 +172,18 @@ export class ProjectManager {
       const resultId = task.results.at(-1)?.resultId;
       if (task.status !== 'revising' || !resultId || !state.plan || state.members.get(agentId)?.kind !== 'agent') continue;
       const requested = events.findLast(e => e.type === 'revision_requested' && e.payload.taskId === task.spec.id);
-      if (requested?.type !== 'revision_requested' || requested.payload.resultId !== resultId || handled.has(revisionChangeId(resultId))) continue;
-      if (revisionCount(events, task.spec.id) > MAX_AGENT_REVISIONS) continue;
+      if (requested?.type !== 'revision_requested' || requested.payload.resultId !== resultId) continue;
+      if (revisionCount(events, task.spec.id) > MAX_REVISIONS) continue;
       const update = revisionUpdate(events, state.plan.version, task.spec.id, resultId);
-      if (!update) continue;
+      if (!update || handled.has(update.updateId)) continue;
       handled.add(update.updateId);
       try { await this.sessions.deliver(agentId, task.spec.id, update); } catch (error) { this.failures.push(error); }
     }
   }
   setAvailability(memberId: string, weeklyHours: number): Promise<void> {
     return this.enqueue(async () => {
-      if (project(await this.read()).members.get(memberId)?.kind !== 'human') throw new Error('Availability must be entered by a human member');
-      if (!Number.isFinite(weeklyHours) || weeklyHours < 0) throw new Error('Weekly hours must be finite and nonnegative');
+      if (project(await this.read()).members.get(memberId)?.kind !== 'human') throw new Error('가용 시간은 사람 멤버만 입력할 수 있습니다');
+      if (!Number.isFinite(weeklyHours) || weeklyHours < 0) throw new Error('주간 가용 시간은 0 이상의 숫자여야 합니다');
       await this.options.store.append([{ ...this.context, actor: { kind: 'human', id: memberId }, type: 'availability_updated', payload: { memberId, weeklyHours } }]);
     });
   }
@@ -173,7 +200,7 @@ export class ProjectManager {
   async recordMessage(authorId: string, text: string, attachments: MessageAttachment[] = []): Promise<{ messageId: string }> {
       const before = await this.read();
       const state = project(before);
-      if (state.members.get(authorId)?.kind !== 'human') throw new Error(`Unknown human author ${authorId}`);
+      if (state.members.get(authorId)?.kind !== 'human') throw new Error('메시지를 보낸 사람을 이 프로젝트 멤버에서 찾지 못했습니다');
       const messageId = randomUUID();
       const attachmentIds = attachments.map(() => randomUUID());
       const actor = { kind: 'human' as const, id: authorId };
@@ -210,23 +237,30 @@ export class ProjectManager {
         || addressed(state.tasks.get(q.taskId)!.spec.assignee));
       // Structural metadata can identify a submission; text interpretation is model-owned.
       const declaredTasks = [...new Set(attachments.map(a => a.taskId).filter((id): id is string => !!id))];
-      // Agent results a person may send back for another handoff review (S3): the agent is not on it now.
-      const recheckable = [...state.tasks.values()].filter(t => state.members.get(t.spec.assignee)?.kind === 'agent' && t.results.length > 0
-        && (t.status === 'revising' || (t.status === 'blocked' && t.blocked?.prevStatus === 'revising')) && state.activeTurn.get(t.spec.assignee) !== t.spec.id);
+      // Results a person may send back for another handoff review by re-attaching them: an agent's result
+      // the agent is not working on now (S3), and any result stuck after a review that could not finish
+      // (QA4 C1). A re-check asked for in words, "이대로 확인" or "다시 맡길게요" are the coordinator's to
+      // read (resolve_task) and never land here: routing only looks at re-attached files.
+      const recheckable = [...state.tasks.values()].filter(t => (state.members.get(t.spec.assignee)?.kind === 'agent' && t.results.length > 0
+        && (t.status === 'revising' || (t.status === 'blocked' && t.blocked?.prevStatus === 'revising')) && state.activeTurn.get(t.spec.assignee) !== t.spec.id)
+        || reviewFailed(before as AnyEvent[], t));
       const canRecheck = (taskId: unknown) => typeof taskId === 'string' && recheckable.some(t => t.spec.id === taskId);
       let route: { kind: 'chat' | 'result' | 'answer' | 'recheck'; taskId?: string; questionId?: string } = { kind: 'chat' };
-      if (attachments.length && declaredTasks.length === 1 && attachments.every(a => a.taskId === declaredTasks[0])) route = { kind: canRecheck(declaredTasks[0]) && state.tasks.get(declaredTasks[0]!)?.spec.assignee !== authorId ? 'recheck' : 'result', taskId: declaredTasks[0] };
-      else if (attachments.length || pending.length || recheckable.length) {
+      if (attachments.length && declaredTasks.length === 1 && attachments.every(a => a.taskId === declaredTasks[0])) {
+        const own = state.tasks.get(declaredTasks[0]!)?.spec.assignee === authorId;
+        // Someone else's task with nothing to re-check: the file is part of the conversation, never an error.
+        if (own || canRecheck(declaredTasks[0])) route = { kind: own ? 'result' : 'recheck', taskId: declaredTasks[0] };
+      } else if (attachments.length || pending.length) {
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
             const response = await this.options.llm.complete({ model: this.options.model,
-              system: '메시지를 결과 제출, 미해결 질문에 대한 답, Agent 결과 재확인 요청, 일반 대화로 분류하세요. 단어 규칙 없이 의미를 해석하세요. 확실하지 않으면 chat으로 두세요. 결과는 첨부가 있는 본인 담당 작업만, 답은 제공된 미해결 질문만 선택하세요. recheck는 사람이 recheckable에 있는 Agent 작업의 결과를 다시 첨부하거나 그 결과를 다시 확인해 달라고 할 때만 그 taskId로 고르세요.',
+              system: '메시지를 결과 제출, 미해결 질문에 대한 답, 결과 재첨부, 일반 대화로 분류하세요. 단어 규칙 없이 의미를 해석하세요. 확실하지 않으면 chat으로 두세요. 결과는 첨부가 있는 본인 담당 작업만, 답은 제공된 미해결 질문만 선택하세요. recheck는 사람이 recheckable에 있는 작업의 결과 파일을 다시 첨부해 확인을 요청할 때만 그 taskId로 고르세요.',
               forceTool: 'route_message', tools: [{ name: 'route_message', description: '인계 또는 대화 경로 선택', inputSchema: { type: 'object', required: ['kind'], properties: { kind: { enum: ['chat', 'result', 'answer', 'recheck'] }, taskId: { type: 'string' }, questionId: { type: 'string' } } } }],
               messages: [{ role: 'user', content: JSON.stringify({ messageId, planVersion: state.plan?.version, attempt, authorId, text, attachments, tasks: [...state.tasks.values()].filter(t => t.spec.assignee === authorId).map(t => t.spec), pending,
                 recheckable: recheckable.map(t => ({ taskId: t.spec.id, title: t.spec.title, assignee: state.members.get(t.spec.assignee)?.displayName, status: t.status })) }) }] });
             const input = response.toolCalls.find(c => c.name === 'route_message')?.input;
             if (input?.kind === 'chat') break;
-            if (input?.kind === 'recheck' && canRecheck(input.taskId)) { route = { kind: 'recheck', taskId: input.taskId as string }; break; }
+            if (input?.kind === 'recheck' && attachments.length && canRecheck(input.taskId)) { route = { kind: 'recheck', taskId: input.taskId as string }; break; }
             if (input?.kind === 'result' && attachments.length && typeof input.taskId === 'string' && state.tasks.get(input.taskId)?.spec.assignee === authorId) { route = { kind: 'result', taskId: input.taskId }; break; }
             if (input?.kind === 'answer' && typeof input.questionId === 'string') {
               const question = pending.find(q => q.questionId === input.questionId && q.taskId === input.taskId);
@@ -240,9 +274,12 @@ export class ProjectManager {
       }
       if (route.kind === 'result' && route.taskId) {
         const task = state.tasks.get(route.taskId);
-        if (!task || task.spec.assignee !== authorId || task.status === 'cancelled') throw new Error('Result must belong to the submitting person and an active plan task');
+        if (!task || task.spec.assignee !== authorId || task.status === 'cancelled') throw new Error('결과는 본인이 맡은 진행 중인 작업에만 제출할 수 있어요.');
         const resultId = `result:${messageId}`;
-        await this.options.store.append([{ ...this.context, actor, type: 'result_submitted', idempotencyKey: resultId, payload: { taskId: route.taskId, resultId, planVersion: state.plan!.version, summary: text, artifactIds: attachmentIds } }]);
+        // A person's own new result on a stopped task is judged again (a stale blocked state never lingers).
+        await this.options.store.append([
+          ...(task.status === 'blocked' ? [{ ...this.context, actor, type: 'task_resumed' as const, idempotencyKey: `resume:${resultId}`, payload: { taskId: route.taskId } }] : []),
+          { ...this.context, actor, type: 'result_submitted', idempotencyKey: resultId, payload: { taskId: route.taskId, resultId, planVersion: state.plan!.version, summary: text, artifactIds: attachmentIds } }]);
         const posts = await this.review(route.taskId, resultId); await markProcessed(); return posts;
       }
       if (route.kind === 'answer' && route.taskId) {
@@ -250,11 +287,212 @@ export class ProjectManager {
         const oldest = taskQuestions(before, route.taskId).find(q => !q.answer);
         if (oldest?.questionId === route.questionId) { await this.dispatcher.onAnswer(route.taskId, text); await markProcessed(); await this.deliverPending(); return []; }
       }
-      const coordinated = await this.coordinator.onMessage(messageId);
+      const coordinated = await this.coordinator.onMessage(messageId) as CoordinationResult & { resolutions?: Resolution[]; reopens?: Reopen[] };
       await this.deliverAgentAnswers(coordinated.agentAnswers ?? []);
+      const posts = [...coordinated.posts];
+      // The coordinator reads what the person asked for; the PM carries it out under the same checks as the buttons.
+      for (const [i, r] of (coordinated.resolutions ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.resolve(r.taskId, { action: r.action, by: authorId, ...(r.note ? { note: r.note } : {}) }, `${messageId}:${i}`)));
+      for (const [i, r] of (coordinated.reopens ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.reopen(r.taskId, authorId, r.reason, `${messageId}:${i}`)));
       await this.deliverPending();
-      return coordinated.posts;
+      return posts;
     });
+  }
+
+  /**
+   * Resolves a stopped task (M11 T1), from a button or an API call:
+   * - accept (the goal's decider only): the current result is checked as it is, with the reason recorded;
+   * - retry (the decider, the assignee or a downstream assignee): the revision count starts over and the
+   *   note goes to the agent in a new turn, or to the person who owns the task;
+   * - recheck (any person): the handoff review runs again on the latest result.
+   * Works on blocked, submitted (a review that could not finish) and revising tasks; anything else is
+   * refused with a TaskResolutionError in Korean.
+   */
+  resolveTask(taskId: string, input: ResolveTaskInput): Promise<PmPost[]> {
+    return this.enqueue(async () => {
+      const posts = await this.resolve(taskId, input, randomUUID());
+      await this.deliverPending();
+      return posts;
+    });
+  }
+
+  /** A refusal read from chat is said in the channel instead of failing the message. */
+  private async fromChat(messageId: string, run: () => Promise<PmPost[]>): Promise<PmPost[]> {
+    try { return await run(); } catch (error) {
+      if (!(error instanceof TaskResolutionError)) throw error;
+      const state = project(await this.read());
+      return this.speak(`resolve-refused:${messageId}:${randomUUID()}`, messageId, null, '요청한 처리를 할 수 없는 이유를 요청한 사람이 알아야 한다', [{ kind: 'ask', text: channelText(error.message, state, 3) }]);
+    }
+  }
+
+  /** One PM record and its lines, under one idempotent consideration. */
+  private async speak(considerationId: string, triggerId: string, whoseAction: string | null, reason: string, posts: PmPost[], evidence: string[] = []): Promise<PmPost[]> {
+    const state = project(await this.read());
+    if (!posts.length) return [];
+    await this.options.store.append([
+      { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId, whoseAction, alreadyKnows: 'no', evidence: [triggerId, ...evidence], decision: 'speak', reason, openTopics: state.openTopics } },
+      ...posts.map((post, i) => ({ ...this.context, actor: { kind: 'system' as const, id: 'pm' }, type: 'pm_spoke' as const, idempotencyKey: `${considerationId}:${i}`, payload: { considerationId, messageId: `${considerationId}:${i}`, ...post } })),
+    ]);
+    return posts;
+  }
+
+  private async resolve(taskId: string, { action, by, note }: ResolveTaskInput, trigger: string): Promise<PmPost[]> {
+    const events = await this.read() as AnyEvent[];
+    const state = project(events);
+    const task = state.tasks.get(taskId);
+    const name = (id: string) => state.members.get(id)?.displayName ?? id;
+    if (!task || task.status === 'cancelled') throw new TaskResolutionError('not_found', '작업을 찾지 못했습니다.');
+    if (!['accept', 'retry', 'recheck'].includes(action)) throw new TaskResolutionError('invalid_input', "처리 방법은 '이대로 확인', '다시 맡기기', '다시 검토' 중 하나여야 해요.");
+    if (state.members.get(by)?.kind !== 'human') throw new TaskResolutionError('forbidden', '사람 멤버만 멈춘 작업을 처리할 수 있어요.');
+    const title = task.spec.title;
+    const decider = state.goal?.decider;
+    if (action === 'accept' && by !== decider) throw new TaskResolutionError('forbidden', `"이대로 확인"은 결정권자${decider ? `(${name(decider)})` : ''}만 할 수 있어요.`);
+    if (action === 'retry' && !this.mayHandBack(state, taskId, by)) throw new TaskResolutionError('forbidden', '"다시 맡기기"는 결정권자, 담당자 또는 후행 작업 담당자만 할 수 있어요.');
+    if (!['blocked', 'submitted', 'revising'].includes(task.status)) throw new TaskResolutionError('invalid_state', `"${title}" 작업은 지금 ${STATUS_LABEL[task.status] ?? task.status}${particle(STATUS_LABEL[task.status] ?? '', '이/가') === '이' ? '이라' : '라'} 처리할 멈춤이 없어요.`);
+    const assignee = task.spec.assignee;
+    const agent = state.members.get(assignee)?.kind === 'agent';
+    const latest = task.results.at(-1);
+    const working = agent && state.activeTurn.get(assignee) === taskId;
+    const key = `resolve:${action}:${taskId}:${trigger}`;
+    const actor = { kind: 'human' as const, id: by };
+    const note_ = note?.trim();
+
+    if (action === 'accept') {
+      if (!latest) throw new TaskResolutionError('invalid_state', "확인할 결과가 아직 없어요. '다시 맡기기'로 작업을 다시 진행해 주세요.");
+      if (working) throw new TaskResolutionError('invalid_state', `${name(assignee)}${particle(name(assignee), '이/가')} 지금 "${title}" 결과를 고치고 있어요. 보완본이 오면 다시 판단해 주세요.`);
+      const reason = `결정권자 ${name(by)}${particle(name(by), '이/가')} 현재 결과를 그대로 확인함${note_ ? `: ${note_}` : ''}`;
+      const outcome = await this.dispatcher.acceptResult(taskId, by, reason, key);
+      const recorded = await this.read() as AnyEvent[];
+      const after = project(recorded);
+      const next = recorded.flatMap(e => e.type === 'task_start_reserved' && e.payload.trigger === outcome.review.resultId ? [e.payload.taskId] : []);
+      const nextText = [...new Set(next)].flatMap(id => { const t = after.tasks.get(id); return t ? [`${name(t.spec.assignee)}${particle(name(t.spec.assignee), '이/가')} "${t.spec.title}"${particle(t.spec.title)}`] : []; });
+      const lines = [`"${title}" 결과를 ${name(by)}의 결정으로 지금 상태 그대로 확인했어요${nextText.length ? `. 다음은 ${nextText.join(', ')} 시작합니다.` : '.'}`,
+        ...outcome.notices, ...outcome.failures, ...(outcome.limitNotice ? [outcome.limitNotice] : []), ...this.allCheckedNotice(after)];
+      const posts = await this.speak(key, trigger, decider ?? null, '결정권자가 멈춘 작업의 현재 결과를 확인해 다음 작업이 이어진다', lines.map(text => ({ kind: 'fact' as const, text: channelText(text, after, 3) })), [outcome.review.resultId]);
+      posts.push(...await this.reviewWaiting(taskId));
+      return posts;
+    }
+
+    if (action === 'recheck') {
+      if (!latest) throw new TaskResolutionError('invalid_state', '다시 검토할 결과가 아직 없어요.');
+      if (working) throw new TaskResolutionError('invalid_state', `${name(assignee)}${particle(name(assignee), '이/가')} 지금 "${title}" 결과를 고치고 있어요. 보완본이 오면 자동으로 검토합니다.`);
+      const current = task.status === 'blocked' ? task.blocked?.prevStatus : task.status;
+      // A review that never finished runs again on the same submission; anything else is resubmitted for a fresh review.
+      if (current === 'submitted' && !events.some(e => e.idempotencyKey === `handoff:${latest.resultId}`)) {
+        if (task.status === 'blocked') await this.options.store.append([{ ...this.context, actor, type: 'task_resumed', idempotencyKey: `${key}:resume`, payload: { taskId } }]);
+        return this.review(taskId, latest.resultId);
+      }
+      return this.recheck(taskId, key, by, note_ ?? '', []);
+    }
+
+    // retry: the count starts over, and the task goes back to whoever does it with the note.
+    const request = sentence(note_ || '멈춘 지점부터 다시 진행해 주세요.');
+    const current = task.status === 'blocked' ? task.blocked?.prevStatus : task.status;
+    const revise = !!latest && (current === 'submitted' || current === 'revising');
+    await this.options.store.append([
+      { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: `${retryKey(taskId, trigger)}:reset`, payload: { considerationId: `${retryKey(taskId, trigger)}:reset`, triggerId: trigger, whoseAction: assignee, alreadyKnows: 'no', evidence: [trigger], decision: 'silent', reason: `${name(by)}${particle(name(by), '이/가')} "${title}"를 다시 맡겨 보완 횟수를 새로 센다`, openTopics: state.openTopics } },
+      ...(task.status === 'blocked' ? [{ ...this.context, actor, type: 'task_resumed' as const, idempotencyKey: `${key}:resume`, payload: { taskId } }] : []),
+      ...(revise ? [{ ...this.context, actor, type: 'revision_requested' as const, idempotencyKey: `${key}:revision`, payload: { taskId, resultId: latest!.resultId, missing: [`${name(by)} 요청: ${request}`] } }] : []),
+    ]);
+    if (!agent) {
+      const text = by === assignee ? `"${title}"를 다시 진행합니다: ${request} 보완본을 이 작업에 첨부해 올려 주세요.`
+        : `@${name(assignee)} ${name(by)}${particle(name(by), '이/가')} "${title}"${particle(title)} 다시 맡겼어요: ${request} 보완본을 이 작업에 첨부해 올려 주세요.`;
+      return this.speak(key, trigger, assignee, '다시 맡긴 작업을 담당자가 이어서 해야 한다', [{ kind: 'ask', text }]);
+    }
+    const lead = `"${title}"${particle(title)} ${name(assignee)}에게 다시 맡겼어요. 보완 횟수는 새로 셉니다.`;
+    let problem = '';
+    try {
+      const after = await this.read() as AnyEvent[];
+      const afterState = project(after);
+      if (revise) {
+        const update = revisionUpdate(after, afterState.plan!.version, taskId, latest!.resultId);
+        const sent = update ? await this.sessions.deliver(assignee, taskId, update) : { sent: false as const, reason: '' };
+        if (!sent.sent) problem = sent.reason;
+      } else if (current === 'running') {
+        const sent = await this.sessions.deliver(assignee, taskId, { updateId: key, fromVersion: afterState.plan!.version, toVersion: afterState.plan!.version, keep: [], drop: [],
+          change: [`${name(by)} 요청: ${request}`], reason: `${name(by)}${particle(name(by), '이/가')} 멈춘 작업을 다시 맡겼습니다. 멈춘 지점부터 이어서 진행한 뒤 result_report로 제출하세요` });
+        if (!sent.sent) problem = sent.reason;
+      } else if (current === 'reserved') {
+        const started = await this.dispatcher.startReserved(taskId);
+        problem = started.failures.join(' ');
+      }
+    } catch (error) { this.failures.push(error); problem = '전달 중 오류가 났습니다'; }
+    const text = problem ? `${lead} 다만 지금은 전달하지 못했어요(${problem}). 전달되면 이어서 진행합니다.` : lead;
+    return this.speak(key, trigger, assignee, '멈춘 Agent 작업을 요청과 함께 다시 맡겼다', [{ kind: 'fact', text: channelText(text, state, 3) }]);
+  }
+
+  /** The decider, the task's own assignee (a person) and the people whose tasks build on it may hand it back or reopen it. */
+  private mayHandBack(state: ProjectState, taskId: string, by: string): boolean {
+    if (state.members.get(by)?.kind !== 'human') return false;
+    if (state.goal?.decider === by || state.tasks.get(taskId)?.spec.assignee === by) return true;
+    return this.downstream(state, taskId).some(t => t.spec.assignee === by);
+  }
+  /** Every task that builds on this one, directly or through others. */
+  private downstream(state: ProjectState, taskId: string): TaskState[] {
+    const found = new Map<string, TaskState>();
+    const visit = (id: string) => { for (const t of state.tasks.values()) if (t.spec.dependsOn.includes(id) && !found.has(t.spec.id)) { found.set(t.spec.id, t); visit(t.spec.id); } };
+    visit(taskId);
+    return [...found.values()];
+  }
+
+  /**
+   * A person asks for more on a result that was already checked (M11 T3): the task goes back to
+   * revising under the person's request, the agent gets it in a new turn (a person hears it in the
+   * channel), and the resubmission is reviewed like any result. Tasks built on the result keep going;
+   * the requester hears that in one line. The decider, the assignee and downstream assignees may ask.
+   */
+  private async reopen(taskId: string, by: string, reason: string, trigger: string): Promise<PmPost[]> {
+    const events = await this.read() as AnyEvent[];
+    const state = project(events);
+    const task = state.tasks.get(taskId);
+    const name = (id: string) => state.members.get(id)?.displayName ?? id;
+    if (!task || task.status === 'cancelled') throw new TaskResolutionError('not_found', '작업을 찾지 못했습니다.');
+    const title = task.spec.title;
+    const assignee = task.spec.assignee;
+    const agent = state.members.get(assignee)?.kind === 'agent';
+    const key = `reopen:${taskId}:${trigger}`;
+    const request = sentence(reason.trim() || '결과를 보완해 다시 올려 주세요.');
+    const current = task.status === 'blocked' ? task.blocked?.prevStatus : task.status;
+    const resultId = task.checkedResultId ?? task.results.at(-1)?.resultId;
+    // Still in progress: an agent at work just gets the request; otherwise there is no checked result to reopen.
+    if (current !== 'checked' || !resultId) {
+      if (agent && (current === 'running' || current === 'revising') && task.status !== 'blocked') {
+        if (!this.mayHandBack(state, taskId, by)) throw new TaskResolutionError('forbidden', '확인된 결과의 보완은 결정권자나 후행 작업 담당자가 요청할 수 있어요.');
+        const version = state.plan!.version;
+        const sent = await this.sessions.deliver(assignee, taskId, { updateId: key, fromVersion: version, toVersion: version, keep: [], drop: [], change: [`${name(by)} 요청: ${request}`], reason: `${name(by)}${particle(name(by), '이/가')} 진행 중인 작업에 요청을 더했습니다. 반영한 뒤 result_report로 제출하세요` });
+        const text = sent.sent ? `진행 중인 "${title}" 작업에 요청을 ${name(assignee)}에게 전달했어요.` : `진행 중인 "${title}" 작업에 요청을 지금은 전달하지 못했어요(${sent.reason}).`;
+        return this.speak(key, trigger, assignee, '진행 중인 Agent 작업에 사람 요청을 전달했다', [{ kind: 'fact', text }]);
+      }
+      const label = STATUS_LABEL[task.status] ?? task.status;
+      throw new TaskResolutionError('invalid_state', `"${title}" 작업은 아직 확인 전(${label})이라 다시 열 결과가 없어요.`);
+    }
+    if (!this.mayHandBack(state, taskId, by)) throw new TaskResolutionError('forbidden', '확인된 결과의 보완은 결정권자나 후행 작업 담당자가 요청할 수 있어요.');
+    const actor = { kind: 'human' as const, id: by };
+    await this.options.store.append([
+      ...(task.status === 'blocked' ? [{ ...this.context, actor, type: 'task_resumed' as const, idempotencyKey: `${key}:resume`, payload: { taskId } }] : []),
+      { ...this.context, actor, type: 'revision_requested', idempotencyKey: key, payload: { taskId, resultId, missing: [`${name(by)} 요청: ${request}`] } },
+    ]);
+    const going = this.downstream(state, taskId).filter(t => ['reserved', 'running', 'submitted', 'revising'].includes(t.status));
+    const keep = going.length ? ` 진행 중인 후행 작업 ${going.map(t => `"${t.spec.title}"`).join(', ')}${particle(going.at(-1)!.spec.title, '이/가') === '이' ? '은' : '는'} 그대로 둡니다.` : '';
+    if (!agent) {
+      const text = `@${name(assignee)} 확인된 "${title}" 결과에 ${name(by)}${particle(name(by), '이/가')} 보완을 요청했어요: ${request} 보완본을 이 작업에 첨부해 올려 주세요.${keep}`;
+      return this.speak(key, trigger, assignee, '확인된 결과에 사람이 보완을 요청해 담당자가 다시 해야 한다', [{ kind: 'ask', text }]);
+    }
+    let problem = '';
+    try {
+      const after = await this.read() as AnyEvent[];
+      const update = revisionUpdate(after, project(after).plan!.version, taskId, resultId);
+      const sent = update ? await this.sessions.deliver(assignee, taskId, update) : { sent: false as const, reason: '' };
+      if (!sent.sent) problem = sent.reason;
+    } catch (error) { this.failures.push(error); problem = '전달 중 오류가 났습니다'; }
+    const lead = `확인된 "${title}" 결과를 다시 열어 ${name(assignee)}에게 보완을 맡겼어요.`;
+    const text = `${lead}${problem ? ` 다만 지금은 전달하지 못했어요(${problem}). 전달되면 이어서 진행합니다.` : ''}${keep}`;
+    return this.speak(key, trigger, by, '확인된 결과에 사람이 보완을 요청해 Agent에게 다시 맡겼다', [{ kind: 'fact', text: channelText(text, state, 3) }]);
+  }
+
+  /** Once every task of the plan is checked, the channel hears it once (M11 U3). */
+  private allCheckedNotice(state: ProjectState): string[] {
+    const tasks = [...state.tasks.values()].filter(t => t.status !== 'cancelled');
+    return tasks.length && tasks.every(t => t.status === 'checked') ? ['프로젝트 작업이 모두 확인됐어요.'] : [];
   }
 
   /**
@@ -283,7 +521,7 @@ export class ProjectManager {
     const outcome = await this.dispatcher.onResultSubmitted(taskId, resultId);
     const notices = outcome.kind === 'revision' || outcome.kind === 'deferred' ? [outcome.notice].filter(Boolean)
       : outcome.kind === 'error' ? [outcome.message]
-      : outcome.kind === 'checked' ? [...await this.acceptedNotice(taskId, resultId), ...outcome.notices, ...outcome.failures, ...(outcome.limitNotice ? [outcome.limitNotice] : [])] : [];
+      : outcome.kind === 'checked' ? [...await this.acceptedNotice(taskId, resultId), ...outcome.notices, ...outcome.failures, ...(outcome.limitNotice ? [outcome.limitNotice] : []), ...this.allCheckedNotice(project(await this.read()))] : [];
     const posts = notices.length ? await this.recordNotices(resultId, taskId, outcome, notices) : [];
     // Results that waited for this task are judged now that it is checked (M1).
     if (outcome.kind === 'checked') posts.push(...await this.reviewWaiting(taskId));
@@ -306,25 +544,32 @@ export class ProjectManager {
   }
 
   /**
-   * A person who revised a result, resubmitted one for a check, or was told their result waits on a
-   * predecessor hears once that it was accepted and what starts next (L3). A first result that simply
-   * passes needs no word: the next assignee's own notice already shows it.
+   * The person whose result was checked hears it once, with what starts next — also on a first result
+   * that simply passes (QA4 Z5). Someone who re-attached it on another's behalf hears the verdict; a
+   * person who asked for a revision of a checked result (or handed the task back) hears the revised
+   * result was accepted, even when an agent did the work.
    */
   private async acceptedNotice(taskId: string, resultId: string): Promise<string[]> {
     const events = await this.read() as AnyEvent[];
     const state = project(events);
-    const submitter = events.findLast(e => e.type === 'result_submitted' && e.payload.resultId === resultId)?.actor.id;
+    const submitted = events.findLast(e => e.type === 'result_submitted' && e.payload.resultId === resultId);
+    const submitter = submitted?.actor.id;
     const task = state.tasks.get(taskId);
-    if (!submitter || !task || state.members.get(submitter)?.kind !== 'human') return [];
-    const revised = events.some(e => e.type === 'revision_requested' && e.payload.taskId === taskId && e.payload.resultId !== resultId);
-    const waited = events.some(e => e.type === 'pm_considered' && e.idempotencyKey === `handoff-wait:${resultId}`);
-    const onBehalf = submitter !== task.spec.assignee;
-    if (!revised && !waited && !onBehalf) return [];
+    if (!submitter || !task) return [];
     const name = (id: string) => state.members.get(id)?.displayName ?? id;
     const next = events.flatMap(e => e.type === 'task_start_reserved' && e.payload.trigger === resultId ? [state.tasks.get(e.payload.taskId)] : [])
       .flatMap(t => t ? [`${name(t.spec.assignee)}${particle(name(t.spec.assignee), '이/가')} "${t.spec.title}"${particle(t.spec.title)}`] : []);
-    const what = onBehalf ? `"${task.spec.title}" 결과를 다시 확인했어요 — 인계 조건을 충족합니다` : `"${task.spec.title}" ${revised ? '보완본을' : '결과를'} 확인했어요`;
-    return [`@${name(submitter)} ${what}${next.length ? `. 다음은 ${next.join(', ')} 시작합니다.` : '.'}`];
+    const then = next.length ? `. 다음은 ${next.join(', ')} 시작합니다.` : '.';
+    // A person's own request since the task was last checked (a reopen or a hand-back) is answered by this check.
+    const lastChecked = events.findLast(e => e.type === 'task_checked' && e.payload.taskId === taskId && e.payload.resultId !== resultId)?.seq ?? 0;
+    const asked = events.findLast(e => e.type === 'revision_requested' && e.payload.taskId === taskId && e.actor.kind === 'human' && e.seq > lastChecked && e.seq < submitted!.seq);
+    const requester = asked?.actor.id;
+    if (state.members.get(submitter)?.kind !== 'human') {
+      return requester && state.members.get(requester)?.kind === 'human' ? [`@${name(requester)} 요청하신 "${task.spec.title}" 보완본을 확인했어요${then}`] : [];
+    }
+    const revised = events.some(e => e.type === 'revision_requested' && e.payload.taskId === taskId && e.payload.resultId !== resultId);
+    const what = submitter !== task.spec.assignee ? `"${task.spec.title}" 결과를 다시 확인했어요 — 인계 조건을 충족합니다` : `"${task.spec.title}" ${revised ? '보완본을' : '결과를'} 확인했어요`;
+    return [`@${name(submitter)} ${what}${then}`];
   }
   private async recordNotices(trigger: string, taskId: string, outcome: ResultOutcome, notices: string[]): Promise<PmPost[]> {
     const events = await this.read() as AnyEvent[];
@@ -358,7 +603,7 @@ export class ProjectManager {
     const citations = (outcome.citationFailures ?? []).map(f => `인용 확인 실패: 조건 "${f.condition}" / 파일 ${f.file || '(지정 없음)'} / 인용 "${f.quote}" / ${f.reason}`);
     const post: PmPost = { kind: 'ask', text: channelText(`${decider ? `@${name(decider)} ` : ''}"${title}" 결과: ${outcome.message}`, state, 4) };
     await this.options.store.append([
-      { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId: trigger, whoseAction: `${decider ?? '결정권자'}: 인계 판단을 마치지 못한 결과 확인`, alreadyKnows: 'no', evidence: [trigger, ...citations], decision: 'speak', reason: '결과 내용이 아니라 판단 과정의 문제라 사람이 결과를 확인해야 한다', openTopics: state.openTopics } },
+      { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId: trigger, whoseAction: `${decider ?? '결정권자'}: 인계 판단을 마치지 못한 결과 확인`, alreadyKnows: 'no', evidence: [trigger, ...citations], decision: 'speak', reason: JUDGE_FAILURE_REASON, openTopics: state.openTopics } },
       { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_spoke', idempotencyKey: `${considerationId}:0`, payload: { considerationId, messageId: `${considerationId}:0`, ...post } },
     ]);
     return [post];
@@ -370,7 +615,7 @@ export class ProjectManager {
     const considerationId = `blocked-notice:${turnId}`;
     const decider = state.goal?.decider;
     const name = (id: string) => state.members.get(id)?.displayName ?? id;
-    const post: PmPost = { kind: 'fact', text: `${decider ? `@${name(decider)} ` : ''}${name(agentId)}의 "${state.tasks.get(taskId)?.spec.title ?? taskId}" 작업이 멈췄습니다: ${reason}. 자동으로 다시 시작하지 않으니 확인 후 다시 맡겨 주세요.` };
+    const post: PmPost = { kind: 'fact', text: `${decider ? `@${name(decider)} ` : ''}${name(agentId)}의 "${state.tasks.get(taskId)?.spec.title ?? taskId}" 작업이 멈췄습니다: ${reason}. 자동으로 다시 시작하지 않으니 확인한 뒤 '다시 맡기기'로 다시 맡겨 주세요.` };
     post.text = channelText(post.text, state);
     await this.options.store.append([
       { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId: `turn-blocked:${turnId}`, whoseAction: decider ?? null, alreadyKnows: 'no', evidence: [`turn-blocked:${turnId}`], decision: 'speak', reason: 'Agent 작업이 멈춰 사람이 다음 행동을 정해야 한다', openTopics: state.openTopics } },

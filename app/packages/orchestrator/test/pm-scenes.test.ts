@@ -116,7 +116,7 @@ it('routes question → person answer → acknowledged update → result handoff
   // The revision request reaches the agent the same way as the answer: steered into its live turn (QA3 S1).
   const revision = f.connector.updates[1]!;
   expect(revision.updateId).toMatch(/^revision:result:turn:prototype:1$/);
-  expect(revision.change[0]).toContain('not yet acknowledged');
+  expect(revision.change[0]).toContain('전달한 변경을 아직 확인(acknowledge_update)하지 않은 채 제출한 결과입니다');
   f.connector.emit({ ...base, itemId: 'ack', index: 2, report: { type: 'acknowledge_update', updateId: update.updateId, planVersion: 1, applied: update.change, dropped: [] } });
   f.connector.emit({ ...base, itemId: 'ack-revision', index: 4, report: { type: 'acknowledge_update', updateId: revision.updateId, planVersion: 1, applied: revision.change, dropped: [] } });
   await f.pm.flush();

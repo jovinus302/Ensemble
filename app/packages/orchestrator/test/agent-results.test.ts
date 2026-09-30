@@ -87,9 +87,9 @@ it('keeps one thread per agent: the next task, started by the handoff, is a new 
 });
 
 it.each([
-  ['linked', 'outside the workspace'],
-  ['big', 'exceeds'],
-  ['missing', 'not found'],
+  ['linked', '작업 폴더 밖에 있습니다'],
+  ['big', '바이트를 넘습니다'],
+  ['missing', '결과 파일을 찾지 못했습니다'],
 ])('rejects a %s result file without attaching it', async (mode, reason) => {
   const f = await fixture(mode);
   if (mode === 'linked') {

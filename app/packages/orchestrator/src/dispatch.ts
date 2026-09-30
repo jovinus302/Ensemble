@@ -3,14 +3,14 @@ import { channelText, particle, taskName } from './channel-text.ts';
 // task exactly once — agents through the session boundary, people through a channel sentence the
 // caller posts. Relays agent questions to people and routes the answers back to the agent.
 import {
-  AUTOMATION_LIMIT, automationGate, limitReachedEvent, planStarts, project,
+  AUTOMATION_LIMIT, automationGate, isStaleResult, limitReachedEvent, planStarts, project,
   type AnyEvent, type EventContext, type EventPayloads, type EventType, type Id, type LedgerEvent, type NewLedgerEvent, type ProjectState,
 } from '@ensemble/core';
 import type { LedgerStore } from '@ensemble/store';
 import type { LlmProvider } from '@ensemble/llm';
 import type { SendUpdateResult, TaskInstructionsInput, UpdateInstructionsInput } from '@ensemble/agents';
 import { handoffEvents, judgeHandoff, reviewKey, type CitationFailure, type HandoffReview, type ResultContent, type SubmittedResult } from './handoff.ts';
-import { answerChangeId, answerUpdate, buildTaskContext, fileOwnerFor, humanizeRefs, MAX_AGENT_REVISIONS, questionMessageId, relevantDecisions, revisionCount, revisionUpdate, startNotice, taskQuestions } from './context.ts';
+import { answerChangeId, answerUpdate, buildTaskContext, fileOwnerFor, humanizeRefs, MAX_REVISIONS, questionMessageId, relevantDecisions, revisionCount, revisionUpdate, startNotice, taskQuestions } from './context.ts';
 import type { Delivery } from './session-runner.ts';
 
 /** The part of a SessionConnector (or SessionRunner) the dispatcher drives. */
@@ -62,6 +62,18 @@ function withPending(events: readonly LedgerEvent[], pending: NewLedgerEvent[]):
   return [...events, ...pending.map((event, i) => ({ ...event, id: `pending-${i}`, seq: last + i + 1, at: event.at ?? '' }))];
 }
 
+/**
+ * A person's requests on a checked result they reopened, not yet answered by a new check (M11 T3): the
+ * resubmission is judged against them as well, so "보완본을 확인했어요" means the request was met.
+ */
+export function reopenRequests(events: readonly LedgerEvent[], taskId: Id): string[] {
+  const all = typed(events);
+  const checks = all.filter((e) => e.type === 'task_checked' && e.payload.taskId === taskId);
+  const lastCheck = checks.at(-1)?.seq ?? 0;
+  return all.flatMap((e) => e.type === 'revision_requested' && e.payload.taskId === taskId && e.actor.kind === 'human' && e.seq > lastCheck
+    && checks.some((c) => c.type === 'task_checked' && c.payload.resultId === e.payload.resultId) ? e.payload.missing : []);
+}
+
 export class Dispatcher {
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -96,7 +108,7 @@ export class Dispatcher {
       if (waitingOn.length) return { kind: 'deferred', waitingOn, notice: this.waitNotice(state, events, taskId, resultId, waitingOn) };
 
       const judged = await judgeHandoff({ state, result, resultContent: await this.options.readResult(result),
-        decisions: relevantDecisions(state, taskId), llm: this.options.llm, model: this.options.model });
+        decisions: relevantDecisions(state, taskId), llm: this.options.llm, model: this.options.model, requests: reopenRequests(events, taskId) });
       if (!judged.ok) return { kind: 'error', message: judged.error, ...(judged.citationFailures?.length ? { citationFailures: judged.citationFailures } : {}) };
 
       const { result: decided } = await this.options.store.transaction(this.options.context.projectId, (current) => {
@@ -119,6 +131,55 @@ export class Dispatcher {
       const outcome: Extract<ResultOutcome, { kind: 'checked' }> = { kind: 'checked', review, started: [], notices: [], failures: [] };
       if (decided.limited) outcome.limitNotice = `PM 자동 행동이 상한(${AUTOMATION_LIMIT}회)에 닿아 다음 작업 시작을 멈췄습니다. 확인 후 재개해 주세요.`;
       for (const nextId of decided.starts) await this.start(nextId, outcome);
+      return outcome;
+    });
+  }
+
+  /**
+   * The goal's decider accepts a stopped task's current result as it is (M11 T1 "이대로 확인"): the
+   * task resumes if blocked, its latest result is resubmitted under the current plan when it is not the
+   * pending, current submission, and it is checked with the decider's reason. Then the next tasks
+   * start exactly as after a sufficient review. No handoff review is recorded: no judgement was made.
+   */
+  acceptResult(taskId: Id, by: Id, reason: string, key: string): Promise<Extract<ResultOutcome, { kind: 'checked' }>> {
+    return this.enqueue(async () => {
+      const actor = { kind: 'human' as const, id: by };
+      const { result: decided } = await this.options.store.transaction(this.options.context.projectId, (current) => {
+        const now = project(current);
+        const task = now.tasks.get(taskId);
+        const latest = task?.results.at(-1);
+        if (!task || !latest || !now.plan || !['blocked', 'submitted', 'revising'].includes(task.status)) return { append: [], result: null };
+        const append: NewLedgerEvent[] = [];
+        if (task.status === 'blocked') append.push(this.event('task_resumed', { taskId }, `${key}:resume`, actor));
+        const resumed = project(withPending(current, append)).tasks.get(taskId)!;
+        let resultId = latest.resultId;
+        if (resumed.status !== 'submitted' || isStaleResult(resumed, resultId)) {
+          const previous = typed(current).findLast((e): e is Extract<AnyEvent, { type: 'result_submitted' }> => e.type === 'result_submitted' && e.payload.resultId === latest.resultId)!.payload;
+          resultId = `result:${key}`;
+          append.push(this.event('result_submitted', { taskId, resultId, planVersion: now.plan.version, summary: previous.summary, artifactIds: previous.artifactIds }, resultId, actor));
+        }
+        append.push(this.event('task_checked', { taskId, resultId, reason }, `checked:${resultId}`, actor));
+        const starts = planStarts(project(withPending(current, append)), resultId, this.options.context);
+        const after = project(withPending(current, [...append, ...starts]));
+        const withheld = !automationGate(after).allowed && [...after.tasks.values()].some((t) => t.status === 'ready');
+        const limit = withheld ? limitReachedEvent(after, this.options.context) : null;
+        return { append: [...append, ...starts, ...(limit ? [limit] : [])],
+          result: { resultId, starts: starts.map((e) => (e.payload as EventPayloads['task_start_reserved']).taskId), limited: limit !== null } };
+      });
+      if (!decided) throw new Error('확인할 결과가 없어 작업을 확인하지 못했습니다.');
+      const review: HandoffReview = { taskId, resultId: decided.resultId, verdict: 'sufficient', met: [], missing: [], evidence: [reason] };
+      const outcome: Extract<ResultOutcome, { kind: 'checked' }> = { kind: 'checked', review, started: [], notices: [], failures: [] };
+      if (decided.limited) outcome.limitNotice = `PM 자동 행동이 상한(${AUTOMATION_LIMIT}회)에 닿아 다음 작업 시작을 멈췄습니다. 확인 후 재개해 주세요.`;
+      for (const nextId of decided.starts) await this.start(nextId, outcome);
+      return outcome;
+    });
+  }
+
+  /** A reserved task whose start failed (and was blocked) is started again after a person hands it back. */
+  startReserved(taskId: Id): Promise<{ started: StartedTask[]; notices: string[]; failures: string[] }> {
+    return this.enqueue(async () => {
+      const outcome = { started: [] as StartedTask[], notices: [] as string[], failures: [] as string[] };
+      if ((await this.ledger()).state.tasks.get(taskId)?.status === 'reserved') await this.start(taskId, outcome);
       return outcome;
     });
   }
@@ -155,7 +216,7 @@ export class Dispatcher {
       outcome.started.push({ taskId, agentId: assignee, turnId });
     } catch (error) {
       // Keep the reservation: delivery may be ambiguous, so a person reconciles before any retry.
-      const reason = `Session start failed; reconcile before retry: ${error instanceof Error ? error.message : 'unknown error'}`;
+      const reason = `Agent 작업을 시작하지 못했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}. 상태를 확인한 뒤 다시 맡겨 주세요`;
       await this.options.store.append([this.event('task_blocked', { taskId, reason },
         `start-failed:${this.options.context.projectId}:${taskId}:v${input.planVersion}`, { kind: 'system', id: 'dispatcher' })]);
       outcome.failures.push(`${task.spec.title} 작업을 시작하지 못했습니다. 연결 상태를 확인해 주세요.`);
@@ -170,17 +231,18 @@ export class Dispatcher {
   private async requestRevision(taskId: Id, resultId: Id, review: HandoffReview): Promise<ResultOutcome> {
     const { events, state } = await this.ledger();
     const agentId = state.tasks.get(taskId)!.spec.assignee;
-    if (state.members.get(agentId)?.kind !== 'agent') return { kind: 'revision', review, notice: this.revisionNotice(state, events, taskId, review) };
-    if (revisionCount(events, taskId) > MAX_AGENT_REVISIONS) {
-      const reason = `보완을 ${MAX_AGENT_REVISIONS}회 요청했지만 인계 조건을 채우지 못했습니다`;
+    // People's tasks stop at the same cap (QA4 Z7): the decider accepts or hands back instead of an endless loop.
+    if (revisionCount(events, taskId) > MAX_REVISIONS) {
+      const reason = `보완을 ${MAX_REVISIONS}회 요청했지만 인계 조건을 채우지 못했습니다`;
       await this.options.store.transaction(this.options.context.projectId, (current) => project(current).tasks.get(taskId)?.status === 'revising'
         ? { append: [this.event('task_blocked', { taskId, reason, ...(state.goal ? { unblockBy: state.goal.decider } : {}) }, `revision-limit:${resultId}`, { kind: 'system', id: 'dispatcher' })], result: undefined }
         : { append: [], result: undefined });
       const decider = state.goal?.decider;
       const gap = review.missing[0] ? ` 남은 문제: ${humanizeRefs(review.missing[0], events)}` : '';
-      const notice = `${decider ? `@${this.name(state, decider)} ` : ''}${this.name(state, agentId)}의 "${taskName(state, taskId)}" 결과가 보완 ${MAX_AGENT_REVISIONS}회 뒤에도 인계 조건을 채우지 못해 작업을 멈췄습니다. 결과를 직접 확인하거나 다시 맡겨 주세요.${gap}`;
+      const notice = `${decider ? `@${this.name(state, decider)} ` : ''}${this.name(state, agentId)}의 "${taskName(state, taskId)}" 결과가 보완 ${MAX_REVISIONS}회 뒤에도 인계 조건을 채우지 못해 작업을 멈췄습니다. 지금 결과를 '이대로 확인'하거나 요청을 적어 '다시 맡기기'로 다시 맡겨 주세요.${gap}`;
       return { kind: 'revision', review, notice, delivery: 'blocked' };
     }
+    if (state.members.get(agentId)?.kind !== 'agent') return { kind: 'revision', review, notice: this.revisionNotice(state, events, taskId, review) };
     const update = revisionUpdate(events, state.plan!.version, taskId, resultId);
     let delivery: 'steer' | 'next_turn' | 'pending' = 'pending';
     if (update) {

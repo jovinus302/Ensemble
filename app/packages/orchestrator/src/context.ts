@@ -1,7 +1,7 @@
 import { particle, channelText } from './channel-text.ts';
 // Task context for the next assignee: the six fixed slots, each item carrying the ID it came from.
 // Also the short human-facing summary of an agent result. Pure functions over the ledger; no LLM.
-import type { AnyEvent, EventPayloads, Id, LedgerEvent, ProjectState } from '@ensemble/core';
+import { project, type AnyEvent, type EventPayloads, type Id, type LedgerEvent, type ProjectState } from '@ensemble/core';
 import { INPUTS_DIR, MAX_FILE_BYTES, type ResultReport, type SourcedItem, type TaskInstructionsInput, type UpdateInstructionsInput } from '@ensemble/agents';
 
 /** Newest-first character budget for the related-conversation slot. */
@@ -127,17 +127,27 @@ export function buildTaskContext(state: ProjectState, taskId: Id, events: readon
   }
 
   const openQuestions = taskQuestions(events, taskId).filter((q) => !q.answer).map((q) => ({ text: q.text, sourceId: q.questionId }));
+  const { exclusions, limits } = taskScope(task.spec);
   return {
     taskId,
     planVersion,
     goalSummary: { text: goal.deadline ? `${goal.text} (기한 ${goal.deadline})` : goal.text, sourceId: eventId('goal_set') },
     taskTitle: { text: task.spec.title, sourceId: planSource },
     handoffConditions: task.spec.handoffConditions.map((text, i) => ({ text, sourceId: `${planSource}:${taskId}.handoff[${i}]` })),
+    // People's scope decisions stay separate from the conditions, which are never rewritten (M11 T2).
+    ...(exclusions.length ? { exclusions: exclusions.map((text, i) => ({ text, sourceId: `${planSource}:${taskId}.exclusions[${i}]` })) } : {}),
+    ...(limits.length ? { limits: limits.map((text, i) => ({ text, sourceId: `${planSource}:${taskId}.limits[${i}]` })) } : {}),
     decisions: relevantDecisions(state, taskId).map((d) => ({ text: d.summary, sourceId: d.decisionId })),
     inputs: [...inputs, ...conversation(state, events, taskId)],
     openQuestions,
     files: files.flatMap((file) => file.data !== undefined ? [{ path: file.path, data: file.data }] : []),
   };
+}
+
+/** What people excluded from a task and how far they limited it; both lists are kept apart from its conditions. */
+export function taskScope(spec: { exclusions?: unknown; limits?: unknown }): { exclusions: string[]; limits: string[] } {
+  const strings = (value: unknown) => Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && !!v.trim()) : [];
+  return { exclusions: strings(spec.exclusions), limits: strings(spec.limits) };
 }
 
 /** A predecessor result file and where the next assignee finds it: inputs/<task title>/<file name>. */
@@ -299,32 +309,55 @@ export function startNotice(state: ProjectState, taskId: Id): string | undefined
   return undefined;
 }
 
-/** Revision requests an agent task may get before it stops for a person instead of looping. */
+/** PM revision requests a task (an agent's or a person's) may get before it stops for the decider instead of looping. */
 export const MAX_AGENT_REVISIONS = 2;
-export const revisionChangeId = (resultId: Id) => `revision:${resultId}`;
-
-/** Revision requests for a task since its current start was reserved (a new plan version starts over). */
-export function revisionCount(events: readonly LedgerEvent[], taskId: Id): number {
-  const started = typed(events).findLast((e) => e.type === 'task_start_reserved' && e.payload.taskId === taskId)?.seq ?? 0;
-  return typed(events).filter((e) => e.type === 'revision_requested' && e.payload.taskId === taskId && e.seq > started).length;
+/** The same cap, named for what it covers since M11 U2: people's tasks stop there too. */
+export const MAX_REVISIONS = MAX_AGENT_REVISIONS;
+/** Marks a hand-back ("다시 맡기기") of a task: the revision count starts over after it. */
+export const retryKey = (taskId: Id, trigger: string) => `resolve:retry:${taskId}:${trigger}`;
+type RevisionRequest = Extract<AnyEvent, { type: 'revision_requested' }>;
+/** A person's own request (a hand-back or a reopened result) rather than the PM's review verdict. */
+const personRequest = (event: RevisionRequest) => event.actor.kind === 'human';
+/** The update ID of a revision request: the PM's keeps its M10 form; a person's is keyed by its own record. */
+export function revisionChangeId(resultId: Id, request?: Pick<LedgerEvent, 'actor' | 'idempotencyKey' | 'id'>): string {
+  return request?.actor.kind === 'human' ? `revision:${resultId}:${request.idempotencyKey ?? request.id}` : `revision:${resultId}`;
 }
 
 /**
- * The update that carries a PM revision request to the agent whose result it concerns: what is
- * missing (at most three items, internal IDs replaced by file names) and which files to fix.
- * Deterministic, so a retry or a restart rebuilds the same update under the same ID.
+ * PM revision requests for a task since it last started over: its current start was reserved (a new
+ * plan version starts over), a person handed it back, or a person asked for a revision themselves.
+ * Only the PM's own requests count toward the cap.
+ */
+export function revisionCount(events: readonly LedgerEvent[], taskId: Id): number {
+  const all = typed(events);
+  const since = Math.max(0, ...all.filter((e) => (e.type === 'task_start_reserved' && e.payload.taskId === taskId)
+    || (e.type === 'revision_requested' && e.payload.taskId === taskId && personRequest(e))
+    || e.idempotencyKey?.startsWith(retryKey(taskId, ''))).map((e) => e.seq));
+  return all.filter((e) => e.type === 'revision_requested' && e.payload.taskId === taskId && !personRequest(e) && e.seq > since).length;
+}
+
+/**
+ * The update that carries a revision request to the agent whose result it concerns: what is missing
+ * (at most three items, internal IDs replaced by file names) and which files to fix. A person's
+ * request (a hand-back or a reopened checked result) says so. Deterministic, so a retry or a restart
+ * rebuilds the same update under the same ID.
  */
 export function revisionUpdate(events: readonly LedgerEvent[], planVersion: number, taskId: Id, resultId: Id): UpdateInstructionsInput | undefined {
-  const request = typed(events).findLast((e) => e.type === 'revision_requested' && e.payload.taskId === taskId && e.payload.resultId === resultId);
+  const request = typed(events).findLast((e): e is RevisionRequest => e.type === 'revision_requested' && e.payload.taskId === taskId && e.payload.resultId === resultId);
   const result = results(events).get(resultId);
-  if (request?.type !== 'revision_requested' || !result) return undefined;
+  if (!request || !result) return undefined;
   const names = new Map<Id, string>();
   for (const event of typed(events)) if (event.type === 'attachment_recorded') names.set(event.payload.attachmentId, event.payload.name);
   const files = [...new Set(result.artifactIds.map((id) => names.get(id) ?? id))];
+  const human = personRequest(request);
   const missing = request.payload.missing.slice(0, 3).map((item) => humanizeRefs(item, events));
-  return { updateId: revisionChangeId(resultId), fromVersion: planVersion, toVersion: planVersion, keep: [], drop: [],
-    change: [...missing.map((item) => `보완할 점: ${item}`), ...(files.length ? [`수정할 파일: ${files.join(', ')}`] : [])],
-    reason: 'PM이 인계 조건을 검토했고 아래 보완이 필요합니다. 결과 파일을 고친 뒤 result_report로 다시 제출하세요' };
+  const wasChecked = human && typed(events).some((e) => e.type === 'task_checked' && e.payload.taskId === taskId && e.payload.resultId === resultId && e.seq < request.seq);
+  const requester = human ? (project(events).members.get(request.actor.id)?.displayName ?? request.actor.id) : '';
+  return { updateId: revisionChangeId(resultId, request), fromVersion: planVersion, toVersion: planVersion, keep: [], drop: [],
+    change: [...missing.map((item) => human ? item : `보완할 점: ${item}`), ...(files.length ? [`수정할 파일: ${files.join(', ')}`] : [])],
+    reason: !human ? 'PM이 인계 조건을 검토했고 아래 보완이 필요합니다. 결과 파일을 고친 뒤 result_report로 다시 제출하세요'
+      : wasChecked ? `확인된 결과에 ${requester}${particle(requester, '이/가')} 보완을 요청했습니다. 요청대로 결과 파일을 고친 뒤 result_report로 다시 제출하세요. 인계 조건과 제외 범위는 그대로 지킵니다`
+      : `${requester}${particle(requester, '이/가')} 이 작업을 다시 맡겼습니다. 요청대로 결과 파일을 고친 뒤 result_report로 다시 제출하세요. 인계 조건과 제외 범위는 그대로 지킵니다` };
 }
 
 // Review verdict labels some agents carry over from their own instructions; people never need them.
@@ -380,11 +413,13 @@ export function summarizeForHuman(state: ProjectState, taskId: Id, report: Resul
     }
   } else if (task.status === 'revising') todo.push('PM이 보완을 요청했습니다. 보완본이 오면 다시 알려드립니다.');
   else if (task.status === 'submitted') todo.push('PM이 인계 조건을 확인하는 중입니다.');
-  if (report.limitations?.length) todo.push(`확인하지 못한 점: ${report.limitations.join('; ')}`);
+  // A limitation is not something to do: it gets its own line, and no empty "할 일:" is left (QA4 C6).
+  const limits = report.limitations?.map((item) => item.trim()).filter(Boolean) ?? [];
   return [
     `[${task.spec.title}] ${name(task.spec.assignee)} 결과`,
     `무엇이 됐나: ${channelText(plainAgentText(report.summary), state)}`,
-    `할 일: ${todo.length ? todo.join(' ') : '없음'}`,
+    ...(todo.length ? [`할 일: ${todo.join(' ')}`] : []),
+    ...(limits.length ? [`확인하지 못한 점: ${limits.join('; ')}`] : []),
     `확인할 곳: ${report.files.length ? report.files.map((file) => file.path).join(', ') : '없음'}`,
   ].join('\n');
 }

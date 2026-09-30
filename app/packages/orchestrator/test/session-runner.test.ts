@@ -42,7 +42,7 @@ it('records the complete flow once despite duplicate notifications and acknowled
   const { runner, store, agentId } = await fixture();
   const turnId = await runner.startTask(agentId, input);
   expect(project(await store.read()).activeTurn.get(agentId)).toBe('task');
-  await expect(runner.startTask(agentId, input)).rejects.toThrow('cannot start');
+  await expect(runner.startTask(agentId, input)).rejects.toThrow('작업을 시작할 수 없습니다');
   expect(await runner.sendUpdate(agentId, update)).toEqual({ sent: true });
   await runner.flush();
   await runner.sendUpdate(agentId, update); await runner.flush();
@@ -68,13 +68,13 @@ it.each(['bad-ack', 'bad-result', 'unsafe-path', 'errors'])('records validation 
   if (mode === 'bad-ack') expect(events.filter(event => event.type === 'update_rejected')).toHaveLength(1);
   if (mode === 'bad-result' || mode === 'unsafe-path') {
     expect(events.filter(event => event.type === 'result_submitted')).toHaveLength(0);
-    expect(events).toContainEqual(expect.objectContaining({ type: 'reply_recorded', payload: expect.objectContaining({ text: expect.stringContaining('Rejected result') }) }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'reply_recorded', payload: expect.objectContaining({ text: expect.stringContaining('결과를 받지 못했습니다') }) }));
   }
   if (mode === 'errors') {
     const replies = events.filter(event => event.type === 'reply_recorded');
     expect(replies).toContainEqual(expect.objectContaining({ payload: expect.objectContaining({ text: '질문이 있습니다. Which color?\n선택지: blue / green' }) }));
     expect(replies.map(event => (event.payload as { text: string }).text).join('\n')).not.toMatch(/Agent question|Options/);
-    expect(replies).toContainEqual(expect.objectContaining({ payload: expect.objectContaining({ text: expect.stringContaining('Invalid agent report') }) }));
+    expect(replies).toContainEqual(expect.objectContaining({ payload: expect.objectContaining({ text: expect.stringContaining('Agent 보고 형식 오류') }) }));
   }
 });
 
