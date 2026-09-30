@@ -1,7 +1,12 @@
 import type { Id, LedgerEvent } from "./ledger.ts";
 export type ChangeKind = "reorder" | "split_task" | "reassign_agent" | "scope_reduce" | "scope_add" | "deadline_change" | "goal_change" | "human_commitment";
-export interface TaskSpec { id: Id; title: string; assignee: Id; dependsOn: Id[]; handoffConditions: string[] }
+export interface TaskSpec {
+  id: Id; title: string; assignee: Id; dependsOn: Id[]; handoffConditions: string[];
+  /** Optional only for pre-M11 ledgers; new plans initialize all three fields. */
+  baseTitle?: string; exclusions?: string[]; limits?: string[];
+}
 export interface EventPayloads {
+  judgement_failed: { triggerId: Id; stage: "interpretation" | "judgement"; reason: string };
   member_joined: { memberId: Id; kind: "human" | "agent"; displayName: string; role?: string };
   goal_set: { text: string; deadline?: string; decider: Id; delegation: { pmMayApply: ChangeKind[] } };
   plan_proposed: { proposalId: Id; version: number; tasks: TaskSpec[]; estimates: { taskId: Id; hours: { min: number; max: number } }[]; reason: string; forMemberId: Id };

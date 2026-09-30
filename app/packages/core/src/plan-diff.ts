@@ -2,11 +2,11 @@ import type { Id } from "./ledger.ts";
 import type { TaskSpec } from "./events.ts";
 import type { ProjectState } from "./projection.ts";
 
-export type PlanField = "title" | "assignee" | "dependsOn" | "handoffConditions";
+export type PlanField = "title" | "baseTitle" | "exclusions" | "limits" | "assignee" | "dependsOn" | "handoffConditions";
 export interface ChangedTask { taskId: Id; fields: PlanField[]; prev: TaskSpec; next: TaskSpec }
 export interface PlanDiff { added: TaskSpec[]; removed: TaskSpec[]; changed: ChangedTask[]; unchanged: TaskSpec[] }
 
-const FIELDS: PlanField[] = ["title", "assignee", "dependsOn", "handoffConditions"];
+const FIELDS: PlanField[] = ["title", "baseTitle", "exclusions", "limits", "assignee", "dependsOn", "handoffConditions"];
 
 /** Compare two plan task lists by task id; array fields compare in order, as the projection does. */
 export function diffPlans(prev: readonly TaskSpec[] | undefined, next: readonly TaskSpec[]): PlanDiff {

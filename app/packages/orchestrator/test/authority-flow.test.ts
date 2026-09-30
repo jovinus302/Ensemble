@@ -27,11 +27,12 @@ async function setup(op: PlanOp = { type: 'exclude_scope', taskId: 'build', item
 
 it('authorized card answer uses the coordination path: v2, notification, steer, one decision', async () => {
   const f = await setup();
-  await expect(f.pm.decideAuthority('request', 'other', true)).rejects.toThrow('requested person');
+  await expect(f.pm.decideAuthority('request', 'other', true)).rejects.toThrow('요청받은 사람');
   await Promise.all([f.pm.decideCard('request', 'owner', true), f.pm.decideCard('request', 'owner', true)]);
   const events = await f.store.read() as AnyEvent[], state = project(events);
   expect(state.plan?.version).toBe(2);
-  expect(state.plan?.tasks[0]!.handoffConditions).toContain('제외: Payments');
+  expect(state.plan?.tasks[0]!.handoffConditions).toEqual(['Payments', 'Signup']);
+  expect(state.plan?.tasks[0]!.exclusions).toEqual(['Payments']);
   expect(state.pendingAuthority.size).toBe(0);
   expect(events.filter(e => e.type === 'authority_granted')).toHaveLength(1);
   expect(events.filter(e => e.type === 'decision_recorded')).toHaveLength(1);
@@ -77,7 +78,7 @@ it('a no-op approval still resolves the pending request once', async () => {
 
 it('invalid recorded operations stay pending and cannot mutate state', async () => {
   const f = await setup({ type: 'exclude_scope', taskId: 'missing', item: 'Payments', sourceMessageIds: [] });
-  await expect(f.pm.decideAuthority('request', 'owner', true)).rejects.toThrow('invalid');
+  await expect(f.pm.decideAuthority('request', 'owner', true)).rejects.toThrow('유효하지 않거나');
   expect(project(await f.store.read()).pendingAuthority.has('request')).toBe(true);
   expect(f.updates).toHaveLength(0);
   await f.pm.stop();

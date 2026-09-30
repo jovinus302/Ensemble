@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { forecastFromState, project } from "../src/index.ts";
 import type { EventPayloads, EventType, LedgerEvent } from "../src/index.ts";
 
-it.each(['blocked', 'revising'] as const)('marks stopped %s work as uncertain and clears after resume', status => {
+it.each(['blocked', 'revising', 'submitted'] as const)('marks stopped %s work as uncertain and clears after resume', status => {
   const state = project([]);
   const spec = { id: 'research', title: '조사', assignee: 'agent', dependsOn: [], handoffConditions: [] };
   state.plan = { version: 1, tasks: [spec], reason: '', approvedBy: 'owner' };

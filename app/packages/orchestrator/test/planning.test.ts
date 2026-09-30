@@ -17,6 +17,19 @@ const draft = () => ({ tasks: ['research', 'interview', 'flow', 'prototype'].map
   templateKey, title: `Arbitrary title for ${templateKey}`, handoffConditions: ['Concrete artifact'], hours: { min: 2, max: 4 },
 })) });
 const CUT_OFF = Symbol('max_tokens');
+it('T4 gives the exact failed task and condition count to the retry without dropping requirements', async () => {
+  const bad = draft();
+  bad.tasks[2]!.handoffConditions = ['가입 정상/오류 흐름', '시간 선택과 예약 확인', '모의 결제 버튼', '고객 문제 선택 근거'];
+  const f = await setup([bad, draft()]);
+  const result = await f.pm.startFreeProject('가입 정상/오류, 시간 선택, 예약 확인, 결제 모형을 설계해줘');
+  expect(result.proposal).toBeDefined();
+  const retry = JSON.parse(f.calls[1]!.messages[0]!.content);
+  expect(retry.validationError).toContain('flow');
+  expect(retry.validationError).toContain('4');
+  expect(retry.validationError).toContain('1–3');
+  expect(f.calls[1]!.system).toContain('combine');
+  await f.pm.stop();
+});
 it.each(['디자이너에게 전달했다는 근거', '공유 가능한 문서 형태로 전달', '채널에 업로드'])('retries then removes unobservable QA condition: %s', async condition => {
   const bad = draft();
   bad.tasks[0]!.handoffConditions = ['각 항목별 출처 링크와 확인 한계를 명시한 보고서', condition];
@@ -84,7 +97,7 @@ it('draft → decider approval commits v1/estimates and starts only ready tasks 
   expect(project(await f.store.read()).plan).toBeUndefined();
   expect(f.starts).toHaveLength(0);
   expect(JSON.parse(f.calls[0]!.messages[0]!.content).members.find((m: { memberId: string }) => m.memberId === 'owner').weeklyHours).toBe(7);
-  await expect(f.pm.decidePlan(proposal.proposalId, 'designer', true)).rejects.toThrow('decider');
+  await expect(f.pm.decidePlan(proposal.proposalId, 'designer', true)).rejects.toThrow('결정권자');
   await Promise.all([f.pm.decideCard(proposal.proposalId, 'owner', true), f.pm.decideCard(proposal.proposalId, 'owner', true)]);
   const state = project(await f.store.read());
   expect(state.plan).toMatchObject({ version: 1, approvedBy: 'owner' });
@@ -205,7 +218,7 @@ it('availability accepts zero, rejects non-human and invalid amounts without aut
   const f = await setup();
   await f.pm.setAvailability('designer', 0);
   for (const n of [-1, NaN, Infinity]) await expect(f.pm.setAvailability('designer', n)).rejects.toThrow();
-  await expect(f.pm.setAvailability('research-agent', 4)).rejects.toThrow('human');
+  await expect(f.pm.setAvailability('research-agent', 4)).rejects.toThrow('사람');
   expect(project(await f.store.read()).availability.get('designer')).toBe(0);
   expect(project(await f.store.read()).pendingAuthority.size).toBe(0);
   await f.pm.stop();
@@ -222,7 +235,7 @@ it.each([false, true])('allows messages during drafting but rejects team changes
   };
   const pending = f.pm.startFreeProject('Ship');
   if (teamChange) {
-    await expect(pending).rejects.toThrow('Team changed while drafting');
+    await expect(pending).rejects.toThrow('팀 기록이 바뀌었습니다');
     expect(project(await f.store.read()).pendingPlans.size).toBe(0);
   } else {
     expect((await pending).proposal?.tasks).toHaveLength(4);
