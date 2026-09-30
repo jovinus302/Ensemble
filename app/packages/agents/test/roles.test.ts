@@ -26,6 +26,9 @@ it('registers Korean research and prototype roles with their reporting rules', (
   expect(researchAgentRole.systemPrompt).toMatch(/웹 검색/);
   expect(prototypeAgentRole.systemPrompt).toMatch(/단일 HTML/);
   for (const role of [researchAgentRole, prototypeAgentRole]) expect(role.systemPrompt).toMatch(/작업 폴더 안에만/);
+  // QA3 N9: review labels from other instructions stay out of what people read; a PM revision is acknowledged and resubmitted.
+  for (const role of [researchAgentRole, prototypeAgentRole]) expect(role.systemPrompt).toMatch(/SOUND, PASS\/FAIL, COMMITTED CHANGE.*쓰지 않습니다/);
+  for (const role of [researchAgentRole, prototypeAgentRole]) expect(role.systemPrompt).toMatch(/보완을 요청하면 acknowledge_update/);
 });
 
 it('reads workspace root and turn limit from the environment, defaulting to 20 minutes under home', () => {

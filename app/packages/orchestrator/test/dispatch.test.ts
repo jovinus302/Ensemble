@@ -110,7 +110,7 @@ it('requests a concrete revision for an insufficient draft, then starts T4 exact
   expect(JSON.stringify(input)).not.toContain('flow-v1.md');
 
   // The start is reserved for the person, so the notice says so rather than "can start".
-  expect(second.kind === 'checked' && second.notices).toEqual(['@리드 사용성 테스트 준비 작업이 예약되었습니다. 지금 시작해 주세요.']);
+  expect(second.kind === 'checked' && second.notices).toEqual(['@리드 사용성 테스트 준비를 곧 시작합니다.']);
   expect(second.kind === 'checked' && second.started).toEqual([{ taskId: 'T4', agentId: 'proto', turnId: 'turn-1' }]);
   const events = await store.read();
   expect(events.filter((e) => e.type === 'handoff_reviewed')).toHaveLength(2);

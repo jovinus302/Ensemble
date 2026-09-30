@@ -4,7 +4,7 @@ import path from 'node:path';
 import { project, type EventContext, type EventPayloads, type EventType, type LedgerEvent, type NewLedgerEvent } from '@ensemble/core';
 import type { LedgerStore } from '@ensemble/store';
 import { MAX_FILE_BYTES, validateAck, validateResult, type ResultReport, type SessionConnector, type SessionEvent, type TaskInstructionsInput, type UpdateInstructionsInput } from '@ensemble/agents';
-import { buildTaskContext, humanizeRefs, summarizeForHuman } from './context.ts';
+import { buildTaskContext, humanizeRefs, plainAgentText, summarizeForHuman } from './context.ts';
 
 interface TaskRun {
   agentId: string;
@@ -148,7 +148,7 @@ export class SessionRunner {
   }
 
   /**
-   * Delivers a change or a person's answer to the agent working on a task: steered into its live
+   * Delivers a change, a person's answer or a PM revision request to the agent working on a task: steered into its live
    * turn, otherwise a new turn on the same thread carries it, and the agent acknowledges it before
    * it carries on. At most one turn per agent; an update already sent is never sent again.
    * Tasks that are not running need nothing: their next start reads the current ledger.
@@ -165,7 +165,8 @@ export class SessionRunner {
       }
       const state = project(events);
       const task = state.tasks.get(taskId);
-      if (!task || task.spec.assignee !== agentId || task.status !== 'running') return { via: 'next_turn', sent: false, reason: 'Task is not running; its next start carries the change' };
+      // A revising task waits for exactly this: the PM's revision request, carried by a new turn.
+      if (!task || task.spec.assignee !== agentId || (task.status !== 'running' && task.status !== 'revising')) return { via: 'next_turn', sent: false, reason: 'Task is not running; its next start carries the change' };
       const occupied = state.activeTurn.get(agentId);
       if (occupied && occupied !== taskId) return { via: 'next_turn', sent: false, reason: 'Agent is working on another task' };
       if (!this.connector.continueTask) return { via: 'next_turn', sent: false, reason: 'This runtime cannot start a follow-up turn' };
@@ -252,9 +253,13 @@ export class SessionRunner {
     }
     const reply = (text: string, suffix: string) => this.event(agentId, 'reply_recorded', { memberId: agentId, taskId, turnId, text }, `reply:${turnId}:${suffix}`);
     if (event.type === 'reply') {
-      await this.append([event.text.includes('```ensemble-report')
-        ? this.event(agentId, 'agent_report_recorded', { memberId: agentId, taskId, turnId, text: event.text }, `raw:${turnId}:${event.itemId}`)
-        : reply(event.text, event.itemId)]);
+      if (event.text.includes('```ensemble-report')) {
+        await this.append([this.event(agentId, 'agent_report_recorded', { memberId: agentId, taskId, turnId, text: event.text }, `raw:${turnId}:${event.itemId}`)]);
+        return;
+      }
+      // A message that only reported a review label says nothing to people.
+      const text = plainAgentText(event.text);
+      if (text) await this.append([reply(text, event.itemId)]);
       return;
     }
     if (event.type === 'parse_error') {

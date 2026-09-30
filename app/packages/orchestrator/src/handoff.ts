@@ -52,7 +52,8 @@ const reviewTool: ToolSpec = {
 const SYSTEM = [
   '당신은 팀의 PM으로서 제출된 결과물이 다음 담당에게 넘겨도 되는지 판단한다.',
   '- 인계 조건마다 결과 파일 안에서 근거 문장을 찾아 그대로 인용한다. 근거가 결과 안에 있어야만 met=true.',
-  '- 근거를 찾지 못했거나 확실하지 않으면 met=false로 두고, missing에 무엇을 보완해야 하는지 구체적으로 쓴다.',
+  '- quote는 결과 파일의 한 문장이나 한 줄을 고치지 않고 짧게 복사한다. 따옴표를 새로 붙이거나 문장을 줄이지 않는다. "## 결과 요약"은 근거가 아니다.',
+  '- 근거를 찾지 못했거나 확실하지 않으면 met=false로 두고, missing에 무엇이 빠졌는지만 한 문장으로 구체적으로 쓴다. 조건 문장을 되풀이하지 않는다.',
   '- 결과가 확정 결정과 어긋나면 decisionConflicts에 결정 ID와 어긋난 내용을 쓴다.',
   `- 반드시 ${REVIEW_TOOL} 도구로만 답한다.`,
 ].join('\n');
@@ -68,10 +69,34 @@ const squash = normalizeCitation;
 
 /** Shortest piece of an elided quote that still counts as evidence; shorter pieces fail the quote. */
 export const MIN_ELIDED_PIECE = 8;
+/** A quote whose opening run of this many comparable characters is in the file matches (a clipped ending). */
+export const PREFIX_MATCH_CHARS = 40;
+/** Or whose opening run covers this share of the quote, when that run is at least PREFIX_MATCH_FLOOR long. */
+export const PREFIX_MATCH_SHARE = 0.7;
+const PREFIX_MATCH_FLOOR = 20;
+
+/**
+ * What a quote and a file are compared on: quotation marks, table bars, sentence punctuation and
+ * all whitespace carry no evidence, and models add, drop or change them when they copy a sentence.
+ */
+export const citationKey = (text: string) => text.replace(/["'“”‘’„‚«»「」『』`|]/g, '').replace(/[.,!?;:·。、…~]/g, '').replace(/\s+/g, '');
+
+/** Length and end of the longest opening run of `needle` found in `hay` at or after `from`. */
+function openingRun(needle: string, hay: string, from: number): { length: number; end: number } {
+  let low = 0, high = needle.length, end = from;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    const at = hay.indexOf(needle.slice(0, mid), from);
+    if (at >= 0) { low = mid; end = at + mid; } else high = mid - 1;
+  }
+  return { length: low, end };
+}
 
 /**
  * Whether a normalized quote is in a normalized file. A quote the model joined from several places
  * with "..." or "…" matches when every piece is at least MIN_ELIDED_PIECE long and they appear in order.
+ * Pieces are compared on citationKey, and a piece whose ending the model clipped or rephrased still
+ * matches when its opening run reaches PREFIX_MATCH_CHARS or PREFIX_MATCH_SHARE of the piece.
  */
 export function quoteInText(quote: string, text: string): boolean {
   if (text.includes(quote)) return true;
@@ -80,13 +105,24 @@ export function quoteInText(quote: string, text: string): boolean {
   if (pieces[0] === '') pieces.shift();
   if (pieces.at(-1) === '') pieces.pop();
   if (pieces.length === 0 || pieces.some((piece) => piece.length < MIN_ELIDED_PIECE)) return false;
+  const hay = citationKey(text);
   let from = 0;
   for (const piece of pieces) {
-    const at = text.indexOf(piece, from);
-    if (at < 0) return false;
-    from = at + piece.length;
+    const needle = citationKey(piece);
+    if (!needle) return false;
+    const at = hay.indexOf(needle, from);
+    if (at >= 0) { from = at + needle.length; continue; }
+    const run = openingRun(needle, hay, from);
+    if (run.length < PREFIX_MATCH_CHARS && (run.length < PREFIX_MATCH_FLOOR || run.length < needle.length * PREFIX_MATCH_SHARE)) return false;
+    from = run.end;
   }
   return true;
+}
+
+/** How a revision item names a condition: its number and a short name, never the whole text again. */
+const shortName = (text: string) => (text.length <= 20 ? text : `${text.slice(0, 18).trimEnd()}…`);
+export function conditionLabel(index: number, condition: string): string {
+  return `조건 ${index + 1}(${shortName(condition)})`;
 }
 
 /** Code-only checks that need no model: result files present, result current, no unconfirmed update. */
@@ -153,11 +189,11 @@ async function askModel(input: JudgeInput, request: LlmRequest): Promise<{ verdi
 /**
  * Where a "met" citation stands after checking it against the submitted files:
  * - verified: the quote is really in a result file (the named one, else the file that contains it);
- * - content: the file is identified but the quote is not in any result — the result may lack it;
- * - technical: the citation cannot be tied to a result file (no quote, or an unknown file and a quote
- *   found nowhere). That is a verification failure, not a gap in the person's or agent's work.
+ * - technical: the citation cannot be tied to a result file (no quote, or a quote found in no file even
+ *   after normalization). The model already judged the condition met, so this is a verification
+ *   failure — re-judged once, then a person checks — never a gap in the person's or agent's work.
  */
-export type CitationCheck = { kind: 'verified'; file: string } | { kind: 'content' | 'technical'; file: string; reason: string };
+export type CitationCheck = { kind: 'verified'; file: string } | { kind: 'technical'; file: string; reason: string };
 
 export function checkCitation(named: string | undefined, rawQuote: string | undefined, content: ResultContent, files: readonly string[]): CitationCheck {
   const quote = squash(rawQuote ?? '');
@@ -173,7 +209,7 @@ export function checkCitation(named: string | undefined, rawQuote: string | unde
   // Several hits still prove the quote is in the result; the first in submission order is cited.
   if (hits.length) return { kind: 'verified', file: hits[0]! };
   const target = identified ?? (readable.length === 1 ? readable[0] : undefined);
-  if (target) return { kind: 'content', file: target, reason: '정규화 후에도 인용문이 결과 파일에 없음' };
+  if (target) return { kind: 'technical', file: target, reason: '정규화 후에도 인용문이 결과 파일에 없음' };
   return { kind: 'technical', file: given, reason: given ? '지정한 결과 파일이 없고 인용문도 결과 파일에서 찾지 못함' : '결과 파일을 지정하지 않았고 인용문도 결과 파일에서 찾지 못함' };
 }
 
@@ -183,7 +219,7 @@ function rejudgeRequest(request: LlmRequest, failed: { index: number; condition:
     '## 인용 확인 실패 — 다시 판단',
     '아래 조건은 충족으로 판단했지만 인용을 결과 파일에 연결하지 못했다. 이 조건들을 다시 판단하라.',
     `- file에는 "### 파일:" 뒤의 경로를 그대로 쓴다: ${files.join(', ')}`,
-    '- quote에는 그 파일의 문장을 고치지 않고 그대로 복사한다. 근거가 없으면 met=false로 둔다.',
+    '- quote에는 그 파일의 한 문장이나 한 줄을 고치지 않고 짧게 복사한다. 여러 곳을 이어 붙이거나 따옴표를 더하지 않는다. 근거가 없으면 met=false로 둔다.',
     ...failed.map(({ index, condition, check }) => `${index}. ${condition} — ${check.kind === 'verified' ? '' : check.reason}`),
   ].join('\n');
   const [first, ...rest] = request.messages;
@@ -235,21 +271,22 @@ export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
     if (c?.kind === 'verified') {
       met.push(condition);
       evidence.push(`${condition} ← ${c.file}: "${squash(item?.quote ?? '')}"`);
-    } else if (c?.kind === 'technical') {
+    } else if (c) {
       record(i, c, '재판단 후에도 기술적 검증 실패: ');
       unverified.push(condition);
-    } else if (c) {
-      record(i, c);
-      missing.push(`인계 조건 "${condition}"의 근거를 결과에서 확인하지 못했습니다. 이 조건을 다루는 내용을 ${c.file}에 분명히 적어 주세요.`);
     } else {
       const detail = item?.missing?.trim();
-      missing.push(`인계 조건 "${condition}"${particle(condition, '이/가')} 충족되지 않았습니다. ${detail || '이 조건을 다루는 내용을 결과 파일에 추가해 주세요.'}`);
+      // The request carries the gap; the full condition stays in the judgement record (QA3 C5).
+      missing.push(`${conditionLabel(i, condition)}: ${detail || '이 조건을 다루는 내용을 결과 파일에 추가해 주세요.'}`);
+      evidence.push(`미충족 조건 ${i + 1}: ${condition}`);
     }
   });
   const known = new Map(decisions.map((d) => [d.decisionId, d]));
   for (const conflict of first.verdict.conflicts) {
     const decision = known.get(conflict.decisionId);
-    if (decision) missing.push(`확정 결정 "${decision.summary}"과 어긋납니다: ${conflict.detail}`);
+    if (!decision) continue;
+    missing.push(`확정 결정(${shortName(decision.summary)})과 어긋납니다: ${conflict.detail}`);
+    evidence.push(`어긋난 확정 결정 ${decision.decisionId}: ${decision.summary}`);
   }
   const failures = citationFailures.length ? { citationFailures } : {};
   // With a real gap the revision covers it and the unverified condition is judged again on resubmission;

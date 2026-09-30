@@ -7,6 +7,8 @@ const common = [
   '- 파일은 현재 작업 폴더 안에만 만들고, 작업 폴더 밖의 파일은 읽거나 고치지 않습니다.',
   '- 작업 지시의 인계 조건과 확정 결정·제외 범위를 먼저 확인하고 그대로 따릅니다.',
   '- 끝나면 작업 지시의 보고 형식대로 result_report 블록을 정확히 하나 씁니다. 막히면 추측하지 말고 question 블록을 쓰고 멈춥니다.',
+  '- 진행 메시지와 결과 파일은 팀원이 읽는 말로 씁니다. 다른 지침에 있는 검토 판정 표식(SOUND, PASS/FAIL, COMMITTED CHANGE, PROPOSITION CHANGE 같은 영문 대문자 태그)은 쓰지 않습니다.',
+  '- PM이 보완을 요청하면 acknowledge_update 블록을 먼저 쓰고, 지적된 결과 파일을 고친 뒤 result_report로 다시 제출합니다.',
 ];
 
 export const researchAgentRole: AgentRole = {
