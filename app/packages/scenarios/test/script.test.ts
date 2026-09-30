@@ -1,7 +1,7 @@
 ﻿import { expect, it, vi } from 'vitest';
 import { project, type NewLedgerEvent, type TaskSpec } from '@ensemble/core';
 import { MemoryLedgerStore } from '@ensemble/store';
-import { resolveTarget, waitForCondition, conditionMet, advanceScript, type Condition, type ScriptHost, type ScriptProgress } from '../src/index.ts';
+import { resolveTarget, waitForCondition, conditionMet, advanceScript, continuousScenario, type Condition, type ScriptHost, type ScriptProgress } from '../src/index.ts';
 const ctx = { projectId: 'test', targetProductId: 'product', actor: { kind: 'system' as const, id: 'test' } };
 const task = (id: string, assignee = 'designer', dependsOn: string[] = []): TaskSpec => ({ id, assignee, dependsOn, title: id, handoffConditions: ['done'] });
 async function ledger(tasks: TaskSpec[] = [task('later', 'designer', ['earlier']), task('earlier'), task('other', 'owner')]) {
@@ -32,6 +32,15 @@ const cases: [Condition, NewLedgerEvent[]][] = [
   ]],
   [{ kind: 'agentUpdated', agentId: 'designer', afterStep: 0 }, [{ ...ctx, type: 'update_acknowledged', payload: { taskId: 'earlier', updateId: 'u', planVersion: 2, applied: [], dropped: [] } }]],
 ];
+it('allows an unreserved ready human task through the interview and design gates', async () => {
+  const store = await ledger([task('interview', 'owner'), task('design', 'designer')]);
+  const events = await store.read();
+  expect(project(events).tasks.get('interview')?.status).toBe('ready');
+  expect(conditionMet({ kind: 'taskOf', assignee: 'owner', status: 'reserved' }, events, {})).toBe(false);
+  for (const index of [4, 6]) expect(conditionMet(continuousScenario.steps[index]!.waitFor!, events, {})).toBe(true);
+  expect(resolveTarget(project(events), { assignee: 'owner' })).toBe('interview');
+  expect(resolveTarget(project(events), { assignee: 'designer' })).toBe('design');
+});
 it.each(cases)('waits for %j and reports timeout without a matching ledger fact', async (condition, added) => {
   const store = await ledger();
   const anchors = { 0: project(await store.read()).lastSeq };
@@ -64,6 +73,21 @@ it('records the failed step once and prevents later human inputs', async () => {
   await expect(advanceScript(host, steps, progress)).rejects.toThrow('Step 0');
   expect(postMessage).not.toHaveBeenCalled();
   expect(recordStop).toHaveBeenCalledOnce();
+});
+it('retries a completion wait without delivering the final human input twice', async () => {
+  const store = await ledger();
+  await store.append([{ ...ctx, type: 'member_joined', payload: { memberId: 'owner', kind: 'human', displayName: 'Owner' } }]);
+  const postMessage = vi.fn(async () => []);
+  const host = { read: () => store.read(), recordStop: vi.fn(), pm: { postMessage } } as unknown as ScriptHost;
+  const progress: ScriptProgress = { step: 0, anchors: {} };
+  const steps = [{ as: 'owner', text: 'final decision' }];
+  const completion: Condition = { kind: 'planVersionAtLeast', version: 2, timeoutMs: 0 };
+  await expect(advanceScript(host, steps, progress, completion)).rejects.toThrow();
+  delete progress.stopped;
+  await store.append([{ ...ctx, type: 'plan_committed', payload: { version: 2, basedOn: 1, tasks: [], reason: 'test', approvedBy: 'owner', sourceMessageIds: [] } }]);
+  await advanceScript(host, steps, progress, completion);
+  expect(postMessage).toHaveBeenCalledOnce();
+  expect(progress.step).toBe(1);
 });
 it.each([true, false])('answers an offered choice only when PM asked (%s)', async asked => {
   const store = await ledger();
