@@ -101,7 +101,23 @@ export class Dispatcher {
     });
   }
 
-  private async start(taskId: Id, outcome: Extract<ResultOutcome, { kind: 'checked' }>): Promise<void> {
+  /** Initial approved plans use the same reservations, context and delivery as handoffs. */
+  startReady(trigger: Id): Promise<{ started: StartedTask[]; notices: string[]; failures: string[] }> {
+    return this.enqueue(async () => {
+      const tx = await this.options.store.transaction(this.options.context.projectId, events => {
+        const append = planStarts(project(events), trigger, this.options.context);
+        const after = project(withPending(events, append));
+        const limit = !automationGate(after).allowed && [...after.tasks.values()].some(t => t.status === 'ready') ? limitReachedEvent(after, this.options.context) : null;
+        return { append: [...append, ...(limit ? [limit] : [])], result: { ids: append.map(e => (e.payload as EventPayloads['task_start_reserved']).taskId), limited: !!limit } };
+      });
+      const outcome = { started: [] as StartedTask[], notices: [] as string[], failures: [] as string[] };
+      if (tx.result.limited) outcome.notices.push(`PM 자동 행동이 상한(${AUTOMATION_LIMIT}회)에 닿아 다음 작업 시작을 멈췄습니다. 확인 후 재개해 주세요.`);
+      for (const id of tx.result.ids) await this.start(id, outcome);
+      return outcome;
+    });
+  }
+
+  private async start(taskId: Id, outcome: { started: StartedTask[]; notices: string[]; failures: string[] }): Promise<void> {
     const { events, state } = await this.ledger();
     const task = state.tasks.get(taskId)!;
     const assignee = task.spec.assignee;

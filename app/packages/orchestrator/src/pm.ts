@@ -8,8 +8,10 @@ import { Dispatcher, type ResultOutcome } from './dispatch.ts';
 import { taskQuestions } from './context.ts';
 import type { ResultContent, SubmittedResult } from './handoff.ts';
 import { SessionRunner } from './session-runner.ts';
+import { startFreeProject, decidePlan } from './planning.ts';
+import { decideAuthority } from './authority-flow.ts';
 
-export interface MessageAttachment { name: string; mimeType: string; content: string; taskId?: string }
+export interface MessageAttachment { name: string; mimeType: string; content: string; contentBase64?: string; taskId?: string }
 export interface ProjectManagerOptions extends EventContext {
   store: LedgerStore;
   llm: LlmProvider;
@@ -55,6 +57,29 @@ export class ProjectManager {
     return next;
   }
   private read() { return this.options.store.read({ projectId: this.context.projectId }); }
+  startFreeProject(goal: string, deadline?: string) {
+    return this.enqueue(() => startFreeProject({ ...this.options, context: this.context }, goal, deadline));
+  }
+  decidePlan(proposalId: string, memberId: string, approve: boolean): Promise<PmPost[]> {
+    return this.enqueue(() => decidePlan({ store: this.options.store, context: this.context, dispatcher: this.dispatcher }, proposalId, memberId, approve));
+  }
+  decideAuthority(requestId: string, memberId: string, granted: boolean): Promise<PmPost[]> {
+    return this.enqueue(() => decideAuthority({ store: this.options.store, context: this.context, coordinator: this.coordinator }, requestId, memberId, granted));
+  }
+  decideCard(cardId: string, memberId: string, approve: boolean): Promise<PmPost[]> {
+    return this.enqueue(async () => {
+      const events = await this.read() as AnyEvent[];
+      if (events.some(e => e.type === 'plan_proposed' && e.payload.proposalId === cardId)) return decidePlan({ store: this.options.store, context: this.context, dispatcher: this.dispatcher }, cardId, memberId, approve);
+      return decideAuthority({ store: this.options.store, context: this.context, coordinator: this.coordinator }, cardId, memberId, approve);
+    });
+  }
+  setAvailability(memberId: string, weeklyHours: number): Promise<void> {
+    return this.enqueue(async () => {
+      if (project(await this.read()).members.get(memberId)?.kind !== 'human') throw new Error('Availability must be entered by a human member');
+      if (!Number.isFinite(weeklyHours) || weeklyHours < 0) throw new Error('Weekly hours must be finite and nonnegative');
+      await this.options.store.append([{ ...this.context, actor: { kind: 'human', id: memberId }, type: 'availability_updated', payload: { memberId, weeklyHours } }]);
+    });
+  }
   private async readResult(result: SubmittedResult): Promise<ResultContent> {
     const contents = this.options.readResult ? await this.options.readResult(result) : {};
     for (const event of await this.read() as AnyEvent[]) {
@@ -73,7 +98,7 @@ export class ProjectManager {
       const messageId = randomUUID();
       const attachmentIds = attachments.map(() => randomUUID());
       const actor = { kind: 'human' as const, id: authorId };
-      const recorded: NewLedgerEvent[] = attachments.map((a, i) => ({ ...this.context, actor, type: 'attachment_recorded', payload: { attachmentId: attachmentIds[i]!, name: a.name, mimeType: a.mimeType, uri: `data:${a.mimeType};base64,${Buffer.from(a.content).toString('base64')}`, ...(a.taskId ? { taskId: a.taskId } : {}) } }));
+      const recorded: NewLedgerEvent[] = attachments.map((a, i) => ({ ...this.context, actor, type: 'attachment_recorded', payload: { attachmentId: attachmentIds[i]!, name: a.name, mimeType: a.mimeType, uri: `data:${a.mimeType};base64,${a.contentBase64 ?? Buffer.from(a.content).toString('base64')}`, ...(a.taskId ? { taskId: a.taskId } : {}) } }));
       recorded.push({ ...this.context, actor, type: 'message_recorded', payload: { messageId, authorId, text, attachmentIds } });
       await this.options.store.append(recorded);
       const pending = [...state.tasks.values()].flatMap(t => taskQuestions(before, t.spec.id).filter(q => !q.answer).map(q => ({ ...q, taskId: t.spec.id }))).filter(q =>

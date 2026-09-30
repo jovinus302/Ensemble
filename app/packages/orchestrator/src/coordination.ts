@@ -40,7 +40,7 @@ function interpretationTool(state: ProjectState): ToolSpec {
     ] } },
   } } };
 }
-function validOp(value: unknown, state: ProjectState): value is PlanOp {
+export function validOp(value: unknown, state: ProjectState): value is PlanOp {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   if (!strings(v.sourceMessageIds) || !v.sourceMessageIds.length || !v.sourceMessageIds.every(id => state.messages.some(m => m.messageId === id && state.members.get(m.authorId)?.kind === 'human'))) return false;
@@ -86,6 +86,13 @@ export class Coordinator {
     return next;
   }
 
+  /** Card answers supply exact recorded operations, while sharing normal application and delivery. */
+  onConfirmedOperations(messageId: string, ops: PlanOp[], requestId: string): Promise<CoordinationResult> {
+    const next = this.queue.then(() => this.consider(messageId, ops, requestId));
+    this.queue = next.catch(() => undefined);
+    return next;
+  }
+
   private async call<T>(tool: ToolSpec, facts: unknown, valid: (v: Record<string, unknown>) => boolean): Promise<T | undefined> {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -97,7 +104,7 @@ export class Coordinator {
     return undefined;
   }
 
-  private async consider(messageId: string): Promise<CoordinationResult> {
+  private async consider(messageId: string, confirmed?: PlanOp[], requestId?: string): Promise<CoordinationResult> {
     const events = await this.store.read({ projectId: this.options.projectId }) as AnyEvent[];
     const state = project(events);
     const message = state.messages.find(m => m.messageId === messageId);
@@ -111,7 +118,8 @@ export class Coordinator {
     const forecastInputs = events.filter(e => ['plan_committed', 'availability_updated', 'estimate_updated', 'goal_set', 'task_checked'].includes(e.type)).map(e => e.id);
     const current = forecastFromState(state, now);
     const facts = { messageId, planVersion: version, now, messages: state.messages, plan: state.plan, members: [...state.members.values()], activeTurns: [...state.activeTurn], availability: [...state.availability], estimates: [...state.estimates], goal: state.goal, currentForecast: current, forecastInputIds: forecastInputs, decisions: [...state.decisions.values()], pendingAuthority: [...state.pendingAuthority.values()], previousSpeech: prior, openTopics: state.openTopics };
-    const interpretation = await this.call<CoordinationInterpretation>(interpretationTool(state), facts, v =>
+    if (confirmed && (!confirmed.every(op => validOp(op, state) && opAuthority(state, op).allowed))) throw new Error('Invalid or unauthorized confirmed operation');
+    const interpretation = confirmed ? { category: 'authority', summary: 'Approved authority request', ops: confirmed, conflicts: [] } : await this.call<CoordinationInterpretation>(interpretationTool(state), facts, v =>
       Object.keys(v).every(k => ['category', 'summary', 'ops', 'conflicts'].includes(k)) && typeof v.category === 'string' && typeof v.summary === 'string' && Array.isArray(v.ops) && v.ops.every(op => validOp(op, state)) && strings(v.conflicts) && v.conflicts.every(id => state.decisions.has(id)));
     const ops = interpretation?.ops ?? [];
     const candidate = structuredClone(state);
@@ -151,7 +159,7 @@ export class Coordinator {
     const validIds = new Set(factList.map(f => f.id));
     const tool = structuredClone(judgementTool);
     (tool.inputSchema.properties as Record<string, unknown>).evidence = { type: 'array', items: { type: 'string', enum: [...validIds] } };
-    let judgement = interpretation ? await this.call<CoordinationJudgement>(tool, { ...facts, factList, interpretation, impact }, v => (v.whoseAction === null || typeof v.whoseAction === 'string') && ['yes', 'no', 'unknown'].includes(String(v.alreadyKnows)) && strings(v.evidence) && v.evidence.every(id => validIds.has(id)) && ['speak', 'silent'].includes(String(v.decision)) && typeof v.reason === 'string' && strings(v.openTopics) && typeof v.text === 'string' && (v.decision !== 'speak' || v.text.trim().length > 0)) : undefined;
+    let judgement: CoordinationJudgement | undefined = confirmed ? { whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: 'Person approved the recorded operation', openTopics: state.openTopics, text: '승인한 변경을 반영했습니다.' } : interpretation ? await this.call<CoordinationJudgement>(tool, { ...facts, factList, interpretation, impact }, v => (v.whoseAction === null || typeof v.whoseAction === 'string') && ['yes', 'no', 'unknown'].includes(String(v.alreadyKnows)) && strings(v.evidence) && v.evidence.every(id => validIds.has(id)) && ['speak', 'silent'].includes(String(v.decision)) && typeof v.reason === 'string' && strings(v.openTopics) && typeof v.text === 'string' && (v.decision !== 'speak' || v.text.trim().length > 0)) : undefined;
     const validJudgement = !!judgement;
     judgement ??= { whoseAction: null, alreadyKnows: 'unknown', evidence: [], decision: 'silent', reason: '판단 불가', openTopics: state.openTopics, text: '' };
     judgement.openTopics = [...new Set([...judgement.openTopics, ...pending.map(a => `${describeOp(a.op)} — ${a.personId ?? '결정권자'} 확인 필요`)])];
@@ -159,6 +167,12 @@ export class Coordinator {
     if (judgement.decision === 'speak' && prior.some(p => p.type === 'pm_considered' && JSON.stringify([...p.payload.evidence].sort()) === JSON.stringify([...judgement!.evidence].sort()))) judgement = { ...judgement, decision: 'silent', reason: '이미 전달한 근거' };
     let post: CoordinationResult['posts'][number] | undefined = judgement.decision === 'speak' ? { text: judgement.text, kind: 'answer' } : undefined;
     const append: NewLedgerEvent[] = [];
+    if (confirmed && requestId) {
+      const request = state.pendingAuthority.get(requestId);
+      if (!request) return { posts: [], events: [] };
+      if (request.personId !== message.authorId || !confirmed.every(op => operationKey(op) === request.operationKey)) throw new Error('Operation does not match authority request');
+      append.push(make('authority_granted', { requestId, personId: message.authorId, granted: true }, `granted:${requestId}`));
+    }
     const changeId = `${key}:change`;
     const deliveries: { agentId: string; taskId: string; input: UpdateInstructionsInput }[] = [];
     const summary = applied.map(describeOp).join(', ');
@@ -173,7 +187,7 @@ export class Coordinator {
     }
     if (validJudgement && applied.length && state.goal && state.plan) {
       for (const request of state.pendingAuthority.values()) {
-        if (applied.some(op => request.operationKey === operationKey(op) && state.messages.some(m => op.sourceMessageIds.includes(m.messageId) && m.authorId === request.personId))) {
+        if (!confirmed && applied.some(op => request.operationKey === operationKey(op) && state.messages.some(m => op.sourceMessageIds.includes(m.messageId) && m.authorId === request.personId))) {
           append.push(make('authority_granted', { requestId: request.requestId, personId: request.personId, granted: true }, `granted:${request.requestId}`));
         }
       }
@@ -210,10 +224,12 @@ export class Coordinator {
     const tx = await this.store.transaction(this.options.projectId, fresh => {
       if (fresh.some(e => e.idempotencyKey === `${key}:pm_considered`)) return { append: [], result: false };
       const latest = project(fresh);
+      if (confirmed && latest.lastSeq !== state.lastSeq) throw new Error('Ledger changed while applying approval; retry');
       if (latest.lastSeq !== state.lastSeq) { judgement = { ...judgement!, decision: 'silent', reason: '기록이 변경되어 재판단 필요' }; post = undefined; append.length = 0; deliveries.length = 0; }
       const gate = automationGate(latest);
       const cost = (post ? 1 : 0) + append.filter(e => e.actor.kind === 'pm').length + deliveries.length;
       if (!gate.allowed || cost > gate.remaining) {
+        if (confirmed) throw new Error('Automation limit reached; resume before applying approval');
         judgement = { ...judgement!, decision: 'silent', reason: '자동 행동 상한' }; post = undefined; append.length = 0; deliveries.length = 0;
         if (!latest.automation.limitReached) {
           append.push(limitReachedEvent(latest, { projectId: this.options.projectId, targetProductId: this.options.targetProductId }) ?? make('action_limit_reached', { count: latest.automation.actionsSinceResume, limit: 12 }));
