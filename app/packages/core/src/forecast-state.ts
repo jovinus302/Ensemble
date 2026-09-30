@@ -20,11 +20,18 @@ export function forecastFromState(state: ProjectState, now: Date): ForecastResul
       hours: estimate === undefined ? undefined : { min: estimate.min, max: estimate.max },
     });
   }
-  return forecast({
+  const result = forecast({
     now,
     deadline: state.goal?.deadline === undefined ? undefined : new Date(state.goal.deadline),
     tasks,
     weeklyHours: state.availability,
     weeklyOverrides: state.availabilityOverrides,
   });
+  const stoppedTaskIds = (state.plan?.tasks ?? []).filter(spec => {
+    const task = state.tasks.get(spec.id);
+    return task?.status === 'blocked' || (task?.status === 'revising' &&
+      (state.automation.limitReached || (state.members.get(spec.assignee)?.kind === 'agent' && state.activeTurn.get(spec.assignee) !== spec.id)));
+  }).map(spec => spec.id);
+  if (stoppedTaskIds.length) result.uncertainty = { stoppedTaskIds, warning: `멈춘 작업 ${stoppedTaskIds.length}개 — 날짜 불확실` };
+  return result;
 }

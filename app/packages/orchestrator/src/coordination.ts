@@ -1,5 +1,5 @@
 import { availabilityWeek, formatKstDate, scopeItem, remainingScopeOps, type ForecastResult } from '@ensemble/core';
-import { channelText, taskName, numericFacts, hasGroundedNumbers } from './channel-text.ts';
+import { channelText, taskName, shortTaskName, numericFacts, hasGroundedNumbers } from './channel-text.ts';
 import { affectedMembers, automationGate, diffPlans, forecastFromState, isAutomationAction, limitReachedEvent, project, applyOps, opAuthority } from '@ensemble/core';
 import { createHash } from 'node:crypto';
 import type { AnyEvent, EventContext, EventPayloads, EventType, LedgerEvent, NewLedgerEvent, PlanOp, ProjectState } from '@ensemble/core';
@@ -90,8 +90,8 @@ function describeOp(op: PlanOp, state: ProjectState): string {
   const name = (id: string) => state.members.get(id)?.displayName ?? id;
   switch (op.type) {
     case 'set_availability': return `${name(op.memberId)} 가용 시간 ${op.weekStart ? "이번 주만" : "매주"} ${op.weeklyHours}시간`;
-    case 'exclude_scope': return `${taskName(state, op.taskId)}에서 ${op.item} 제외`;
-    case 'limit_scope': return `${taskName(state, op.taskId)} 범위를 ${op.items.map(scopeItem).join(' · ')}까지만 한정`;
+    case 'exclude_scope': return `${shortTaskName(state, op.taskId)}에서 ${op.item} 제외`;
+    case 'limit_scope': return `${shortTaskName(state, op.taskId)} 범위를 ${op.items.map(scopeItem).join(' · ')}까지만 한정`;
     case 'handoff_early': return `${taskName(state, op.taskId)} 초안 단계에서 인계 가능`;
     case 'reassign': return `${taskName(state, op.taskId)} 담당 ${name(op.assignee)}`;
     case 'set_deadline': return `기한 ${op.date}`;
@@ -123,6 +123,7 @@ function factFingerprint(id: string, value: unknown): string {
 }
 
 function forecastAnswer(forecast: ForecastResult, state: ProjectState): string {
+  if (forecast.uncertainty) return `${forecast.uncertainty.warning}. 멈춘 작업을 재개한 뒤 종료일을 다시 확인해 주세요.`;
   if (!forecast.ok) {
     const labels = { missing_estimate: '작업 예상 시간 미입력', missing_availability: '담당자 가용 시간 미입력', zero_availability: '담당자 가용 시간 없음', cycle: '작업 의존 관계 순환', unknown_dependency: '선행 작업 누락' };
     return `현재는 ${[...new Set(forecast.reasons.map(r => labels[r.kind]))].join(', ')} 때문에 종료일을 계산할 수 없습니다.`;
@@ -312,6 +313,13 @@ export class Coordinator {
       && applied.length > 0 && !interpretation?.conflicts.length && applied.every(op => op.type === 'exclude_scope' && op.sourceMessageIds.includes(messageId) && message.text.includes(op.item)) && /빼|제외/.test(message.text);
     if (!validJudgement && !exclusionConclusion && !directQuestion && message.authorId === state.goal?.decider && /빼|제외|확정|바꾸자/.test(message.text)) judgement = { ...judgement, whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: '결정권자의 변경 발언을 검증하지 못해 재확인한다', text: '변경 내용을 확인하지 못해, 적용할 작업과 변경할 범위를 다시 알려주시겠어요?' };
     if (!state.plan && state.members.get(message.authorId)?.kind === 'human') judgement = { ...judgement, whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: '계획이 없어 다음 시작 경로를 안내한다', text: state.pendingPlans.size ? '제안된 계획 초안을 확인하고 승인해 주세요.' : '자유형식에서 말씀하신 목표로 계획을 만들어 볼까요?' };
+    // Conversational judgement does not run an artifact review. Only checkResult owns
+    // positive acceptance speech and its task_checked/review evidence in the same handling.
+    if (/(?:충족|통과|인계\s*가능|조건.{0,12}만족)/.test(judgement.text)) {
+      judgement.text = '결과의 충족 여부는 인계 검토로 확인해야 합니다. 해당 작업에 결과물을 첨부해 확인을 요청해 주세요.';
+      judgement.reason = '대화 판단만으로 인계 충족을 선언할 수 없어 검토 경로 안내';
+    }
+    if (judgement.decision === 'speak' && current.uncertainty && judgement.evidence.some(id => id.startsWith('forecast:'))) judgement.text = forecastAnswer(current, state);
     judgement.text = channelText(judgement.text, state);
     let post: CoordinationResult['posts'][number] | undefined = judgement.decision === 'speak' ? { text: judgement.text, kind: 'answer' } : undefined;
     const append: NewLedgerEvent[] = [];
@@ -323,7 +331,16 @@ export class Coordinator {
     }
     const changeId = `${key}:change`;
     const deliveries: { agentId: string; taskId: string; input: UpdateInstructionsInput }[] = [];
-    const summary = applied.map(op => describeOp(op, state)).join(', ');
+    const summaryGroups = new Map<string, PlanOp[]>();
+    applied.forEach((op, index) => {
+      const groupKey = op.type === 'exclude_scope' || op.type === 'limit_scope' ? `task:${op.taskId}` : `op:${index}`;
+      summaryGroups.set(groupKey, [...(summaryGroups.get(groupKey) ?? []), op]);
+    });
+    const summary = [...summaryGroups.values()].map(group => group.map((op, index) => {
+      const text = describeOp(op, state);
+      if (op.type !== 'exclude_scope' && op.type !== 'limit_scope') return text;
+      return index > 0 ? text.replace(`${shortTaskName(state, op.taskId)}${op.type === 'exclude_scope' ? '에서' : ''} `, '') : text;
+    }).join(', ')).join('; ');
     const sourceMessageIds = [...new Set(applied.flatMap(op => op.sourceMessageIds))];
     const dropFor = (taskId: string) => applied.filter((op): op is Extract<PlanOp, { type: 'exclude_scope' }> => op.type === 'exclude_scope' && op.taskId === taskId).map(op => op.item);
     for (const [index, a] of pending.entries()) {
@@ -360,7 +377,7 @@ export class Coordinator {
           } else appliedState.availability.set(op.memberId, op.weeklyHours);
         }
         const after = forecastFromState(appliedState, now);
-        const late = after.ok && after.lateness && after.lateness.maxDays > 0 ? ` 그래도 최대 ${formatKstDate(after.end.max)}로 기한을 넘깁니다.` : '';
+        const late = after.uncertainty ? ` ${after.uncertainty.warning}.` : after.ok && after.lateness && after.lateness.maxDays > 0 ? ` 그래도 최대 ${formatKstDate(after.end.max)}로 기한을 넘깁니다.` : '';
         post = { text: `정리하면: ${summary}.${late}`, kind: 'summary' };
         judgement = { ...judgement, decision: 'speak', whoseAction: affected.join(', ') || state.goal.decider, alreadyKnows: 'no', evidence: sourceMessageIds.map(id => `msg:${id}`), reason: '확인된 변경을 계획과 담당자에게 반영', text: post.text };
         append.push(make('decision_recorded', { decisionId: changeId, summary, sourceMessageIds, approvedBy: 'pm', changeKinds: [...new Set(applied.map(op => opAuthority(state, op).kind))] }));

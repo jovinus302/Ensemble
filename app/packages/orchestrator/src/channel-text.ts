@@ -8,10 +8,17 @@ export function particle(text: string, pair: '을/를' | '이/가' | '으로/로
   return pair.split('/')[consonant ? 0 : 1]!;
 }
 export const taskName = (state: ProjectState, id: string) => state.tasks.get(id)?.spec.title ?? state.plan?.tasks.find(t => t.id === id)?.title ?? '작업';
+export function shortTaskName(state: ProjectState, id: string): string {
+  const title = taskName(state, id);
+  if (title.length <= 24) return title;
+  const roles: Record<string, string> = { research: '조사', interview: '고객 인터뷰', flow: '흐름 설계', prototype: '프로토타입' };
+  return roles[id] ?? `${title.slice(0, 21)}…`;
+}
 const operations: Record<string, string> = { exclude_scope: '범위 제외', limit_scope: '범위 한정', set_availability: '가용 시간 변경', handoff_early: '초안 인계', reassign: '담당 변경', set_deadline: '기한 변경', change_goal: '목표 변경' };
 /** Last boundary before channel output; internal references remain in ledger evidence. */
 export function channelText(text: string, state: ProjectState, maxSentences = 2): string {
   let result = text.replace(/\b(?:result|msg|forecast|decision):[^\s,;"')]+/g, '기록');
+  result = result.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '첨부 자료');
   for (const [key, label] of Object.entries(operations)) result = result.replaceAll(key, label);
   for (const task of state.plan?.tasks ?? []) {
     const escaped = task.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -17,6 +17,35 @@ const draft = () => ({ tasks: ['research', 'interview', 'flow', 'prototype'].map
   templateKey, title: `Arbitrary title for ${templateKey}`, handoffConditions: ['Concrete artifact'], hours: { min: 2, max: 4 },
 })) });
 const CUT_OFF = Symbol('max_tokens');
+it.each(['디자이너에게 전달했다는 근거', '공유 가능한 문서 형태로 전달', '채널에 업로드'])('retries then removes unobservable QA condition: %s', async condition => {
+  const bad = draft();
+  bad.tasks[0]!.handoffConditions = ['각 항목별 출처 링크와 확인 한계를 명시한 보고서', condition];
+  const f = await setup([bad, bad]);
+  const result = await f.pm.startFreeProject('예약 서비스');
+  expect(f.calls).toHaveLength(2);
+  expect(result.proposal?.tasks[0]?.handoffConditions).toEqual(['각 항목별 출처 링크와 확인 한계를 명시한 보고서']);
+  await f.pm.stop();
+});
+it('retains observable notification and sharing UI requirements', async () => {
+  const value = draft();
+  value.tasks[3]!.handoffConditions = ['가입 오류 알림 문구가 화면에 표시됨', '공유 버튼 클릭 시 예약 링크가 복사됨', '파일 업로드 실패 시 재입력 안내가 표시됨'];
+  const f = await setup([value]);
+  const result = await f.pm.startFreeProject('예약 서비스');
+  expect(result.proposal?.tasks[3]?.handoffConditions).toEqual(value.tasks[3]!.handoffConditions);
+  expect(f.calls).toHaveLength(1);
+  await f.pm.stop();
+});
+it('does not propose an automatically passable task when every condition is unobservable', async () => {
+  const bad = draft();
+  bad.tasks[0]!.handoffConditions = ['보고서를 디자이너에게 전달'];
+  const f = await setup([bad, structuredClone(bad)]);
+  const result = await f.pm.startFreeProject('예약 서비스');
+  expect(f.calls).toHaveLength(2);
+  expect(result.proposal).toBeUndefined();
+  expect(result.failure).toBeDefined();
+  expect(f.starts).toHaveLength(0);
+  await f.pm.stop();
+});
 function provider(replies: unknown[]) {
   const calls: LlmRequest[] = [];
   const llm: LlmProvider = { async complete(request) {

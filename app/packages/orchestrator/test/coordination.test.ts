@@ -68,6 +68,40 @@ it('answers using code-calculated seven-day delay and cites the forecast fact', 
 });
 
 const reduced = initialTasks.map(t => ({ ...t, handoffConditions: t.handoffConditions.filter(c => c !== '결제') }));
+it('does not declare handoff met from conversational model judgement alone', async () => {
+  const f = await fixture([interpret({ conversation: { questionMessageId: 'm1', waitingOnMemberIds: [], directedToPm: true } }), judge({ text: '보고서가 인계 조건을 충족합니다.', evidence: ['task:prototype'], answerFactIds: ['task:prototype'] })], initialTasks, '보고서 다시 첨부했어요. 확인해 주세요.');
+  const result = await f.coordinator.onMessage('m1');
+  expect(result.posts.map(p => p.text).join(' ')).not.toContain('충족합니다');
+  expect(result.posts.map(p => p.text).join(' ')).toContain('인계 검토');
+  expect(result.events.some(e => e.type === 'task_checked')).toBe(false);
+});
+it('uses a short task name once for repeated scope reductions', async () => {
+  const title = '로컬 실행용 클릭 가능 HTML 프로토타입 제작(가입·예약·모의 결제 포함)';
+  const ops: PlanOp[] = ['결제 모형(모의 결제) 화면 및 상호작용', '결제 화면과 모의 결제 버튼'].map(item => ({ type: 'exclude_scope', taskId: 'prototype', item, sourceMessageIds: ['m1'] }));
+  const f = await fixture([interpret({ ops }), judge()], [{ ...initialTasks[0]!, title }]);
+  const result = await f.coordinator.onMessage('m1');
+  const text = result.posts[0]!.text;
+  expect(text).not.toContain(title);
+  expect(text.match(/프로토타입/g)).toHaveLength(1);
+  expect(text).toContain('결제');
+});
+it('keeps interleaved task reductions grouped so a limit refers to the correct task', async () => {
+  const ops: PlanOp[] = [
+    { type: 'exclude_scope', taskId: 'design', item: '결제', sourceMessageIds: ['m1'] },
+    { type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['m1'] },
+    { type: 'limit_scope', taskId: 'design', items: ['가입'], sourceMessageIds: ['m1'] },
+  ];
+  const f = await fixture([interpret({ ops }), judge()]);
+  const text = (await f.coordinator.onMessage('m1')).posts[0]!.text;
+  expect(text.indexOf('범위를 가입')).toBeLessThan(text.indexOf('prototype에서'));
+});
+it('does not present an optimistic forecast answer while revision work is stopped', async () => {
+  const f = await fixture([interpret({ conversation: { questionMessageId: 'm1', waitingOnMemberIds: [], directedToPm: true } }), judge({ text: '현재 계산으로는 기한 안에 끝납니다.', answerFactIds: ['forecast:current'] })], initialTasks, 'PM, 언제 끝나나요?');
+  await f.add('task_blocked', { taskId: 'prototype', reason: '보완 상한 초과', unblockBy: 'owner' });
+  const result = await f.coordinator.onMessage('m1');
+  expect(result.posts[0]?.text).toContain('멈춘 작업 1개 — 날짜 불확실');
+  expect(result.posts[0]?.text).not.toContain('기한 안');
+});
 it('summarises, commits v2, notifies absent changed people and steers with payment dropped once', async () => {
   const f = await fixture([interpret({ ops: exclusions(['m1', 'designer-agrees']) }), judge()]);
   await f.message('designer-agrees', 'designer', '초안으로 먼저 가세요');
@@ -407,7 +441,7 @@ it('records both scope decisions, updates titles, and states remaining deadline 
   expect(result.posts[0]?.text).toMatch(/결제 제외.*요금제 비교.*가입.*기한을 넘깁니다/);
   const next = project(await f.read());
   expect(next.plan?.version).toBe(2);
-  expect(next.tasks.get('design')?.spec.title).toContain('요금제 비교 · 가입');
+  expect(next.tasks.get('design')?.spec.title).toBe('design (요금제 비교·가입까지)');
   expect(next.tasks.get('prototype')?.spec.title).toContain('결제 제외');
 });
 
