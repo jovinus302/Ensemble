@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
-import { readFile, realpath } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { SqliteLedgerStore, type LedgerStore } from '@ensemble/store';
 import { AnthropicProvider, loadEnv, modelFor } from '@ensemble/llm';
-import { CodexSessionConnector, type SessionConnector, type SessionEvent } from '@ensemble/agents';
+import { CodexSessionConnector, codexSettingsFromEnv, type SessionConnector, type SessionEvent } from '@ensemble/agents';
 import { ProjectManager, type FreeStartResult } from '@ensemble/orchestrator';
 import { project, type AnyEvent, type NewLedgerEvent } from '@ensemble/core';
-import { scene1, scene2, scene3, sceneEvents, SCENE_NOW } from '@ensemble/scenarios';
+import { continuousScenario, advanceScript, sceneEvents, SCENE_NOW, type ScriptProgress } from '@ensemble/scenarios';
 import { buildViewModel } from './build-view-model';
 
-interface Metadata { projectId: string; mode: 'free' | 'scenario'; scene: 1 | 2 | 3; step: number }
+interface Metadata { projectId: string; mode: 'free' | 'scenario'; scene: 1 | 2 | 3; step: number; script?: ScriptProgress }
 export interface Upload { name: string; mimeType: string; contentBase64: string }
 
 /** Fake transport intentionally produces no fabricated work or PM answers. */
@@ -21,6 +21,14 @@ class FakeConnector implements SessionConnector {
   async sendUpdate() { return { sent: true as const }; }
   onEvent(handler: (e: SessionEvent) => void) { this.listeners.add(handler); return () => { this.listeners.delete(handler); }; }
   async stop() { this.listeners.clear(); }
+}
+
+/** One Codex thread per agent, each in its own folder outside the repository, with a turn time limit. */
+function codexAgents() {
+  const { workspaceRoot, turnTimeoutMs } = codexSettingsFromEnv();
+  const inRepo = path.relative(path.dirname(appRoot()), workspaceRoot);
+  if (!inRepo.startsWith('..') && !path.isAbsolute(inRepo)) throw new Error('ENSEMBLE_AGENT_WORKSPACE_ROOT must be outside the repository');
+  return { connector: new CodexSessionConnector({ workspaceRoot }), turnTimeoutMs };
 }
 
 /** The PM already told the channel; the server log keeps the cause for diagnosis. */
@@ -39,11 +47,11 @@ function appRoot() {
 }
 
 /** SOUND: ledger-backed UI and real PM decisions; scenario changes only the human input.
- * Scene 1 drafts a plan; scene 2 uses the published handoff fixture, then continues into scene 3.
- * Verification: API integration, existing domain tests, real-proxy observations and browser captures.
+ * All three scenes retain the drafted plan and resolve human submissions by assignee.
+ * Verification: fake-provider continuous-script integration and condition/target tests.
  */
 export class WebRuntime {
-  readonly dataDir = path.join(appRoot(), 'data');
+  readonly dataDir = process.env.ENSEMBLE_DATA_DIR ?? path.join(appRoot(), 'data');
   readonly listeners = new Set<() => void>();
   readonly store: LedgerStore;
   meta: Metadata;
@@ -75,37 +83,21 @@ export class WebRuntime {
   private createPm() {
     const runtime = process.env.ENSEMBLE_AGENT_RUNTIME ?? 'fake';
     if (!['fake', 'codex'].includes(runtime)) throw new Error('ENSEMBLE_AGENT_RUNTIME must be fake or codex');
+    // Agent results arrive as attachments recorded from the agent's workspace; the PM reads them from the ledger.
     this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: new AnthropicProvider(), model: modelFor('pm'),
-      connector: runtime === 'codex' ? new CodexSessionConnector() : new FakeConnector(),
+      ...(runtime === 'codex' ? codexAgents() : { connector: new FakeConnector() }),
       clock: () => this.meta.mode === 'scenario' ? SCENE_NOW : new Date(),
-      readResult: async result => {
-        const state = project(await this.store.read({ projectId: this.meta.projectId }));
-        const assignee = state.tasks.get(result.taskId)?.spec.assignee;
-        const workspace = assignee ? state.sessions.get(assignee)?.workspace : undefined;
-        const out: Record<string, string | null> = {};
-        if (runtime !== 'codex' || !workspace) return out;
-        const root = await realpath(workspace);
-        for (const id of result.artifactIds) {
-          try {
-            const file = await realpath(path.resolve(root, id));
-            const relative = path.relative(root, file);
-            if (relative.startsWith('..') || path.isAbsolute(relative)) { out[id] = null; continue; }
-            out[id] = await readFile(file, 'utf8');
-          } catch { out[id] = null; }
-        }
-        return out;
-      },
     });
   }
   private async seed(decider: string, scenario: boolean) {
     const ctx = this.context();
     if (scenario) {
-      const events = sceneEvents(1, ctx).filter(e => !['plan_committed', 'estimate_updated'].includes(e.type));
+      const events = sceneEvents(1, ctx).filter(e => !['plan_committed', 'estimate_updated', 'availability_updated'].includes(e.type) && !(e.type === 'member_joined' && (e.payload as { memberId: string }).memberId === 'reviewer'));
       for (const e of events) if (e.type === 'member_joined') {
         const p = e.payload as { kind: string; memberId: string; role?: string };
         if (p.kind === 'agent') p.role = p.memberId === 'research-agent' ? '고객 조사와 반응 분석' : '웹 프로토타입 구현';
       }
-      events.push({ ...ctx, actor: { kind: 'human', id: decider }, type: 'availability_updated', payload: { memberId: 'owner', weeklyHours: 7 } });
+      // Availability comes from the scripted human inputs before drafting.
       await this.store.append(events); return;
     }
     const base = { ...ctx, actor: { kind: 'human' as const, id: decider } };
@@ -120,13 +112,14 @@ export class WebRuntime {
     const events = await this.store.read({ projectId: this.meta.projectId });
     const state = project(events);
     if (state.members.get(me)?.kind !== 'human') me = state.goal?.decider ?? 'owner';
-    const steps = this.meta.scene === 1 ? scene1 : this.meta.scene === 2 ? scene2 : scene3;
-    const next = steps[this.meta.step];
+    const next = continuousScenario.steps[this.meta.script?.step ?? this.meta.step];
+    const stopped = this.meta.script?.stopped;
     return buildViewModel(events, { me, mode: this.meta.mode, busy: this.busy, now: this.meta.mode === 'scenario' ? SCENE_NOW : new Date(),
-      ...(this.meta.mode === 'scenario' ? { scenario: { name: `scene-1-3 · 장면 ${this.meta.scene}`, done: this.meta.scene === 3 && !next,
-        ...(next ? { nextLine: { authorName: state.members.get(next.as)?.displayName ?? next.as, text: next.text, hasAttachment: !!next.attachments?.length } } : this.meta.scene < 3 ? { nextLine: { authorName: '시나리오', text: `장면 ${this.meta.scene + 1}로 이동`, hasAttachment: false } } : {}) } } : {}),
+      ...(this.meta.mode === 'scenario' ? { scenario: { name: `${continuousScenario.key} · 장면 ${next?.scene ?? 3}`, done: !stopped && !next,
+        ...(stopped ? { nextLine: { authorName: '시나리오 중단', text: stopped, hasAttachment: false } } : next ? { nextLine: { authorName: state.members.get(next.as)?.displayName ?? next.as, text: next.text, hasAttachment: !!next.attachments?.length } } : {}) } } : {}),
     });
   }
+
   run<T>(action: () => Promise<T>): Promise<T> {
     const next = this.queue.then(async () => { await this.ready; this.busy = true; this.changed(); try { return await action(); } finally { this.busy = false; this.changed(); } });
     this.queue = next.catch(() => undefined); return next;
@@ -141,31 +134,24 @@ export class WebRuntime {
     logDraftFailure(await this.pm.startFreeProject(goal, deadline));
   }
   async startScenario(name: string) {
-    if (name !== 'scene-1-3') throw new Error('Unknown scenario');
-    await this.pm.stop(); this.meta = { projectId: randomUUID(), mode: 'scenario', scene: 1, step: 0 };
+    if (name !== continuousScenario.key && name !== 'scene-1-3') throw new Error('Unknown scenario');
+    await this.pm.stop(); this.meta = { projectId: randomUUID(), mode: 'scenario', scene: 1, step: 0, script: { step: 0, anchors: {} } };
     await this.seed('owner', true); this.createPm(); this.save();
   }
   async scenarioNext() {
     if (this.meta.mode !== 'scenario') throw new Error('Start a scenario first');
-    const steps = this.meta.scene === 1 ? scene1 : this.meta.scene === 2 ? scene2 : scene3;
-    const step = steps[this.meta.step];
-    if (!step) {
-      if (this.meta.scene === 3) return;
-      const state = project(await this.store.read({ projectId: this.meta.projectId }));
-      if (state.pendingPlans.size) throw new Error('Approve or reject the pending plan before continuing');
-      if (this.meta.scene === 1) {
-        // Published handoff fixture is independent of the model-generated scene 1 plan.
-        await this.pm.stop(); this.meta.projectId = randomUUID();
-        await this.store.append(sceneEvents(2, this.context())); this.createPm();
-      }
-      this.meta.scene = this.meta.scene === 1 ? 2 : 3; this.meta.step = 0; this.save(); return;
+    // Old metadata cannot safely resume the former scene-switching script.
+    if (!this.meta.script) throw new Error('Restart the scenario to use the continuous script');
+    try {
+      await advanceScript({ pm: this.pm,
+        read: () => this.store.read({ projectId: this.meta.projectId }),
+        recordStop: async reason => { await this.store.append([{ ...this.context(), actor: { kind: 'system', id: 'scenario' }, type: 'scenario_stopped', payload: { scenario: continuousScenario.key, step: this.meta.script!.step, reason } }]); },
+      }, continuousScenario.steps, this.meta.script, continuousScenario.completion);
+    } finally {
+      this.meta.step = this.meta.script.step;
+      this.meta.scene = continuousScenario.steps[this.meta.step]?.scene ?? 3;
+      this.save(); this.changed(); await this.persistAttachments();
     }
-    if (this.meta.scene === 1) {
-      logDraftFailure(await this.pm.startFreeProject(step.text, '2026-10-12T00:00:00Z'));
-    } else {
-      await this.pm.postMessage(step.as, step.text, step.attachments?.map(a => ({ ...a, taskId: 'design' })));
-    }
-    this.meta.step++; this.save(); await this.persistAttachments();
   }
   async message(authorId: string, text: string, attachments: Upload[] = []) {
     await this.pm.postMessage(authorId, text, attachments.map(a => ({ ...a, content: Buffer.from(a.contentBase64, 'base64').toString('utf8') })));

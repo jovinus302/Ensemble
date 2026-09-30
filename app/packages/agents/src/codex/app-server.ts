@@ -128,5 +128,11 @@ export class CodexAppServerClient {
     return () => { this.rpc.off('notification', listener); };
   }
 
+  /** Fires once when the app-server process or transport is lost (including close()). */
+  onFailure(handler: (error: Error) => void): () => void {
+    this.rpc.on('failure', handler);
+    return () => { this.rpc.off('failure', handler); };
+  }
+
   close(): Promise<void> { return this.rpc.close(); }
 }

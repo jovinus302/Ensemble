@@ -77,7 +77,10 @@ export async function POST(request: Request, context: Context) {
         const goal = text(body.goal, 'goal');
         if (body.deadline !== undefined && (typeof body.deadline !== 'string' || !Number.isFinite(Date.parse(body.deadline)))) throw new InputError('Invalid deadline');
         await app.startFree(goal, body.deadline as string | undefined, me);
-      } else if (route === 'scenario/start') await app.startScenario(text(body.name, 'name'));
+      } else if (route === 'scenario/start') {
+        const name = text(body.name, 'name');
+        await app.startScenario(name === 'scene-1-3' ? 'scene-1-3-continuous' : name);
+      }
       else await app.scenarioNext();
     });
     return json(await app.state(me));

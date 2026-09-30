@@ -2,6 +2,7 @@ import { mkdir, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { parseReports, taskInstructions, updateInstructions, type TaskInstructionsInput, type UpdateInstructionsInput } from '../protocol.ts';
+import { roleFor } from '../roles.ts';
 import type { SendUpdateResult, SessionConnector, SessionEvent, SessionInfo } from '../session.ts';
 import { CodexAppServerClient, declineServerRequest, SteerRejectedError } from './app-server.ts';
 import { RpcError, type RpcOptions } from './rpc.ts';
@@ -14,7 +15,15 @@ interface AgentSession extends SessionInfo {
   reportIndexes: Map<string, number>;
   nextReportIndex: Map<string, number>;
 }
-export interface CodexConnectorOptions { rpc?: RpcOptions; model?: string }
+export interface CodexConnectorOptions {
+  rpc?: RpcOptions;
+  /** Omitted: the user's Codex default model. */
+  model?: string;
+  /** Defaults to ~/ensemble-agent-workspaces; keep it outside any repository. */
+  workspaceRoot?: string;
+  /** Developer instructions for an agent's thread; defaults to the built-in role's system prompt. */
+  instructionsFor?: (agentId: string) => string | undefined;
+}
 const component = (value: string) => {
   if (!/^[a-zA-Z0-9_-]+$/.test(value)) throw new Error('Project and agent IDs must contain only letters, numbers, underscores, or hyphens');
   return value;
@@ -60,7 +69,19 @@ export class CodexSessionConnector implements SessionConnector {
       const taskId = session.tasks.get(turn.id);
       if (!taskId) return;
       if (session.active?.turnId === turn.id) session.active = undefined;
-      this.emit({ type: 'turn', agentId, taskId, threadId, turnId: turn.id, status: turn.status });
+      const reason = turn.status === 'failed' ? turn.error?.message ?? 'Codex turn failed' : undefined;
+      this.emit({ type: 'turn', agentId, taskId, threadId, turnId: turn.id, status: turn.status, ...(reason ? { reason } : {}) });
+    });
+    // A lost app-server ends every running turn; nothing restarts it automatically.
+    this.client.onFailure(error => {
+      if (this.closed) return;
+      for (const [agentId, session] of this.sessions) {
+        const active = session.active;
+        if (!active?.turnId) continue;
+        session.active = undefined;
+        this.emit({ type: 'turn', agentId, taskId: active.taskId, threadId: session.threadId, turnId: active.turnId, status: 'failed',
+          reason: `Codex 세션 연결이 끊겼습니다: ${error.message}` });
+      }
     });
   }
 
@@ -93,13 +114,16 @@ export class CodexSessionConnector implements SessionConnector {
     try { return await promise; } finally { this.starting.delete(agentId); }
   }
   private async createSession(agentId: string, projectId: string): Promise<SessionInfo> {
-    const root = path.join(await realpath(homedir()), 'ensemble-agent-workspaces');
+    const configured = this.options.workspaceRoot;
+    if (configured) await mkdir(configured, { recursive: true });
+    const root = configured ? await realpath(configured) : path.join(await realpath(homedir()), 'ensemble-agent-workspaces');
     const workspace = path.join(root, projectId, agentId);
     await mkdir(workspace, { recursive: true });
     // Reject symlink/junction redirection outside the assigned home workspace.
     if (path.relative(workspace, await realpath(workspace)) !== '') throw new Error('Workspace resolves outside its assigned path');
     await this.client.initialize();
-    const threadId = await this.client.threadStart({ cwd: workspace, sandbox: 'workspace-write', approvalPolicy: 'never', model: this.options.model });
+    const threadId = await this.client.threadStart({ cwd: workspace, sandbox: 'workspace-write', approvalPolicy: 'never', model: this.options.model,
+      developerInstructions: (this.options.instructionsFor ?? (id => roleFor(id)?.systemPrompt))(agentId) });
     this.sessions.set(agentId, { projectId, threadId, workspace, tasks: new Map(), reportIndexes: new Map(), nextReportIndex: new Map() });
     return { threadId, workspace };
   }
