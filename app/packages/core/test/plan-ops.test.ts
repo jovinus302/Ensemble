@@ -5,7 +5,7 @@ const tasks: TaskSpec[] = [{ id: 'T4', title: '프로토타입', assignee: 'agen
 it('excludes scope by adding an explicit condition without rewriting task identity or other fields', () => {
   const op: PlanOp = { type: 'exclude_scope', taskId: 'T4', item: '결제', sourceMessageIds: ['owner-message'] };
   const next = applyOps(tasks, [op, op]);
-  expect(next).toEqual([{ ...tasks[0], handoffConditions: ['가입', '결제', '제외: 결제'] }]);
+  expect(next).toEqual([{ ...tasks[0], title: '프로토타입 (결제 제외)', handoffConditions: ['가입', '결제', '제외: 결제'] }]);
   expect(tasks[0]?.handoffConditions).toEqual(['가입', '결제']);
   expect(applyOps(next, [op])).toEqual(next);
 });

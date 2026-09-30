@@ -1,3 +1,4 @@
+import { channelText } from './channel-text.ts';
 import { randomUUID } from 'node:crypto';
 import { project, type AnyEvent, type EventContext, type NewLedgerEvent } from '@ensemble/core';
 import type { SessionConnector, SessionEvent } from '@ensemble/agents';
@@ -34,6 +35,8 @@ export class ProjectManager {
   private readonly dispatcher: Dispatcher;
   private queue: Promise<unknown> = Promise.resolve();
   private background: PmPost[] = [];
+  private queued = 0;
+  get isProcessing(): boolean { return this.queued > 0; }
   private failures: unknown[] = [];
   private unsubscribe: () => void;
   private context: EventContext;
@@ -55,7 +58,8 @@ export class ProjectManager {
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const next = this.queue.then(operation);
+    this.queued++;
+    const next = this.queue.then(operation).finally(() => { this.queued--; });
     this.queue = next.catch(() => undefined);
     return next;
   }
@@ -93,8 +97,7 @@ export class ProjectManager {
     return contents;
   }
 
-  postMessage(authorId: string, text: string, attachments: MessageAttachment[] = []): Promise<PmPost[]> {
-    return this.enqueue(async () => {
+  async recordMessage(authorId: string, text: string, attachments: MessageAttachment[] = []): Promise<{ messageId: string }> {
       const before = await this.read();
       const state = project(before);
       if (state.members.get(authorId)?.kind !== 'human') throw new Error(`Unknown human author ${authorId}`);
@@ -104,6 +107,29 @@ export class ProjectManager {
       const recorded: NewLedgerEvent[] = attachments.map((a, i) => ({ ...this.context, actor, type: 'attachment_recorded', payload: { attachmentId: attachmentIds[i]!, name: a.name, mimeType: a.mimeType, uri: `data:${a.mimeType};base64,${a.contentBase64 ?? Buffer.from(a.content).toString('base64')}`, ...(a.taskId ? { taskId: a.taskId } : {}) } }));
       recorded.push({ ...this.context, actor, type: 'message_recorded', payload: { messageId, authorId, text, attachmentIds } });
       await this.options.store.append(recorded);
+      return { messageId };
+  }
+
+  async postMessage(authorId: string, text: string, attachments: MessageAttachment[] = []): Promise<PmPost[]> {
+    const { messageId } = await this.recordMessage(authorId, text, attachments);
+    return this.processRecordedMessage(messageId);
+  }
+
+  processRecordedMessage(messageId: string): Promise<PmPost[]> {
+    return this.enqueue(async () => {
+      const before = await this.read();
+      if ((before as AnyEvent[]).some(e => (e.type === 'pm_considered' && e.payload.triggerId === messageId) || e.idempotencyKey === `processed:${messageId}`)) return [];
+      const state = project(before);
+      const message = (before as AnyEvent[]).find((e): e is Extract<AnyEvent, { type: 'message_recorded' }> => e.type === 'message_recorded' && e.payload.messageId === messageId);
+      if (!message) throw new Error('기록된 사람 메시지를 찾을 수 없습니다');
+      const { authorId, text, attachmentIds } = message.payload;
+      const actor = { kind: 'human' as const, id: authorId };
+      const attachments: MessageAttachment[] = (before as AnyEvent[]).flatMap(e => {
+        if (e.type !== 'attachment_recorded' || !attachmentIds.includes(e.payload.attachmentId)) return [];
+        const a = e.payload, match = /^data:[^,]*;base64,(.*)$/s.exec(a.uri);
+        return [{ name: a.name, mimeType: a.mimeType, taskId: a.taskId, content: match ? Buffer.from(match[1]!, 'base64').toString('utf8') : '' }];
+      });
+      const markProcessed = async () => { await this.options.store.append([{ ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: `processed:${messageId}`, payload: { considerationId: `processed:${messageId}`, triggerId: messageId, whoseAction: null, alreadyKnows: 'unknown', evidence: [messageId], decision: 'silent', reason: '메시지를 인계 또는 질문 답변으로 처리했다', openTopics: state.openTopics } }]); };
       const pending = [...state.tasks.values()].flatMap(t => taskQuestions(before, t.spec.id).filter(q => !q.answer).map(q => ({ ...q, taskId: t.spec.id }))).filter(q =>
         (before as AnyEvent[]).some(e => e.type === 'pm_considered' && e.payload.triggerId === q.questionId && e.payload.whoseAction === authorId));
       // Structural metadata can identify a submission; text interpretation is model-owned.
@@ -132,12 +158,12 @@ export class ProjectManager {
         if (!task || task.spec.assignee !== authorId || task.status === 'cancelled') throw new Error('Result must belong to the submitting person and an active plan task');
         const resultId = `result:${messageId}`;
         await this.options.store.append([{ ...this.context, actor, type: 'result_submitted', idempotencyKey: resultId, payload: { taskId: route.taskId, resultId, planVersion: state.plan!.version, summary: text, artifactIds: attachmentIds } }]);
-        return this.review(route.taskId, resultId);
+        const posts = await this.review(route.taskId, resultId); await markProcessed(); return posts;
       }
       if (route.kind === 'answer' && route.taskId) {
         // Dispatcher answers the oldest open question; never silently route to another one.
         const oldest = taskQuestions(before, route.taskId).find(q => !q.answer);
-        if (oldest?.questionId === route.questionId) { await this.dispatcher.onAnswer(route.taskId, text); return []; }
+        if (oldest?.questionId === route.questionId) { await this.dispatcher.onAnswer(route.taskId, text); await markProcessed(); return []; }
       }
       return (await this.coordinator.onMessage(messageId)).posts;
     });
@@ -150,12 +176,14 @@ export class ProjectManager {
     return this.recordNotices(resultId, taskId, outcome, notices);
   }
   private async recordNotices(trigger: string, taskId: string, outcome: ResultOutcome, notices: string[]): Promise<PmPost[]> {
-    const state = project(await this.read());
+    const events = await this.read() as AnyEvent[];
+    const state = project(events);
+    const recipients = outcome.kind === 'checked' ? events.filter(e => e.type === 'task_start_reserved' && e.payload.trigger === trigger).flatMap(e => e.type === 'task_start_reserved' ? [state.tasks.get(e.payload.taskId)?.spec.assignee] : []).filter(id => id && state.members.get(id)?.kind === 'human') : [state.tasks.get(taskId)?.spec.assignee];
     const considerationId = `handoff-notice:${trigger}`;
     const evidence = outcome.kind === 'revision' || outcome.kind === 'checked' ? outcome.review.evidence : [];
-    const posts: PmPost[] = notices.map(text => ({ text, kind: 'ask' }));
+    const posts: PmPost[] = notices.map(text => ({ text: outcome.kind === 'revision' ? text : channelText(text, state), kind: outcome.kind === 'checked' ? 'nudge' : 'ask' }));
     await this.options.store.append([
-      { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId: trigger, whoseAction: `${state.tasks.get(taskId)?.spec.assignee}: 결과 보완 또는 다음 작업 시작`, alreadyKnows: 'unknown', evidence: [trigger, ...evidence], decision: 'speak', reason: '인계 판단 결과에 따라 다음 행동이 필요하다', openTopics: state.openTopics } },
+      { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId: trigger, whoseAction: `${recipients.join(", ") || state.goal?.decider}: 결과 보완 또는 다음 작업 시작`, alreadyKnows: 'unknown', evidence: [trigger, ...evidence], decision: 'speak', reason: '인계 판단 결과에 따라 다음 행동이 필요하다', openTopics: state.openTopics } },
       ...posts.map((post, i) => ({ ...this.context, actor: { kind: 'system' as const, id: 'pm' }, type: 'pm_spoke', idempotencyKey: `${considerationId}:${i}`, payload: { considerationId, messageId: `${considerationId}:${i}`, ...post } })),
     ]);
     return posts;
@@ -167,7 +195,8 @@ export class ProjectManager {
     const considerationId = `blocked-notice:${turnId}`;
     const decider = state.goal?.decider;
     const name = (id: string) => state.members.get(id)?.displayName ?? id;
-    const post: PmPost = { kind: 'fact', text: `${decider ? `@${name(decider)} ` : ''}${name(agentId)}의 ${taskId} "${state.tasks.get(taskId)?.spec.title ?? taskId}" 작업이 멈췄습니다: ${reason}. 자동으로 다시 시작하지 않으니 확인 후 다시 맡겨 주세요.` };
+    const post: PmPost = { kind: 'fact', text: `${decider ? `@${name(decider)} ` : ''}${name(agentId)}의 "${state.tasks.get(taskId)?.spec.title ?? taskId}" 작업이 멈췄습니다: ${reason}. 자동으로 다시 시작하지 않으니 확인 후 다시 맡겨 주세요.` };
+    post.text = channelText(post.text, state);
     await this.options.store.append([
       { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId: `turn-blocked:${turnId}`, whoseAction: decider ?? null, alreadyKnows: 'no', evidence: [`turn-blocked:${turnId}`], decision: 'speak', reason: 'Agent 작업이 멈춰 사람이 다음 행동을 정해야 한다', openTopics: state.openTopics } },
       { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_spoke', idempotencyKey: `${considerationId}:0`, payload: { considerationId, messageId: `${considerationId}:0`, ...post } },

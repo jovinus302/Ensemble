@@ -1,3 +1,4 @@
+import { particle, channelText } from './channel-text.ts';
 // Task context for the next assignee: the six fixed slots, each item carrying the ID it came from.
 // Also the short human-facing summary of an agent result. Pure functions over the ledger; no LLM.
 import type { AnyEvent, EventPayloads, Id, LedgerEvent, ProjectState } from '@ensemble/core';
@@ -138,14 +139,14 @@ export function summarizeForHuman(state: ProjectState, taskId: Id, report: Resul
   if (task.status === 'checked') {
     for (const next of state.tasks.values()) {
       if (!next.spec.dependsOn.includes(taskId) || state.members.get(next.spec.assignee)?.kind !== 'human') continue;
-      if (next.status === 'ready' || next.status === 'reserved') todo.push(`@${name(next.spec.assignee)} ${next.spec.id} "${next.spec.title}"을(를) 시작할 수 있습니다.`);
+      if (next.status === 'ready' || next.status === 'reserved') todo.push(`@${name(next.spec.assignee)} ${next.spec.title}${particle(next.spec.title)} 시작할 수 있습니다.`);
     }
   } else if (task.status === 'revising') todo.push('PM이 보완을 요청했습니다. 보완본이 오면 다시 알려드립니다.');
   else if (task.status === 'submitted') todo.push('PM이 인계 조건을 확인하는 중입니다.');
   if (report.limitations?.length) todo.push(`확인하지 못한 점: ${report.limitations.join('; ')}`);
   return [
-    `[${taskId} ${task.spec.title}] ${name(task.spec.assignee)} 결과`,
-    `무엇이 됐나: ${report.summary}`,
+    `[${task.spec.title}] ${name(task.spec.assignee)} 결과`,
+    `무엇이 됐나: ${channelText(report.summary, state)}`,
     `할 일: ${todo.length ? todo.join(' ') : '없음'}`,
     `확인할 곳: ${report.files.length ? report.files.map((file) => file.path).join(', ') : '없음'}`,
   ].join('\n');

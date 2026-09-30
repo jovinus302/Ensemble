@@ -124,3 +124,44 @@ it('routes question → person answer → acknowledged update → result handoff
   await f.pm.stop();
   await rm(f.connector.workspace, { recursive: true, force: true });
 });
+
+
+it('records immediately during PM work, processes in order, exposes activity and ignores duplicate processing', async () => {
+  const store = new MemoryLedgerStore();
+  await store.append(sceneEvents(3, context));
+  const connector = new FakeConnector();
+  const seen: string[] = [];
+  let release!: () => void;
+  const barrier = new Promise<void>(resolve => { release = resolve; });
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const provider: LlmProvider = { async complete(request) {
+    const { facts } = JSON.parse(request.messages[0]!.content);
+    let input: Record<string, unknown>;
+    if (request.forceTool === 'interpret_coordination') {
+      seen.push(facts.messageId);
+      if (seen.length === 1) { entered(); await barrier; }
+      expect(facts.messages.filter((m: any) => m.authorId === 'owner').at(-1).messageId).toBe(facts.messageId);
+      input = { category: 'chat', summary: '', ops: [], conflicts: [], conversation: { questionMessageId: null, waitingOnMemberIds: [], directedToPm: false }, factMentions: [] };
+    } else input = { whoseAction: null, alreadyKnows: 'yes', evidence: [], decision: 'silent', reason: '행동 변화 없음', openTopics: [], text: '', targetMemberIds: [], changesOpenQuestionAnswer: false, answerFactIds: [] };
+    return { text: '', model: 'fake', responseId: 'r', usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [{ name: request.forceTool!, input }] };
+  } };
+  const pm = new ProjectManager({ ...context, store, connector, llm: provider, model: 'fake', clock: () => SCENE_NOW });
+  const first = await pm.recordMessage('owner', '첫 메시지');
+  expect(pm.isProcessing).toBe(false);
+  const processing = pm.processRecordedMessage(first.messageId);
+  await started;
+  expect(pm.isProcessing).toBe(true);
+  const second = await pm.recordMessage('owner', '둘째 메시지');
+  expect(project(await store.read()).messages.at(-1)?.messageId).toBe(second.messageId);
+  const queued = pm.processRecordedMessage(second.messageId);
+  release(); await Promise.all([processing, queued]);
+  expect(seen).toEqual([first.messageId, second.messageId]);
+  const count = (await store.read()).length;
+  expect(await pm.processRecordedMessage(first.messageId)).toEqual([]);
+  expect((await store.read()).length).toBe(count);
+  expect(pm.isProcessing).toBe(false);
+  await pm.postMessage('owner', '기존 진입점');
+  expect(seen).toHaveLength(3);
+  await pm.stop();
+});

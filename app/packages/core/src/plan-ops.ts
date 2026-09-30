@@ -2,8 +2,9 @@ import type { ChangeKind, TaskSpec } from './events.ts';
 import type { ProjectState } from './projection.ts';
 import { whoApproves } from './authority.ts';
 
-export type PlanOp = ({ type: 'set_availability'; memberId: string; weeklyHours: number }
+export type PlanOp = ({ type: 'set_availability'; memberId: string; weeklyHours: number; weekStart?: string }
   | { type: 'exclude_scope'; taskId: string; item: string }
+  | { type: 'limit_scope'; taskId: string; items: string[] }
   | { type: 'handoff_early'; taskId: string }
   | { type: 'reassign'; taskId: string; assignee: string }
   | { type: 'set_deadline'; date: string }
@@ -18,7 +19,9 @@ export function applyOps(plan: readonly TaskSpec[], ops: readonly PlanOp[]): Tas
     if (!task) throw new Error(`Unknown task ${op.taskId}`);
     if (op.type === 'reassign') task.assignee = op.assignee;
     else {
-      const condition = op.type === 'exclude_scope' ? `제외: ${op.item}` : '초안 단계에서 인계 가능';
+      const condition = op.type === 'exclude_scope' ? `제외: ${op.item}` : op.type === 'limit_scope' ? `범위: ${op.items.join(', ')}만` : '초안 단계에서 인계 가능';
+      if (op.type === 'exclude_scope' && !task.handoffConditions.includes(condition)) task.title += ` (${op.item} 제외)`;
+      if (op.type === 'limit_scope') task.title = `${op.items.join(' · ')} — 범위 한정`;
       if (!task.handoffConditions.includes(condition)) task.handoffConditions.push(condition);
     }
   }
@@ -27,7 +30,7 @@ export function applyOps(plan: readonly TaskSpec[], ops: readonly PlanOp[]): Tas
 
 export function opAuthority(state: ProjectState, op: PlanOp): { kind: ChangeKind; personId?: string; allowed: boolean } {
   const kind: ChangeKind = op.type === 'set_availability' ? 'human_commitment'
-    : op.type === 'exclude_scope' ? 'scope_reduce' : op.type === 'handoff_early' ? 'reorder'
+    : (op.type === 'exclude_scope' || op.type === 'limit_scope') ? 'scope_reduce' : op.type === 'handoff_early' ? 'reorder'
     : op.type === 'set_deadline' ? 'deadline_change' : op.type === 'change_goal' ? 'goal_change'
     : state.members.get(op.assignee)?.kind === 'human' || state.members.get(state.plan?.tasks.find(t => t.id === op.taskId)?.assignee ?? '')?.kind === 'human' ? 'human_commitment' : 'reassign_agent';
   const affectedPerson = op.type === 'set_availability' ? op.memberId : op.type === 'reassign'

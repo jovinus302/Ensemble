@@ -24,7 +24,7 @@ it('builds actor-specific cards, evidence, attachment URLs and calculated roadma
   expect(owner.roadmap.forecast?.ok).toBe(true);
   expect(owner.roadmap.tasks.find(t => t.id === 'prototype')?.startDay).toBeGreaterThan(0);
   expect(owner.messages.find(m => m.id === 'm')?.attachments[0]?.url).toBe('/api/attachments/file');
-  expect(owner.messages.find(m => m.id === 'speech')?.pm).toMatchObject({ reason: 'Approval needed', evidence: ['m'] });
+  expect(owner.messages.find(m => m.id === 'speech')?.pm).toMatchObject({ reason: 'Approval needed', evidence: ['메시지 · 디자이너: "Draft"'] });
   await store.append([{ ...base, type: 'plan_decided', payload: { proposalId: 'p', memberId: 'owner', approved: false } }]);
   expect(buildViewModel(await store.read(), { me: 'owner', mode: 'free', busy: false }).cards).toHaveLength(0);
 });

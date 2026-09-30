@@ -1,3 +1,4 @@
+import { particle } from './channel-text.ts';
 // Handoff judge (F3): code-first structural checks, then an LLM comparison of the result against the
 // task's handoff conditions and the confirmed decisions. The verdict is recorded as handoff_reviewed
 // and becomes either task_checked or a concrete revision request.
@@ -50,14 +51,21 @@ const SYSTEM = [
   `- 반드시 ${REVIEW_TOOL} 도구로만 답한다.`,
 ].join('\n');
 
-const squash = (text: string) => text.replace(/\s+/g, ' ').trim();
+export const normalizeCitation = (text: string) => text.normalize('NFC')
+  .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+  .replace(/^\s{0,3}(?:#{1,6}\s+|[-*+]\s+|>\s*)/gm, '')
+  .replace(/(\*\*|__|~~)(.*?)\1/gs, '$2')
+  .replace(/`+([^`]+)`+/g, '$1')
+  .replace(/(?<!\w)([*_])([^\n]+?)\1(?!\w)/g, '$2')
+  .replace(/\s+/g, ' ').trim();
+const squash = normalizeCitation;
 
 /** Code-only checks that need no model: result files present, result current, no unconfirmed update. */
 export function structuralProblems(state: ProjectState, result: SubmittedResult, content: ResultContent): string[] {
   const problems = handoffBlockers(state, result.taskId, result.resultId);
-  if (result.artifactIds.length === 0) problems.push(`결과 ${result.resultId}에 결과 파일이 없습니다. 결과 파일을 첨부해 다시 제출해 주세요.`);
+  if (result.artifactIds.length === 0) problems.push(`제출한 결과에 결과 파일이 없습니다. 결과 파일을 첨부해 다시 제출해 주세요.`);
   for (const path of result.artifactIds) {
-    if (typeof content[path] !== 'string') problems.push(`결과 파일 ${path}을(를) 찾을 수 없습니다. 파일을 작업 폴더에 두고 다시 제출해 주세요.`);
+    if (typeof content[path] !== 'string') problems.push(`결과 파일 ${path}${particle(path)} 찾을 수 없습니다. 파일을 작업 폴더에 두고 다시 제출해 주세요.`);
   }
   return problems;
 }
@@ -122,10 +130,11 @@ export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
   if (!conditions.length && !decisions.length) return { ok: true, llmCalls: 0, review: { ...base, verdict: 'sufficient', met: [], missing: [], evidence: [] } };
 
   const { verdict, calls, error } = await askModel(input, buildRequest(input, conditions));
-  if (!verdict) return { ok: false, llmCalls: calls, error: `${result.taskId} 결과 ${result.resultId}: ${error}. 사람이 확인해 주세요.` };
+  if (!verdict) return { ok: false, llmCalls: calls, error: `결과 인계 판단을 마치지 못했습니다. 사람이 확인해 주세요.` };
   const met: string[] = [];
   const missing: string[] = [];
   const evidence: string[] = [];
+  const citationFailures: NonNullable<HandoffReview['citationFailures']> = [];
   conditions.forEach((condition, i) => {
     const item = verdict.conditions.find((entry) => entry.index === i + 1);
     const file = item?.file ?? '';
@@ -136,18 +145,19 @@ export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
       met.push(condition);
       evidence.push(`${condition} ← ${file}: "${quote}"`);
     } else if (item?.met) {
+      citationFailures.push({ condition, file, quote: item.quote ?? '', reason: !quote ? '인용문이 비어 있음' : typeof content !== 'string' ? '지정한 결과 파일이 없음' : '정규화 후에도 인용문이 결과 파일에 없음' });
       missing.push(`인계 조건 "${condition}"의 근거를 결과에서 확인하지 못했습니다. 이 조건을 다루는 내용을 ${file || '결과 파일'}에 분명히 적어 주세요.`);
     } else {
       const detail = item?.missing?.trim();
-      missing.push(`인계 조건 "${condition}"이(가) 충족되지 않았습니다. ${detail || '이 조건을 다루는 내용을 결과 파일에 추가해 주세요.'}`);
+      missing.push(`인계 조건 "${condition}"${particle(condition, '이/가')} 충족되지 않았습니다. ${detail || '이 조건을 다루는 내용을 결과 파일에 추가해 주세요.'}`);
     }
   });
   const known = new Map(decisions.map((d) => [d.decisionId, d]));
   for (const conflict of verdict.conflicts) {
     const decision = known.get(conflict.decisionId);
-    if (decision) missing.push(`확정 결정 ${decision.decisionId}("${decision.summary}")과 어긋납니다: ${conflict.detail}`);
+    if (decision) missing.push(`확정 결정 "${decision.summary}"과 어긋납니다: ${conflict.detail}`);
   }
-  return { ok: true, llmCalls: calls, review: { ...base, verdict: missing.length ? 'insufficient' : 'sufficient', met, missing, evidence } };
+  return { ok: true, llmCalls: calls, review: { ...base, verdict: missing.length ? 'insufficient' : 'sufficient', met, missing, evidence, ...(citationFailures.length ? { citationFailures } : {}) } };
 }
 
 const pm = { kind: 'pm' as const, id: 'pm' };

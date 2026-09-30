@@ -1,3 +1,4 @@
+import { channelText, particle, taskName } from './channel-text.ts';
 // Dispatcher (F3): judges each submitted result, records the verdict, and starts the next reserved
 // task exactly once — agents through the session boundary, people through a channel sentence the
 // caller posts. Relays agent questions to people and routes the answers back to the agent.
@@ -123,8 +124,8 @@ export class Dispatcher {
     const assignee = task.spec.assignee;
     const input = buildTaskContext(state, taskId, events);
     if (state.members.get(assignee)?.kind !== 'agent') {
-      const sources = input.inputs.filter((item) => !item.text.startsWith('[대화]')).map((item) => item.text);
-      outcome.notices.push(`@${this.name(state, assignee)} ${taskId} "${task.spec.title}"을(를) 시작할 수 있습니다.${sources.length ? ` 입력 자료: ${sources.join(', ')}` : ''}`);
+
+      outcome.notices.push(`@${this.name(state, assignee)} ${task.spec.title}${particle(task.spec.title)} 시작할 수 있습니다.`);
       return;
     }
     try {
@@ -136,14 +137,14 @@ export class Dispatcher {
       const reason = `Session start failed; reconcile before retry: ${error instanceof Error ? error.message : 'unknown error'}`;
       await this.options.store.append([this.event('task_blocked', { taskId, reason },
         `start-failed:${this.options.context.projectId}:${taskId}:v${input.planVersion}`, { kind: 'system', id: 'dispatcher' })]);
-      outcome.failures.push(`${taskId}: ${reason}`);
+      outcome.failures.push(`${task.spec.title} 작업을 시작하지 못했습니다. 연결 상태를 확인해 주세요.`);
     }
   }
 
   private revisionNotice(state: ProjectState, taskId: Id, review: HandoffReview): string {
     const assignee = state.tasks.get(taskId)!.spec.assignee;
     const mention = state.members.get(assignee)?.kind === 'human' ? `@${this.name(state, assignee)} ` : '';
-    return [`${mention}${taskId} 결과 ${review.resultId}를 넘기기 전에 보완이 필요합니다.`, ...review.missing.map((item) => `- ${item}`)].join('\n');
+    return [`${mention}${taskName(state, taskId)} 결과에 보완이 필요합니다.`, ...review.missing.slice(0, 3).map((item) => `- ${channelText(item.replace(/^인계 조건 "([^"]+)"(?:이|가) 충족되지 않았습니다\.\s*(.*)/s, '$1: $2'), state, 1)}`)].join('\n');
   }
 
   /**
@@ -159,7 +160,7 @@ export class Dispatcher {
       if (!to) throw new Error('No person to ask: set a goal decider or pass `to`');
       const questionId = questionMessageId(taskId, taskQuestions(events, taskId).length + 1);
       const choices = options.choices?.length ? ` (선택지: ${options.choices.join(' / ')})` : '';
-      const text = `@${this.name(state, to)} ${taskId} "${task.spec.title}" 담당 ${this.name(state, task.spec.assignee)}의 질문입니다: ${question}${choices}`;
+      const text = channelText(`@${this.name(state, to)} "${task.spec.title}" 담당 ${this.name(state, task.spec.assignee)}의 질문입니다: ${question}${choices}`, state);
       await this.options.store.append([
         this.event('pm_considered', { considerationId: `consider:${questionId}`, triggerId: questionId, whoseAction: to, alreadyKnows: 'no',
           evidence: [`${taskId} 담당 에이전트가 질문하고 멈춤`], decision: 'speak', reason: '답이 있어야 작업이 이어진다', openTopics: [...state.openTopics] }, `consider:${questionId}`),

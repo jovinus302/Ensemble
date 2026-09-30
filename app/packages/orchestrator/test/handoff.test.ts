@@ -53,7 +53,7 @@ it('counts a condition as met only when the quoted evidence is really in the res
   const outcome = await judge(llm);
   expect(outcome).toMatchObject({ ok: true, llmCalls: 1, review: {
     verdict: 'insufficient', met: ['D1의 문제 ①을 다룬다'], evidence: [expect.stringContaining('flow.md')],
-    missing: [expect.stringContaining('"화면 목록이 있다"의 근거를 결과에서 확인하지 못했습니다'), expect.stringContaining('확정 결정 D2')] } });
+    missing: [expect.stringContaining('"화면 목록이 있다"의 근거를 결과에서 확인하지 못했습니다'), expect.stringContaining('확정 결정 "결제는 제외"')] } });
   expect(outcome.ok && outcome.review.missing).toHaveLength(2);
   const request = llm.requests[0]!;
   expect(request).toMatchObject({ model: 'fake-pm', forceTool: REVIEW_TOOL, tools: [expect.objectContaining({ name: REVIEW_TOOL })] });
@@ -65,8 +65,8 @@ it('treats conditions the model skipped as missing, with the model reason when i
   const llm = new FakeLlm([call({ conditions: [{ index: 1, met: false, missing: '문제 ①의 흐름이 없습니다.' }], decisionConflicts: [] })]);
   const outcome = await judge(llm);
   expect(outcome.ok && outcome.review.missing).toEqual([
-    '인계 조건 "D1의 문제 ①을 다룬다"이(가) 충족되지 않았습니다. 문제 ①의 흐름이 없습니다.',
-    expect.stringContaining('인계 조건 "화면 목록이 있다"이(가) 충족되지 않았습니다.'),
+    '인계 조건 "D1의 문제 ①을 다룬다"가 충족되지 않았습니다. 문제 ①의 흐름이 없습니다.',
+    expect.stringContaining('인계 조건 "화면 목록이 있다"가 충족되지 않았습니다.'),
   ]);
 });
 
@@ -77,9 +77,9 @@ it('retries once on an empty or malformed reply and returns an error, not a verd
   expect(await judgeHandoff({ state: state(), result, resultContent: content, decisions: [], llm: recovered, model: 'm' }))
     .toMatchObject({ ok: true, llmCalls: 2, review: { verdict: 'sufficient' } });
   const empty = new FakeLlm([[], []]);
-  expect(await judge(empty)).toMatchObject({ ok: false, llmCalls: 2, error: expect.stringContaining('비어 있음') });
+  expect(await judge(empty)).toMatchObject({ ok: false, llmCalls: 2, error: expect.stringContaining('판단을 마치지 못했습니다') });
   const failing = new FakeLlm([new Error('proxy 502'), new Error('proxy 502')]);
-  expect(await judge(failing)).toMatchObject({ ok: false, error: expect.stringContaining('proxy 502') });
+  expect(await judge(failing)).toMatchObject({ ok: false, error: expect.stringContaining('판단을 마치지 못했습니다') });
 });
 
 it('turns a verdict into handoff_reviewed plus task_checked or revision_requested', () => {
@@ -90,4 +90,20 @@ it('turns a verdict into handoff_reviewed plus task_checked or revision_requeste
   const revision = handoffEvents(s, { ...base, verdict: 'insufficient', met: [], missing: ['보완할 점'] }, ctx);
   expect(revision.map((e) => e.type)).toEqual(['handoff_reviewed', 'revision_requested']);
   expect(revision[1]!.payload).toMatchObject({ missing: ['보완할 점'] });
+});
+
+
+it('normalizes markdown and whitespace but records original failed citations without semantic relaxation', async () => {
+  const llm = new FakeLlm([call({ conditions: [
+    { index: 1, met: true, file: 'flow.md', quote: '가입 흐름을 확인한다.' },
+    { index: 2, met: true, file: 'missing.md', quote: '**화면 목록**' },
+  ], decisionConflicts: [] })]);
+  const outcome = await judge(llm, state(), { 'flow.md': '# 안내\n- **가입**\n 흐름을 확인한다.\n화면 목록이 없다.' });
+  expect(outcome).toMatchObject({ ok: true, review: { met: ['D1의 문제 ①을 다룬다'], citationFailures: [{ file: 'missing.md', quote: '**화면 목록**', reason: '지정한 결과 파일이 없음' }] } });
+  const invented = new FakeLlm([call({ conditions: [
+    { index: 1, met: true, file: 'flow.md', quote: '화면 목록이 있다.' },
+    { index: 2, met: true, file: 'flow.md', quote: '가격 10원' },
+  ], decisionConflicts: [] })]);
+  const rejected = await judge(invented, state(), { 'flow.md': '화면 목록이 없다. 가격 100원' });
+  expect(rejected).toMatchObject({ ok: true, review: { met: [], verdict: 'insufficient', citationFailures: [expect.objectContaining({ quote: '화면 목록이 있다.' }), expect.objectContaining({ quote: '가격 10원' })] } });
 });

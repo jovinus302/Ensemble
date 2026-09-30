@@ -7,7 +7,7 @@ export interface EventPayloads {
   plan_proposed: { proposalId: Id; version: number; tasks: TaskSpec[]; estimates: { taskId: Id; hours: { min: number; max: number } }[]; reason: string; forMemberId: Id };
   plan_decided: { proposalId: Id; memberId: Id; approved: boolean };
   plan_committed: { version: number; basedOn: number | null; tasks: TaskSpec[]; reason: string; approvedBy: Id; sourceMessageIds: Id[] };
-  availability_updated: { memberId: Id; weeklyHours: number };
+  availability_updated: { memberId: Id; weeklyHours: number; weekStart?: string };
   estimate_updated: { taskId: Id; hours: { min: number; max: number }; source: "human" | "pm" | "measured" };
   task_start_reserved: { taskId: Id; specVersion: number; trigger: Id };
   task_started: { taskId: Id; turnId?: Id };
@@ -31,7 +31,7 @@ export interface EventPayloads {
   message_recorded: { messageId: Id; authorId: Id; text: string; threadId?: Id; attachmentIds: Id[] };
   attachment_recorded: { attachmentId: Id; name: string; mimeType: string; uri: string; taskId?: Id };
   /** The PM's handoff judgement and the evidence behind it. */
-  handoff_reviewed: { taskId: Id; resultId: Id; verdict: "sufficient" | "insufficient"; met: string[]; missing: string[]; evidence: string[] };
+  handoff_reviewed: { taskId: Id; resultId: Id; verdict: "sufficient" | "insufficient"; met: string[]; missing: string[]; evidence: string[]; citationFailures?: { condition: string; file: string; quote: string; reason: string }[] };
   /** The PM's answers to the three principle questions (docs/pm-principles.md) before speaking or staying silent. */
   pm_considered: { considerationId: Id; triggerId: Id; whoseAction: string | null; alreadyKnows: "yes" | "no" | "unknown"; evidence: string[]; decision: "speak" | "silent"; reason: string; openTopics: string[] };
   pm_spoke: { considerationId: Id; messageId: Id; text: string; kind: "fact" | "summary" | "ask" | "answer" | "nudge" };

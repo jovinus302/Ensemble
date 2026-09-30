@@ -16,6 +16,7 @@ export interface ForecastInput {
   tasks: ForecastTask[];
   /** Weekly working hours per human member. Agents are not listed here. */
   weeklyHours: ReadonlyMap<string, number>;
+  weeklyOverrides?: ReadonlyMap<string, ReadonlyMap<string, number>>;
 }
 
 export interface ScheduledSpan {
@@ -199,10 +200,19 @@ function hoursPerDay(input: ForecastInput, task: ForecastTask): number {
   return (input.weeklyHours.get(task.assignee) ?? 0) / 7;
 }
 
-function durationDays(input: ForecastInput, task: ForecastTask, scenario: Scenario): number {
+function durationDays(input: ForecastInput, task: ForecastTask, scenario: Scenario, startDay = 0): number {
   if (task.done || task.hours === undefined) return 0;
   const hours = task.hours[scenario];
   if (task.assigneeKind === "agent") return hours / AGENT_HOURS_PER_DAY;
+  const overrides = input.weeklyOverrides?.get(task.assignee);
+  if (overrides?.size) {
+    let remaining = hours, day = startDay;
+    for (const segment of capacitySegments(input, task.assignee, startDay, Infinity)) {
+      const available = (segment.end - day) * segment.rate;
+      if (segment.rate > 0 && available >= remaining) return day - startDay + remaining / segment.rate;
+      remaining -= available; day = segment.end;
+    }
+  }
   // hours * 7 / weekly keeps whole-number results exact
   return (hours * 7) / (input.weeklyHours.get(task.assignee) ?? 0);
 }
@@ -230,7 +240,7 @@ function schedule(
     );
     const key = resourceKey(task);
     const startDay = Math.max(dependenciesEnd, nextFree.get(key) ?? 0);
-    const endDay = startDay + durationDays(input, task, scenario);
+    const endDay = startDay + durationDays(input, task, scenario, startDay);
     spans.set(task.id, { startDay, endDay });
     nextFree.set(key, endDay);
   }
@@ -261,7 +271,7 @@ function shortages(
 
   const result: MemberShortage[] = [];
   for (const [memberId, entry] of perMember) {
-    const available = entry.perDay * Math.max(0, deadlineDays - entry.firstStart);
+    const available = capacitySegments(input, memberId, entry.firstStart, Math.max(entry.firstStart, deadlineDays)).reduce((sum, s) => sum + (s.end - s.start) * s.rate, 0);
     const hours = entry.needed - available;
     if (hours > 0) result.push({ memberId, hours });
   }
@@ -280,4 +290,16 @@ function latestEnd(spans: Map<string, ScheduledSpan>): number {
 
 function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * DAY_MS);
+}
+
+/** ISO weeks start Monday at midnight in the project's Korean time zone. */
+export function availabilityWeek(now: Date): string {
+  const local = new Date(now.getTime() + 9 * 3600000);
+  local.setUTCDate(local.getUTCDate() - (local.getUTCDay() + 6) % 7);
+  return local.toISOString().slice(0, 10);
+}
+function capacitySegments(input: ForecastInput, member: string, start: number, end: number) {
+  const windows = [...(input.weeklyOverrides?.get(member) ?? [])].map(([week, hours]) => ({ start: (Date.parse(`${week}T00:00:00+09:00`) - input.now.getTime()) / DAY_MS, hours })).sort((a,b) => a.start - b.start);
+  const boundaries = [...new Set([start, ...windows.flatMap(w => [w.start, w.start + 7]).filter(d => d > start && d < end), end])].sort((a,b) => a-b);
+  return boundaries.slice(0,-1).map((point,i) => ({ start: point, end: boundaries[i+1]!, rate: (windows.find(w => point >= w.start && point < w.start+7)?.hours ?? input.weeklyHours.get(member) ?? 0) / 7 }));
 }
