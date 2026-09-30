@@ -18,6 +18,7 @@ export const continuousSteps: ScriptedStep[] = [
   { ...scene2[1]!, action: 'respondToRevision', scene: 2, target: { assignee: 'designer' }, waitFor: { kind: 'taskOf', assignee: 'designer', status: ['revising', 'checked'] }, attachments: [{ name: 'flow-v2.md', mimeType: 'text/markdown', content: fixture('flow-v2.md') }] },
   { ...scene3[0]!, scene: 3, waitFor: { kind: 'agentTurnRunning', agentId: 'prototype-agent' } },
   ...scene3.slice(1).map(step => ({ ...step, scene: 3 as const })),
+  { scene: 3, as: 'owner', action: 'clarifyScopeIfAsked', text: '프로토타입 제작 작업에서 결제 화면과 모의 결제 버튼을 이번 범위에서 제외해 주세요. 가입, 시간 선택, 예약 확인 흐름은 유지합니다.' },
 ];
 export const continuousCompletion: Condition = { kind: 'all', conditions: [
   { kind: 'planVersionAtLeast', version: 2 },

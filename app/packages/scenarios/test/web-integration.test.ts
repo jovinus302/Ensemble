@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, it, vi } from 'vitest';
@@ -7,7 +7,7 @@ import type { LlmProvider } from '@ensemble/llm';
 import { project, type AnyEvent } from '@ensemble/core';
 import { WebRuntime } from '../../../apps/web/lib/runtime.ts';
 import { GET, POST } from '../../../apps/web/app/api/[...path]/route.ts';
-import { continuousScenario, conditionMet, resolveTarget } from '../src/index.ts';
+import { continuousScenario, conditionMet, resolveTarget, sceneEvents } from '../src/index.ts';
 import { setup } from './continuous-fixture.ts';
 
 const globalRuntime = globalThis as typeof globalThis & { ensembleRuntime?: WebRuntime };
@@ -16,11 +16,11 @@ async function eventually(check: () => Promise<boolean>) {
   for (let i = 0; i < 300; i++) { if (await check()) return; await new Promise(r => setTimeout(r, 10)); }
   throw new Error('observable state did not arrive');
 }
-it('plays all three scenes through actual API handlers with ready human work, visible input and preserved history', async () => {
+it.each([false, true])('plays all three scenes through actual API handlers (default connector: %s), preserving history', async defaultConnector => {
   const f = await setup(false);
   await f.pm.stop();
   const dir = await mkdtemp(path.join(tmpdir(), 'ensemble-web-'));
-  const app = new WebRuntime({ dataDir: dir, store: new MemoryLedgerStore(), llm: f.llm, connector: f.connector, generateRevision: f.host.generateRevision });
+  const app = new WebRuntime({ dataDir: dir, store: new MemoryLedgerStore(), llm: f.llm, ...(defaultConnector ? {} : { connector: f.connector }), generateRevision: f.host.generateRevision });
   globalRuntime.ensembleRuntime = app;
   try {
     await app.state();
@@ -35,7 +35,7 @@ it('plays all three scenes through actual API handlers with ready human work, vi
         expect(resolveTarget(state, { assignee: 'owner' })).toBe('interview');
       }
       expect((await post('scenario/next')).status).toBe(202);
-      await eventually(async () => app.meta.script!.step === i + 1 || !!app.meta.script!.stopped);
+      await eventually(async () => (app.meta.script!.step === i + 1 && !(await app.state()).busy) || !!app.meta.script!.stopped);
       expect(app.meta.script!.stopped).toBeUndefined();
       await app.pm.flush();
     }
@@ -54,12 +54,32 @@ it('plays all three scenes through actual API handlers with ready human work, vi
     expect((await post('scenario/start', { name: continuousScenario.key, confirmReplace: true })).status).toBe(200);
     expect(app.meta.archivedProjectIds).toContain(originalId);
     expect(await app.store.read({ projectId: originalId })).toEqual(before);
+    const archives = await GET(new Request('http://localhost/api/archives'), { params: Promise.resolve({ path: ['archives'] }) });
+    expect(await archives.json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: originalId, archivedAt: expect.any(String) })]));
+    const currentId = app.meta.projectId;
+    const archive = await GET(new Request('http://localhost/api/archives/old'), { params: Promise.resolve({ path: ['archives', originalId] }) });
+    expect(await archive.json()).toMatchObject({ project: { id: originalId }, readOnly: true, cards: [] });
+    expect(app.meta.projectId).toBe(currentId);
+    expect(await app.store.read({ projectId: originalId })).toEqual(before);
+    expect((await GET(new Request('http://localhost/api/archives/missing'), { params: Promise.resolve({ path: ['archives', 'missing'] }) })).status).toBe(404);
     expect((await app.state()).messages).toEqual([]);
     await post('scenario/next');
-    await eventually(async () => app.meta.script!.step === 1);
+    await eventually(async () => app.meta.script!.step === 1 && !(await app.state()).busy);
     expect((await app.state()).messages.filter(m => m.authorId === 'owner')).toHaveLength(1);
+    if (defaultConnector) {
+      // Reusing task IDs after archiving must not lose reservations to the previous project's keys.
+      for (let step = 1; step < continuousScenario.steps.length; step++) {
+        expect((await post('scenario/next')).status).toBe(202);
+        await eventually(async () => (app.meta.script!.step === step + 1 && !(await app.state()).busy) || !!app.meta.script!.stopped);
+        expect(app.meta.script!.stopped).toBeUndefined();
+        await app.pm.flush();
+      }
+      expect((await app.state()).scenario?.done).toBe(true);
+      expect((await app.store.read({ projectId: currentId })).filter(e => e.type === 'task_start_reserved').length).toBeGreaterThan(0);
+      expect(await app.store.read({ projectId: originalId })).toEqual(before);
+    }
   } finally { await app.pm.stop(); app.store.close(); delete globalRuntime.ensembleRuntime; await rm(dir, { recursive: true, force: true }); await rm(f.workspace, { recursive: true, force: true }); }
-});
+}, 20000);
 
 it('accepts two inputs while PM is blocked and processes them once in receipt order', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'ensemble-messages-'));
@@ -78,6 +98,8 @@ it('accepts two inputs while PM is blocked and processes them once in receipt or
   globalRuntime.ensembleRuntime = app;
   try {
     await app.state();
+    // Message coordination is exercised within a project; an empty project now prompts for a goal (R10).
+    await app.store.append(sceneEvents(1, { projectId: app.meta.projectId, targetProductId: 'test' }));
     const [first, second] = await Promise.all([post('messages', { authorId: 'owner', text: '첫 입력' }), post('messages', { authorId: 'designer', text: '다음 입력' })]);
     expect([first.status, second.status]).toEqual([202, 202]);
     const ids = [(await first.json() as { messageId: string }).messageId, (await second.json() as { messageId: string }).messageId];
@@ -138,4 +160,59 @@ it('serves text inline, HTML as download, and structured Korean errors', async (
     expect(bad.status).toBe(400);
     expect(await bad.json()).toEqual({ error: { code: 'invalid_input', message: '메시지나 첨부를 입력해 주세요.' } });
   } finally { await app.pm.stop(); app.store.close(); delete globalRuntime.ensembleRuntime; await rm(dir, { recursive: true, force: true }); }
+});
+
+it('detects an unresponsive running agent at two minutes without resetting elapsed time on human messages', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'ensemble-agent-stall-'));
+  const app = new WebRuntime({ dataDir: dir, store: new MemoryLedgerStore() });
+  let clock: ReturnType<typeof vi.spyOn> | undefined;
+  try {
+    await app.state();
+    const ctx = { projectId: app.meta.projectId, targetProductId: 'test', actor: { kind: 'agent' as const, id: 'prototype-agent' } };
+    await app.store.append(sceneEvents(3, ctx));
+    const start = Date.now();
+    await app.store.append([
+      { ...ctx, at: new Date(start).toISOString(), type: 'task_start_reserved', payload: { taskId: 'prototype', specVersion: 1, trigger: 'test' } },
+      { ...ctx, at: new Date(start).toISOString(), type: 'task_started', payload: { taskId: 'prototype', turnId: 'quiet' } },
+    ]);
+    clock = vi.spyOn(Date, 'now').mockReturnValue(start + 119999);
+    const first = await app.state();
+    expect(first.activity.kind).toBe('agent_working'); expect(first.activity.stalled).toBeUndefined();
+    await app.store.append([{ ...ctx, actor: { kind: 'human', id: 'owner' }, at: new Date(start + 119999).toISOString(), type: 'message_recorded', payload: { messageId: 'unrelated', authorId: 'owner', text: '상태 확인', attachmentIds: [] } }]);
+    clock.mockReturnValue(start + 120000);
+    const stalled = await app.state();
+    expect(stalled.activity.since).toBe(first.activity.since);
+    expect(stalled.activity.stalled?.reason).toContain('2분');
+    await app.store.append([{ ...ctx, at: new Date(start + 120000).toISOString(), type: 'reply_recorded', payload: { memberId: 'prototype-agent', taskId: 'prototype', turnId: 'quiet', text: '화면 작성 중' } }]);
+    expect((await app.state()).activity.stalled).toBeUndefined();
+    expect((await app.state()).activity.since).toBe(first.activity.since);
+  } finally { clock?.mockRestore(); await app.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+it('delivers a persisted next-turn change once when the web runtime restarts', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'ensemble-restart-'));
+  const store = new MemoryLedgerStore();
+  const ctx = { projectId: 'persisted', targetProductId: 'test', actor: { kind: 'system' as const, id: 'test' } };
+  const task = { id: 'prototype', title: '가입 화면', assignee: 'prototype-agent', dependsOn: [], handoffConditions: ['가입', '제외: 결제'] };
+  await store.append([
+    { ...ctx, type: 'member_joined', payload: { memberId: 'owner', kind: 'human', displayName: '사용자' } },
+    { ...ctx, type: 'member_joined', payload: { memberId: 'prototype-agent', kind: 'agent', displayName: '프로토타입 Agent' } },
+    { ...ctx, type: 'goal_set', payload: { text: '가입 시연', decider: 'owner', delegation: { pmMayApply: ['scope_reduce'] } } },
+    { ...ctx, type: 'plan_committed', payload: { version: 1, basedOn: null, tasks: [task], reason: '확정', approvedBy: 'owner', sourceMessageIds: [] } },
+    { ...ctx, type: 'task_start_reserved', payload: { taskId: task.id, specVersion: 1, trigger: 'approval' } },
+    { ...ctx, type: 'task_started', payload: { taskId: task.id, turnId: 'old-turn' } },
+    { ...ctx, type: 'turn_observed', payload: { agentId: task.assignee, taskId: task.id, turnId: 'old-turn', status: 'completed' } },
+    { ...ctx, type: 'change_notified', payload: { changeId: 'persisted-change', planVersion: 1, recipientId: task.assignee, via: 'next_turn', text: JSON.stringify({ summary: '결제 제외', tasks: [task], drop: ['결제'] }) } },
+  ]);
+  await writeFile(path.join(dir, 'runtime.json'), JSON.stringify({ projectId: ctx.projectId, mode: 'free', scene: 1, step: 0 }));
+  const app = new WebRuntime({ dataDir: dir, store });
+  try {
+    await app.state();
+    await eventually(async () => (await store.read()).some(e => e.type === 'update_acknowledged'));
+    expect(project(await store.read()).activeTurn.get(task.assignee)).toBe(task.id);
+    expect((await store.read()).filter(e => e.type === 'task_started')).toHaveLength(2);
+    await app.pm.deliverPendingChanges(); await app.pm.flush();
+    expect((await store.read()).filter(e => e.type === 'update_sent')).toHaveLength(1);
+    expect((await store.read() as AnyEvent[]).find(e => e.type === 'update_acknowledged')?.payload).toMatchObject({ dropped: ['결제'] });
+  } finally { await app.stop(); await rm(dir, { recursive: true, force: true }); }
 });

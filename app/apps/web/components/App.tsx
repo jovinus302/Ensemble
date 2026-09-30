@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ActivityLine } from "./Activity";
+import { Archives } from "./Archives";
 import { DecisionCard } from "./Cards";
 import { Composer } from "./Composer";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -19,6 +20,8 @@ type Pending = { kind: "scenario" } | { kind: "free"; goal: string; deadline?: s
 export function App() {
   const { vm, error, connectionLost, pending, actions } = useViewModel();
   const [logOpen, setLogOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
   const [roadmapOpen, setRoadmapOpen] = useState(false);
   const [freeForm, setFreeForm] = useState(false);
   const [confirm, setConfirm] = useState<{ action: Pending; message: string } | null>(null);
@@ -78,6 +81,8 @@ export function App() {
 
   return (
     <div className="app">
+      {archiveOpen && <Archives onClose={() => setArchiveOpen(false)} />}
+      <div className="active-project" hidden={archiveOpen}>
       <header className="topbar">
         <div className="brand">Ensemble</div>
         <div className="project">
@@ -85,7 +90,9 @@ export function App() {
           {vm.project.synthetic && <span className="badge badge-demo" title="시연용 가상 자료입니다">시연용</span>}
           {vm.project.deadline && <span className="chip chip-plain num">기한 {formatDate(vm.project.deadline)}</span>}
         </div>
-        <div className="topbar-controls">
+        <button className="btn-tonal controls-toggle" aria-expanded={controlsOpen} aria-controls="topbar-controls" onClick={() => setControlsOpen(v => !v)}>메뉴</button>
+        <div id="topbar-controls" className={`topbar-controls${controlsOpen ? ' expanded' : ''}`}>
+          <button type="button" className="btn-tonal" onClick={() => setArchiveOpen(true)}>보관함</button>
           <div className="segmented" role="group" aria-label="모드">
             <button type="button" aria-pressed={vm.mode === "scenario" && !freeForm} disabled={pending} title={pending ? "요청을 처리하는 중이에요" : undefined} onClick={() => { setFreeForm(false); void request({ kind: "scenario" }); }}>시나리오</button>
             <button type="button" aria-pressed={vm.mode === "free" || freeForm} disabled={pending} title={pending ? "요청을 처리하는 중이에요" : undefined} onClick={() => setFreeForm(true)}>자유형식</button>
@@ -180,6 +187,7 @@ export function App() {
           onCancel={() => setConfirm(null)}
         />
       )}
+      </div>
     </div>
   );
 }

@@ -3,6 +3,23 @@ import { project, type NewLedgerEvent, type TaskSpec } from '@ensemble/core';
 import { MemoryLedgerStore } from '@ensemble/store';
 import { resolveTarget, waitForCondition, conditionMet, advanceScript, continuousScenario, type Condition, type ScriptHost, type ScriptProgress } from '../src/index.ts';
 const ctx = { projectId: 'test', targetProductId: 'product', actor: { kind: 'system' as const, id: 'test' } };
+it.each([false, true])('answers a scope clarification only when the PM newly asks for it (%s)', async asks => {
+  const store = new MemoryLedgerStore();
+  await store.append([
+    { ...ctx, type: 'member_joined', payload: { memberId: 'owner', kind: 'human', displayName: '사용자' } },
+    { ...ctx, type: 'goal_set', payload: { text: '예약 시연', decider: 'owner', delegation: { pmMayApply: ['scope_reduce'] } } },
+    { ...ctx, type: 'pm_spoke', payload: { messageId: 'old', considerationId: 'old', kind: 'answer', text: '적용할 작업과 변경할 범위를 다시 알려주시겠어요?' } },
+  ]);
+  const progress: ScriptProgress = { step: 1, anchors: { 0: project(await store.read()).lastSeq } };
+  if (asks) await store.append([{ ...ctx, type: 'pm_spoke', payload: { messageId: 'new', considerationId: 'new', kind: 'answer', text: '변경 내용을 확인하지 못해, 적용할 작업과 변경할 범위를 다시 알려주시겠어요?' } }]);
+  const postMessage = vi.fn(async () => []);
+  const host = { read: () => store.read(), recordStop: vi.fn(), pm: { postMessage } } as unknown as ScriptHost;
+  const reply = continuousScenario.steps.at(-1)!;
+  await advanceScript(host, [{ as: 'owner', text: '결제 제외' }, reply], progress);
+  expect(postMessage).toHaveBeenCalledTimes(asks ? 1 : 0);
+  if (asks) expect(postMessage).toHaveBeenCalledWith('owner', reply.text);
+  expect(progress.step).toBe(2);
+});
 const task = (id: string, assignee = 'designer', dependsOn: string[] = []): TaskSpec => ({ id, assignee, dependsOn, title: id, handoffConditions: ['done'] });
 async function ledger(tasks: TaskSpec[] = [task('later', 'designer', ['earlier']), task('earlier'), task('other', 'owner')]) {
   const store = new MemoryLedgerStore();

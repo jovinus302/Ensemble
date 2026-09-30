@@ -12,7 +12,7 @@ export interface ScriptedStep {
   waitFor?: Condition;
   target?: Target;
   scene?: 1 | 2 | 3;
-  action?: 'goal' | 'approvePlan' | 'availability' | 'answerIfAsked' | 'respondToRevision';
+  action?: 'goal' | 'approvePlan' | 'availability' | 'answerIfAsked' | 'respondToRevision' | 'clarifyScopeIfAsked';
   weeklyHours?: number;
 }
 

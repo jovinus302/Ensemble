@@ -35,11 +35,18 @@ it.each([false, true])('runs scenes 1–3 on the drafted plan with reversed mode
     expect(events.filter(e => e.type === 'revision_requested')).toHaveLength(2);
     expect(f.inputs).toHaveLength(2);
     for (const input of f.inputs) {
-      expect(Object.keys(input).sort()).toEqual((input.draft ? ['title', 'handoffConditions', 'request', 'previous', 'draft'] : ['title', 'handoffConditions', 'request', 'previous']).sort());
+      expect(Object.keys(input).sort()).toEqual(['title', 'handoffConditions', 'request', 'previous', ...(input.draft ? ['draft'] : []), ...(input.sources ? ['sources'] : [])].sort());
       expect(events.some(e => e.type === 'pm_spoke' && e.payload.text === input.request)).toBe(true);
       expect(JSON.stringify(input)).not.toContain('handoff-notice:');
       expect(JSON.stringify(input)).not.toContain('considerationId');
     }
+    expect(f.inputs[0]!.sources).toBeUndefined();
+    expect(f.inputs[1]!.sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'research.md', content: '조사 보고서' }),
+      expect.objectContaining({ content: expect.stringContaining('보완 내용:') }),
+    ]));
+    // Only accepted versions become source material, never the insufficient original interview.
+    expect(f.inputs[1]!.sources).toHaveLength(2);
     expect(f.progress.revisions).toEqual({ interview: 1, flow: 1 });
     expect(events.some(e => e.type === 'update_acknowledged')).toBe(true);
   } finally { await f.pm.stop(); await rm(f.workspace, { recursive: true, force: true }); }

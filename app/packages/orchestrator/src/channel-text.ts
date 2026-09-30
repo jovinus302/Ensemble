@@ -1,9 +1,10 @@
-import type { ProjectState } from '@ensemble/core';
+import { formatKstDate, type ProjectState } from '@ensemble/core';
 
-export function particle(text: string, pair: '을/를' | '이/가' = '을/를'): string {
+export function particle(text: string, pair: '을/를' | '이/가' | '으로/로' = '을/를'): string {
   const last = text.replace(/[\s"'”’)]/g, '').at(-1) ?? '';
   const code = last.charCodeAt(0) - 0xac00;
   const consonant = code >= 0 && code <= 11171 ? code % 28 !== 0 : /[013678lmn]$/i.test(last);
+  if (pair === '으로/로') return consonant && code % 28 !== 8 ? '으로' : '로';
   return pair.split('/')[consonant ? 0 : 1]!;
 }
 export const taskName = (state: ProjectState, id: string) => state.tasks.get(id)?.spec.title ?? state.plan?.tasks.find(t => t.id === id)?.title ?? '작업';
@@ -17,7 +18,9 @@ export function channelText(text: string, state: ProjectState, maxSentences = 2)
     result = result.replace(new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, 'g'), task.title);
   }
   result = result.replace(/([^\s]+)을\(를\)/g, (_, word: string) => word + particle(word))
-    .replace(/([^\s]+)이\(가\)/g, (_, word: string) => word + particle(word, '이/가'));
+    .replace(/([^\s]+)이\(가\)/g, (_, word: string) => word + particle(word, '이/가'))
+    .replace(/([^\s]+?)(?:\(으\)로|으로\(로\))/g, (_, word: string) => word + particle(word, '으로/로'))
+    .replace(/조건를/g, '조건을');
   return result.split(/(?<=[.!?])\s+/).slice(0, maxSentences).join(' ').trim();
 }
 
@@ -27,7 +30,7 @@ export function numericFacts(value: unknown): Set<string> {
   const visit = (v: unknown): void => {
     if (typeof v === 'number' && Number.isFinite(v)) {
       for (const n of [v, Math.round(v), Number(v.toFixed(1)), Number(v.toFixed(2))]) values.add(String(n));
-    } else if (v instanceof Date) visit(v.toISOString());
+    } else if (v instanceof Date) { visit(v.toISOString()); visit(formatKstDate(v)); }
     else if (typeof v === 'string') for (const n of v.match(/\d+(?:\.\d+)?/g) ?? []) values.add(String(Number(n)));
     else if (Array.isArray(v)) v.forEach(visit);
     else if (v && typeof v === 'object') Object.values(v).forEach(visit);

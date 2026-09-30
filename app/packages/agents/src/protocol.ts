@@ -10,6 +10,19 @@ export interface SourcedItem {
   sourceId: string;
 }
 
+/** Largest file handed to or taken from an agent workspace. */
+export const MAX_FILE_BYTES = 2 * 1024 * 1024;
+/** Workspace folder that receives predecessor result files: inputs/<task title>/<file name>. */
+export const INPUTS_DIR = "inputs";
+
+/** A predecessor's result file, copied into the agent workspace before the turn starts. */
+export interface InputFile {
+  /** Workspace-relative, "/"-separated, under INPUTS_DIR. */
+  path: string;
+  /** File content, base64. */
+  data: string;
+}
+
 export interface TaskInstructionsInput {
   taskId: string;
   planVersion: number;
@@ -21,6 +34,18 @@ export interface TaskInstructionsInput {
   decisions: SourcedItem[];
   inputs: SourcedItem[];
   openQuestions: SourcedItem[];
+  /** Files the connector writes into the workspace; the inputs slot names their paths. */
+  files?: InputFile[];
+}
+
+/** A change or an answer delivered by a new turn on the task's thread after its last turn ended. */
+export interface ContinueTaskInput {
+  taskId: string;
+  /** Plan version the task's result must be reported against. */
+  planVersion: number;
+  update: UpdateInstructionsInput;
+  /** Full instructions, sent too when the thread has not seen this task (e.g. after a restart). */
+  task: TaskInstructionsInput;
 }
 
 export interface UpdateInstructionsInput {
@@ -78,6 +103,7 @@ const plain = (items: string[]) => (items.length ? items.map((item) => `- ${item
 const block = (value: object) => ["```" + REPORT_FENCE, JSON.stringify(value, null, 2), "```"].join("\n");
 
 export function taskInstructions(input: TaskInstructionsInput): string {
+  const hasFiles = (input.files?.length ?? 0) > 0;
   const result = block({ type: "result_report", taskId: input.taskId, planVersion: input.planVersion, summary: "무엇을 만들었는지 한두 문장", files: [{ path: "작업 폴더 기준 상대 경로", description: "이 파일의 내용" }], limitations: ["확인하지 못한 점 (없으면 생략)"] });
   const question = block({ type: "question", taskId: input.taskId, question: "막힌 내용과 필요한 결정", options: ["선택지 A", "선택지 B"] });
   return [
@@ -99,7 +125,9 @@ export function taskInstructions(input: TaskInstructionsInput): string {
     "",
     "## 작업 방식",
     "다음 단계를 순서대로 하나씩 진행하세요. 앞 단계가 끝나기 전에 다음 단계로 넘어가지 마세요.",
-    "1. 자료 확인: 입력 자료와 확정 결정을 읽고 인계 조건을 확인합니다.",
+    hasFiles
+      ? `1. 자료 확인: 입력 자료의 파일은 작업 폴더의 ${INPUTS_DIR}/ 폴더에 복사되어 있습니다. 그 파일들을 직접 열어 읽고, 확정 결정과 인계 조건을 확인합니다.`
+      : "1. 자료 확인: 입력 자료와 확정 결정을 읽고 인계 조건을 확인합니다.",
     "2. 구성: 만들 산출물의 목차와 구성을 먼저 정합니다.",
     "3. 작성: 구성한 순서대로 산출물을 하나씩 작성합니다.",
     "4. 보고: 인계 조건을 다시 확인한 뒤 결과를 보고합니다.",
@@ -108,6 +136,7 @@ export function taskInstructions(input: TaskInstructionsInput): string {
     "- 한 번에 여러 산출물을 병렬로 만들지 마세요. 산출물은 하나씩 완성합니다.",
     "- 파일은 작업 폴더 안에만 만드세요. 작업 폴더 밖의 파일은 만들거나 고치지 마세요.",
     "- 확정 결정·제외 범위에 있는 내용은 바꾸거나 다시 만들지 마세요.",
+    ...(hasFiles ? [`- ${INPUTS_DIR}/ 폴더의 파일은 읽기만 하고 고치지 마세요. 결과 파일은 ${INPUTS_DIR}/ 밖에 만드세요.`] : []),
     "",
     "## 보고 형식",
     "작업이 끝나면 아래 형식의 result_report 블록을 정확히 하나 쓰세요. files의 path는 작업 폴더 기준 상대 경로입니다.",
@@ -120,7 +149,7 @@ export function taskInstructions(input: TaskInstructionsInput): string {
 export function updateInstructions(input: UpdateInstructionsInput): string {
   const ack = block({ type: "acknowledge_update", updateId: input.updateId, planVersion: input.toVersion, applied: ["반영한 변경"], dropped: ["폐기한 항목과 이미 만든 산출물 경로"] });
   return [
-    `# 계획 변경: 버전 ${input.fromVersion} → ${input.toVersion}`,
+    input.fromVersion === input.toVersion ? `# 추가 전달 (계획 버전 ${input.toVersion})` : `# 계획 변경: 버전 ${input.fromVersion} → ${input.toVersion}`,
     `변경 ID: ${input.updateId}`,
     `변경 이유: ${input.reason}`,
     "",
@@ -140,6 +169,18 @@ export function updateInstructions(input: UpdateInstructionsInput): string {
     ack,
     "",
     `이후 모든 보고는 계획 버전 ${input.toVersion} 기준으로 씁니다.`,
+  ].join("\n");
+}
+
+/** Turn input for a task whose last turn ended: the update first, then carry on with the task. */
+export function continueInstructions(input: ContinueTaskInput, includeTask: boolean): string {
+  return [
+    ...(includeTask ? [taskInstructions(input.task), "", "---", ""] : []),
+    updateInstructions(input.update),
+    "",
+    "## 이어서 할 일",
+    `acknowledge_update 블록을 먼저 쓴 뒤, 작업 ID ${input.taskId} 작업을 멈춘 지점부터 이어서 진행하세요.`,
+    `끝나면 result_report 블록을 정확히 하나 쓰세요. planVersion은 ${input.planVersion}입니다. 또 막히면 추측하지 말고 question 블록을 쓰고 멈추세요.`,
   ].join("\n");
 }
 

@@ -113,7 +113,12 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
       case "estimate_updated": state.estimates.set(event.payload.taskId, { ...event.payload.hours, source: event.payload.source }); break;
       case "session_linked": state.sessions.set(event.payload.agentId, { threadId: event.payload.threadId, workspace: event.payload.workspace }); break;
       case "turn_observed":
-        if (event.payload.status === "started") break;
+        if (event.payload.status === "started") {
+          const { agentId, taskId } = event.payload;
+          const task = state.tasks.get(taskId);
+          if (task?.status === "running" && task.spec.assignee === agentId && state.members.get(agentId)?.kind === "agent" && !state.activeTurn.has(agentId)) state.activeTurn.set(agentId, taskId);
+          break;
+        }
         if (state.activeTurn.get(event.payload.agentId) === event.payload.taskId) state.activeTurn.delete(event.payload.agentId);
         break;
       case "turn_finished":

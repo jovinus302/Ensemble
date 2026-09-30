@@ -19,8 +19,14 @@ export interface JudgeInput {
   llm: LlmProvider;
   model: string;
 }
-/** An LLM failure is not a verdict: it goes to a person instead of becoming a revision request. */
-export type JudgeOutcome = { ok: true; review: HandoffReview; llmCalls: number } | { ok: false; error: string; llmCalls: number };
+export type CitationFailure = NonNullable<HandoffReview['citationFailures']>[number];
+/**
+ * An LLM failure is not a verdict: it goes to a person instead of becoming a revision request. The same
+ * holds when the model says a condition is met but its citation still cannot be tied to a result file
+ * after one re-judgement; `citationFailures` then carries the PM record of what could not be verified.
+ */
+export type JudgeOutcome = { ok: true; review: HandoffReview; llmCalls: number }
+  | { ok: false; error: string; llmCalls: number; citationFailures?: CitationFailure[] };
 
 export const REVIEW_TOOL = 'record_handoff_review';
 const reviewTool: ToolSpec = {
@@ -59,6 +65,29 @@ export const normalizeCitation = (text: string) => text.normalize('NFC')
   .replace(/(?<!\w)([*_])([^\n]+?)\1(?!\w)/g, '$2')
   .replace(/\s+/g, ' ').trim();
 const squash = normalizeCitation;
+
+/** Shortest piece of an elided quote that still counts as evidence; shorter pieces fail the quote. */
+export const MIN_ELIDED_PIECE = 8;
+
+/**
+ * Whether a normalized quote is in a normalized file. A quote the model joined from several places
+ * with "..." or "…" matches when every piece is at least MIN_ELIDED_PIECE long and they appear in order.
+ */
+export function quoteInText(quote: string, text: string): boolean {
+  if (text.includes(quote)) return true;
+  const pieces = quote.split(/\s*(?:\.{3,}|…+)\s*/).map((piece) => piece.trim());
+  // Leading or trailing marks only say the quote starts or ends mid-sentence.
+  if (pieces[0] === '') pieces.shift();
+  if (pieces.at(-1) === '') pieces.pop();
+  if (pieces.length === 0 || pieces.some((piece) => piece.length < MIN_ELIDED_PIECE)) return false;
+  let from = 0;
+  for (const piece of pieces) {
+    const at = text.indexOf(piece, from);
+    if (at < 0) return false;
+    from = at + piece.length;
+  }
+  return true;
+}
 
 /** Code-only checks that need no model: result files present, result current, no unconfirmed update. */
 export function structuralProblems(state: ProjectState, result: SubmittedResult, content: ResultContent): string[] {
@@ -121,6 +150,46 @@ async function askModel(input: JudgeInput, request: LlmRequest): Promise<{ verdi
   return { verdict: null, calls: 2, error };
 }
 
+/**
+ * Where a "met" citation stands after checking it against the submitted files:
+ * - verified: the quote is really in a result file (the named one, else the file that contains it);
+ * - content: the file is identified but the quote is not in any result — the result may lack it;
+ * - technical: the citation cannot be tied to a result file (no quote, or an unknown file and a quote
+ *   found nowhere). That is a verification failure, not a gap in the person's or agent's work.
+ */
+export type CitationCheck = { kind: 'verified'; file: string } | { kind: 'content' | 'technical'; file: string; reason: string };
+
+export function checkCitation(named: string | undefined, rawQuote: string | undefined, content: ResultContent, files: readonly string[]): CitationCheck {
+  const quote = squash(rawQuote ?? '');
+  const given = (named ?? '').trim();
+  if (!quote) return { kind: 'technical', file: given, reason: '인용문이 비어 있음' };
+  const readable = files.filter((path) => typeof content[path] === 'string');
+  const bare = given.replace(/^\.\//, '');
+  const suffix = readable.filter((path) => path.endsWith(`/${bare}`));
+  const identified = readable.includes(given) ? given : readable.includes(bare) ? bare : bare && suffix.length === 1 ? suffix[0] : undefined;
+  const hits = readable.filter((path) => quoteInText(quote, squash(content[path] as string)));
+  if (identified && hits.includes(identified)) return { kind: 'verified', file: identified };
+  // The model left the file out or named another one: the quote itself identifies the file.
+  // Several hits still prove the quote is in the result; the first in submission order is cited.
+  if (hits.length) return { kind: 'verified', file: hits[0]! };
+  const target = identified ?? (readable.length === 1 ? readable[0] : undefined);
+  if (target) return { kind: 'content', file: target, reason: '정규화 후에도 인용문이 결과 파일에 없음' };
+  return { kind: 'technical', file: given, reason: given ? '지정한 결과 파일이 없고 인용문도 결과 파일에서 찾지 못함' : '결과 파일을 지정하지 않았고 인용문도 결과 파일에서 찾지 못함' };
+}
+
+/** The one re-judgement after a technical citation failure: same request plus what could not be tied to a file. */
+function rejudgeRequest(request: LlmRequest, failed: { index: number; condition: string; check: CitationCheck }[], files: readonly string[]): LlmRequest {
+  const note = [
+    '## 인용 확인 실패 — 다시 판단',
+    '아래 조건은 충족으로 판단했지만 인용을 결과 파일에 연결하지 못했다. 이 조건들을 다시 판단하라.',
+    `- file에는 "### 파일:" 뒤의 경로를 그대로 쓴다: ${files.join(', ')}`,
+    '- quote에는 그 파일의 문장을 고치지 않고 그대로 복사한다. 근거가 없으면 met=false로 둔다.',
+    ...failed.map(({ index, condition, check }) => `${index}. ${condition} — ${check.kind === 'verified' ? '' : check.reason}`),
+  ].join('\n');
+  const [first, ...rest] = request.messages;
+  return { ...request, messages: [{ ...first!, content: `${first!.content}\n${note}` }, ...rest] };
+}
+
 export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
   const { state, result, resultContent, decisions } = input;
   const base = { taskId: result.taskId, resultId: result.resultId };
@@ -129,35 +198,66 @@ export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
   const conditions = state.tasks.get(result.taskId)?.spec.handoffConditions ?? [];
   if (!conditions.length && !decisions.length) return { ok: true, llmCalls: 0, review: { ...base, verdict: 'sufficient', met: [], missing: [], evidence: [] } };
 
-  const { verdict, calls, error } = await askModel(input, buildRequest(input, conditions));
-  if (!verdict) return { ok: false, llmCalls: calls, error: `결과 인계 판단을 마치지 못했습니다. 사람이 확인해 주세요.` };
+  const request = buildRequest(input, conditions);
+  const first = await askModel(input, request);
+  let llmCalls = first.calls;
+  if (!first.verdict) return { ok: false, llmCalls, error: `결과 인계 판단을 마치지 못했습니다. 사람이 확인해 주세요.` };
+  const items = new Map(first.verdict.conditions.map((entry) => [entry.index, entry]));
+  const check = (i: number) => {
+    const item = items.get(i + 1);
+    return item?.met ? checkCitation(item.file, item.quote, resultContent, result.artifactIds) : null;
+  };
+  const citationFailures: CitationFailure[] = [];
+  const record = (i: number, c: CitationCheck, prefix = '') => {
+    if (c.kind !== 'verified') citationFailures.push({ condition: conditions[i]!, file: items.get(i + 1)?.file ?? '', quote: items.get(i + 1)?.quote ?? '', reason: `${prefix}${c.reason}` });
+  };
+
+  // A technical failure is recorded for the PM and re-judged once; it never becomes a request to the person.
+  const technical = conditions.flatMap((condition, i) => { const c = check(i); return c?.kind === 'technical' ? [{ index: i + 1, condition, check: c }] : []; });
+  if (technical.length) {
+    for (const { index, check: c } of technical) record(index - 1, c, '기술적 검증 실패(재판단): ');
+    const retry = await askModel(input, rejudgeRequest(request, technical, result.artifactIds));
+    llmCalls += retry.calls;
+    for (const { index } of technical) {
+      const again = retry.verdict?.conditions.find((entry) => entry.index === index);
+      if (again) items.set(index, again);
+    }
+  }
+
   const met: string[] = [];
   const missing: string[] = [];
   const evidence: string[] = [];
-  const citationFailures: NonNullable<HandoffReview['citationFailures']> = [];
+  const unverified: string[] = [];
   conditions.forEach((condition, i) => {
-    const item = verdict.conditions.find((entry) => entry.index === i + 1);
-    const file = item?.file ?? '';
-    const quote = squash(item?.quote ?? '');
-    const content = resultContent[file];
-    // The model's "met" counts only when its quote is really in the named result file.
-    if (item?.met && quote && typeof content === 'string' && squash(content).includes(quote)) {
+    const item = items.get(i + 1);
+    const c = check(i);
+    // The model's "met" counts only when its quote is really in a result file.
+    if (c?.kind === 'verified') {
       met.push(condition);
-      evidence.push(`${condition} ← ${file}: "${quote}"`);
-    } else if (item?.met) {
-      citationFailures.push({ condition, file, quote: item.quote ?? '', reason: !quote ? '인용문이 비어 있음' : typeof content !== 'string' ? '지정한 결과 파일이 없음' : '정규화 후에도 인용문이 결과 파일에 없음' });
-      missing.push(`인계 조건 "${condition}"의 근거를 결과에서 확인하지 못했습니다. 이 조건을 다루는 내용을 ${file || '결과 파일'}에 분명히 적어 주세요.`);
+      evidence.push(`${condition} ← ${c.file}: "${squash(item?.quote ?? '')}"`);
+    } else if (c?.kind === 'technical') {
+      record(i, c, '재판단 후에도 기술적 검증 실패: ');
+      unverified.push(condition);
+    } else if (c) {
+      record(i, c);
+      missing.push(`인계 조건 "${condition}"의 근거를 결과에서 확인하지 못했습니다. 이 조건을 다루는 내용을 ${c.file}에 분명히 적어 주세요.`);
     } else {
       const detail = item?.missing?.trim();
       missing.push(`인계 조건 "${condition}"${particle(condition, '이/가')} 충족되지 않았습니다. ${detail || '이 조건을 다루는 내용을 결과 파일에 추가해 주세요.'}`);
     }
   });
   const known = new Map(decisions.map((d) => [d.decisionId, d]));
-  for (const conflict of verdict.conflicts) {
+  for (const conflict of first.verdict.conflicts) {
     const decision = known.get(conflict.decisionId);
     if (decision) missing.push(`확정 결정 "${decision.summary}"과 어긋납니다: ${conflict.detail}`);
   }
-  return { ok: true, llmCalls: calls, review: { ...base, verdict: missing.length ? 'insufficient' : 'sufficient', met, missing, evidence, ...(citationFailures.length ? { citationFailures } : {}) } };
+  const failures = citationFailures.length ? { citationFailures } : {};
+  // With a real gap the revision covers it and the unverified condition is judged again on resubmission;
+  // with none, an unverifiable "met" is neither a pass nor the person's fault, so a person decides.
+  if (unverified.length && !missing.length) {
+    return { ok: false, llmCalls, ...failures, error: `결과 인계 판단 중 인계 조건 ${unverified.map((c) => `"${c}"`).join(', ')}의 근거 인용을 결과 파일에 연결하지 못했습니다. 결과 내용의 문제가 아니라 확인 과정의 문제이니 사람이 결과를 확인해 주세요.` };
+  }
+  return { ok: true, llmCalls, review: { ...base, verdict: missing.length || unverified.length ? 'insufficient' : 'sufficient', met, missing, evidence, ...failures } };
 }
 
 const pm = { kind: 'pm' as const, id: 'pm' };

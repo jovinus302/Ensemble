@@ -37,7 +37,7 @@ export class MemoryLedgerStore implements LedgerStore {
     const stagedKeys = new Map<string, LedgerEvent>();
     let seq = this.events.length;
     for (const input of events) {
-      const key = input.idempotencyKey;
+      const key = input.idempotencyKey === undefined ? undefined : JSON.stringify([input.projectId, input.idempotencyKey]);
       const existing = key === undefined ? undefined : (this.byKey.get(key) ?? stagedKeys.get(key));
       if (existing) {
         out.push(existing);
@@ -55,7 +55,7 @@ export class MemoryLedgerStore implements LedgerStore {
     }
     for (const event of staged) {
       this.events.push(event);
-      if (event.idempotencyKey !== undefined) this.byKey.set(event.idempotencyKey, event);
+      if (event.idempotencyKey !== undefined) this.byKey.set(JSON.stringify([event.projectId, event.idempotencyKey]), event);
     }
     return out.map((e) => structuredClone(e));
   }

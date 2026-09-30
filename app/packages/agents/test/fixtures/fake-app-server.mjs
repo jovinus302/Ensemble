@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 
@@ -102,7 +102,7 @@ createInterface({ input: process.stdin, crlfDelay: Infinity }).on('line', async 
       notify('turn/started', { threadId: thread.id, turn });
       if (protocolMode) {
         const text = params.input[0].text;
-        const taskId = /"taskId":\s*"([^"]+)"/.exec(text)?.[1] ?? 'task';
+        const taskId = /"taskId":\s*"([^"]+)"/.exec(text)?.[1] ?? /작업 ID:? (\S+)/.exec(text)?.[1] ?? 'task';
         protocolTasks.set(turn.id, { taskId });
         reportItem(thread, turn, `progress-${turn.id}`, 'Working on the first section.');
         // Result modes: the agent writes its file into the thread's workspace and reports it at once.
@@ -113,6 +113,32 @@ createInterface({ input: process.stdin, crlfDelay: Infinity }).on('line', async 
           if (protocolMode === 'big') writeFileSync(path.join(thread.cwd, 'big.md'), 'x'.repeat(3 * 1024 * 1024));
           reportItem(thread, turn, `result-${turn.id}`, fence({ type: 'result_report', taskId, planVersion: version,
             summary: '대안 2개를 표로 정리했습니다', files: [{ path: results[protocolMode], description: '대안 비교표' }] }));
+          finish(thread, turn);
+        }
+        if (protocolMode === 'inputs' || protocolMode === 'question') writeFileSync(path.join(thread.cwd, `instructions-${turn.id}.txt`), text);
+        // Inputs mode: the agent reads every handed-over file named in its instructions and builds on it.
+        if (protocolMode === 'inputs') {
+          const inputs = [...text.matchAll(/결과 파일: (inputs\/[^\n]+?) \(원래 이름/g)].map(match => match[1]);
+          const body = inputs.map(file => `<section data-from="${file}">${readFileSync(path.join(thread.cwd, ...file.split('/')), 'utf8')}</section>`).join('\n');
+          writeFileSync(path.join(thread.cwd, 'prototype.html'), `<!doctype html><title>${taskId}</title>\n${body}\n`);
+          reportItem(thread, turn, `result-${turn.id}`, fence({ type: 'result_report', taskId, planVersion: version,
+            summary: '흐름대로 클릭 가능한 프로토타입', files: [{ path: 'prototype.html', description: '프로토타입' }] }));
+          finish(thread, turn);
+        }
+        // Question mode: the first turn asks and stops; a follow-up turn acknowledges the update and reports.
+        if (protocolMode === 'question') {
+          const updateId = /변경 ID: (\S+)/.exec(text)?.[1];
+          if (!updateId) {
+            reportItem(thread, turn, `question-${turn.id}`, fence({ type: 'question', taskId, question: '흐름 설계 파일의 첫 화면이 무엇인가요?' }));
+          } else {
+            const expected = Number(/planVersion은 (\d+)/.exec(text)?.[1] ?? version);
+            const section = heading => (text.split(`## ${heading}\n`)[1] ?? '').split('\n##')[0].split('\n').filter(line => line.startsWith('- ') && line !== '- 없음').map(line => line.slice(2));
+            reportItem(thread, turn, `ack-${turn.id}`, fence({ type: 'acknowledge_update', updateId, planVersion: Number(/"planVersion":\s*(\d+)/.exec(text.slice(text.indexOf(`변경 ID: ${updateId}`)))?.[1] ?? expected),
+              applied: section('변경'), dropped: section('폐기') }));
+            writeFileSync(path.join(thread.cwd, 'answer.md'), `# 반영\n${section('변경').join('\n')}\n`);
+            reportItem(thread, turn, `result-${turn.id}`, fence({ type: 'result_report', taskId, planVersion: expected,
+              summary: '답을 반영했습니다', files: [{ path: 'answer.md', description: '반영 내용' }] }));
+          }
           finish(thread, turn);
         }
         if (protocolMode === 'fail') finish(thread, turn, 'failed');

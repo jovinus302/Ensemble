@@ -11,13 +11,19 @@ export interface RevisionInput {
   request: string;
   previous: Material[];
   draft?: Material[];
+  /** Accepted predecessor artifacts, visible to the human whose document is being revised. */
+  sources?: Material[];
 }
 export type RevisionGenerator = (input: RevisionInput) => Promise<string>;
 export function createRevisionGenerator(llm: LlmProvider, model: string): RevisionGenerator {
   return async input => {
-    const response = await llm.complete({ model, maxTokens: 6000,
-      system: '당신은 시연용 가상 사람입니다. PM의 보완 요청에 따라 직전 자료를 보완해 새 자료 전체를 반환하세요. draft가 있으면 첫 보완 초안으로 사용하세요. 기존 내용을 보존하고 요청된 부족 부분만 가상의 구체적인 자료로 짧게 보완하세요. 요청하지 않은 주장이나 기능을 늘리지 마세요. 실제 조사나 실제 고객 증거라고 주장하지 마세요. 자료 본문만 출력하세요.',
-      messages: [{ role: 'user', content: JSON.stringify(input) }],
+    const request = { model, maxTokens: 12000,
+      system: '당신은 시연용 가상 사람입니다. PM의 보완 요청에 따라 직전 자료를 보완해 새 자료 전체를 반환하세요. draft가 있으면 첫 보완 초안으로 사용하세요. sources는 확인된 선행 작업 자료입니다. 근거 연결을 요청받으면 sources 안의 구체적인 문장과 파일명을 인용하여 설계 결정에 연결하세요. sources의 가상 자료 표시와 확인 한계를 유지하세요. 기존 내용을 보존하고 요청된 부족 부분만 가상의 구체적인 자료로 짧게 보완하세요. 요청하지 않은 주장이나 기능을 늘리지 마세요. 실제 조사나 실제 고객 증거라고 주장하지 마세요. 자료 본문만 출력하세요.',
+      messages: [{ role: 'user' as const, content: JSON.stringify(input) }],
+    };
+    let response = await llm.complete(request);
+    if (response.stopReason === 'max_tokens') response = await llm.complete({ ...request,
+      system: `${request.system}\n직전 응답이 출력 한도를 넘었습니다. 중복 설명과 장황한 문장을 줄여 더 짧게 다시 작성하세요. 필수 화면·근거·보완 요청과 기존 자료의 중요한 내용은 빠뜨리지 마세요. 완결된 전체 문서만 반환하세요.`,
     });
     if (response.stopReason === 'max_tokens' || !response.text.trim()) throw new Error('보완 자료 생성 응답이 비었거나 잘렸습니다');
     return response.text.trim();
@@ -57,8 +63,20 @@ export async function respondToRevision(host: ScriptHost, step: ScriptedStep, pr
       return [{ name: e.payload.name, mimeType: e.payload.mimeType, content: Buffer.from(match[1]!, 'base64').toString('utf8') }];
     });
     if (!previous.length) throw new Error('보완할 직전 첨부가 없습니다');
+    const current = project(events);
+    const sourceIds = task.spec.dependsOn.flatMap(id => {
+      const upstream = current.tasks.get(id);
+      if (upstream?.status !== 'checked' || !upstream.checkedResultId) return [];
+      const accepted = events.find(e => e.type === 'result_submitted' && e.payload.resultId === upstream.checkedResultId);
+      return accepted?.type === 'result_submitted' ? accepted.payload.artifactIds : [];
+    });
+    const sources = events.flatMap(e => {
+      if (e.type !== 'attachment_recorded' || !sourceIds.includes(e.payload.attachmentId)) return [];
+      const match = /^data:[^,]*;base64,(.*)$/s.exec(e.payload.uri);
+      return match ? [{ name: e.payload.name, mimeType: e.payload.mimeType, content: Buffer.from(match[1]!, 'base64').toString('utf8') }] : [];
+    });
     const input: RevisionInput = { title: task.spec.title, handoffConditions: [...task.spec.handoffConditions], request: speech.payload.text, previous,
-      ...(count === 0 && step.attachments ? { draft: step.attachments.map(a => ({ ...a })) } : {}) };
+      ...(count === 0 && step.attachments ? { draft: step.attachments.map(a => ({ ...a })) } : {}), ...(sources.length ? { sources } : {}) };
     const content = `시연용 가상 자료 — 보완 ${count + 1}회차\n\n${await host.generateRevision(input)}`;
     (progress.revisions ??= {})[taskId] = count + 1;
     (progress.revisionHistory ??= []).push({ taskId, round: count + 1, request: input.request, content });

@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { availabilityLabel, formatDays, formatElapsed, formatHourRange, formatHours, formatShortDate, koreanOr, round1, sceneLabel, spanLabel, statusInfo } from "../components/format";
+import { availabilityLabel, formatDate, formatDateRange, formatDays, formatElapsed, formatHourRange, formatHours, formatShortDate, koreanOr, round1, sceneLabel, spanLabel, statusInfo } from "../components/format";
+import { formatKstDate } from '@ensemble/core';
 import { readError } from "../components/use-view-model";
 
 describe("숫자 표기", () => {
+  it('PM, roadmap, plan card and Gantt share the Seoul day across midnight', () => {
+    const finish = '2026-10-11T15:00:00Z';
+    expect(formatKstDate(finish)).toBe('10/12');
+    expect(formatDate(finish)).toBe('10월 12일');
+    expect(formatDateRange(finish, finish)).toBe(formatKstDate(finish));
+    expect(spanLabel(finish, 0, 0, 0)).toBe(formatKstDate(finish));
+  });
   it("원시 소수를 사람이 읽는 값으로 줄인다", () => {
     expect(formatDays(4.859469270833335)).toBe("약 5일");
     expect(formatDays(2)).toBe("2일");

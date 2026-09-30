@@ -34,8 +34,9 @@ class ScriptedAgent implements SessionConnector {
   async stop() { this.tasks.clear(); }
 }
 
-// Usage: npm run live:http -- [--fake-llm] [--port N] [--out DIR]
+// Usage: npm run live:http -- [--fake-llm] [--default-agent] [--port N] [--out DIR]
 // Default: real PM LLM (ENSEMBLE_ENV_FILE) + scripted Agent. --fake-llm: the scripted PM/Agent fixture from the scenario tests, no model calls.
+// --default-agent: the web app's own fake Agents (what `next dev` runs by default) instead of the scripted or fixture Agent.
 const flag = (name: string) => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const fakeLlm = process.argv.includes('--fake-llm');
 const output = path.resolve(flag('--out') ?? path.join(homedir(), 'ensemble-agent-workspaces/live-http', new Date().toISOString().replace(/[:.]/g, '-')));
@@ -47,6 +48,7 @@ if (fakeLlm) {
   await f.pm.stop();
   runtimeOptions = { llm: f.llm, connector: f.connector, generateRevision: f.host.generateRevision };
 }
+if (process.argv.includes('--default-agent')) delete (runtimeOptions as { connector?: SessionConnector }).connector;
 const app = new WebRuntime({ dataDir: path.join(output, 'data'), ...runtimeOptions });
 (globalThis as typeof globalThis & { ensembleRuntime?: WebRuntime }).ensembleRuntime = app;
 const server = createServer(async (req, res) => {

@@ -109,7 +109,8 @@ it('requests a concrete revision for an insufficient draft, then starts T4 exact
   expect(JSON.stringify(input)).not.toContain('점심');
   expect(JSON.stringify(input)).not.toContain('flow-v1.md');
 
-  expect(second.kind === 'checked' && second.notices).toEqual([expect.stringMatching(/^@리드 사용성 테스트 준비를/)]);
+  // The start is reserved for the person, so the notice says so rather than "can start".
+  expect(second.kind === 'checked' && second.notices).toEqual(['@리드 사용성 테스트 준비 작업이 예약되었습니다. 지금 시작해 주세요.']);
   expect(second.kind === 'checked' && second.started).toEqual([{ taskId: 'T4', agentId: 'proto', turnId: 'turn-1' }]);
   const events = await store.read();
   expect(events.filter((e) => e.type === 'handoff_reviewed')).toHaveLength(2);
@@ -177,7 +178,7 @@ it('relays agent questions to a person and routes answers by steering or into th
 
   const asked = await dispatcher.onQuestion('T4', '태블릿도 지원할까요?', { choices: ['모바일만', '둘 다'] });
   expect(asked).toMatchObject({ questionId: 'question:T4:1', to: 'lead' });
-  expect(asked.text).toMatch(/^@리드 "프로토타입" 담당 프로토타입 Agent의 질문입니다: 태블릿도 지원할까요\? \(선택지: 모바일만 \/ 둘 다\)$/);
+  expect(asked.text).toBe('@리드 "프로토타입" 작업을 맡은 프로토타입 Agent가 묻습니다. 태블릿도 지원할까요? 선택지: 모바일만 / 둘 다');
   expect(await types(store, 'pm_considered')).toHaveLength(1);
   expect(buildTaskContext(project(await store.read()), 'T4', await store.read()).openQuestions).toEqual([{ text: asked.text, sourceId: 'question:T4:1' }]);
 
@@ -194,4 +195,50 @@ it('relays agent questions to a person and routes answers by steering or into th
   expect(next.openQuestions).toEqual([]);
   expect(next.inputs).toContainEqual({ text: '[대화] 답변: 브랜드 파란색', sourceId: 'answer:question:T4:2' });
   expect(events.filter((e) => e.type === 'change_notified').map((e) => (e.payload as { via: string }).via)).toEqual(['steer', 'next_turn']);
+});
+
+it('asks the uploader about their file by task title, and resumes a question-stopped agent with a new turn', async () => {
+  const { store, connector, dispatcher } = await fixture([]);
+  const deliveries: { agentId: string; taskId: string; input: UpdateInstructionsInput }[] = [];
+  let via: 'steer' | 'next_turn' = 'next_turn';
+  (connector as TaskStarter).deliver = async (agentId, taskId, input) => { deliveries.push({ agentId, taskId, input }); return { via, sent: true, turnId: `turn-${deliveries.length + 1}` }; };
+  const flowId = '0aae9b7c-1111-4222-8333-444455556666';
+  await store.append([
+    human('attachment_recorded', { attachmentId: flowId, name: 'flow-v2.md', mimeType: 'text/markdown', uri: `data:text/markdown;base64,${Buffer.from(files['flow-v2.md']!).toString('base64')}`, taskId: 'T3' }, 'designer'),
+    submit('T3', 'r3', [flowId], 'designer'),
+    { ...ctx, type: 'task_checked', actor: { kind: 'pm', id: 'pm' }, payload: { taskId: 'T3', resultId: 'r3', reason: 'ok' } },
+    { ...ctx, type: 'task_start_reserved', actor: { kind: 'pm', id: 'pm' }, payload: { taskId: 'T4', specVersion: 1, trigger: 'r3' } },
+    agentEvent('task_started', { taskId: 'T4', turnId: 'turn-1' }, 'proto'),
+    agentEvent('turn_observed', { agentId: 'proto', taskId: 'T4', turnId: 'turn-1', status: 'completed' }, 'proto'),
+  ]);
+
+  const asked = await dispatcher.onQuestion('T4', `흐름 초안 결과 파일(${flowId})을 열 수 없습니다. 첫 화면이 무엇인가요?`, { routeKey: 'question-route:turn-1:item:0' });
+  expect(asked).toMatchObject({ questionId: 'question:T4:1', to: 'designer' });
+  expect(asked.text).toBe('@디자이너 "프로토타입" 작업을 맡은 프로토타입 Agent가 묻습니다. 흐름 초안 결과 파일("flow-v2.md")을 열 수 없습니다. 첫 화면이 무엇인가요?');
+  expect(asked.text).not.toMatch(/question:|[0-9a-f]{8}-|Options|T4/);
+  // The same agent report relayed twice stays one question.
+  expect(await dispatcher.onQuestion('T4', 'again', { routeKey: 'question-route:turn-1:item:0' })).toEqual(asked);
+  expect(await types(store, 'pm_spoke')).toHaveLength(1);
+
+  // The turn already ended: the answer starts a new turn on the same thread and the task resumes.
+  expect(await dispatcher.onAnswer('T4', '가입 화면입니다')).toEqual({ via: 'next_turn', questionId: 'question:T4:1', resumed: true });
+  expect(deliveries).toEqual([{ agentId: 'proto', taskId: 'T4', input: expect.objectContaining({ updateId: 'answer:question:T4:1', fromVersion: 1, toVersion: 1, change: [expect.stringContaining('가입 화면입니다')] }) }]);
+  expect(connector.updates).toEqual([]);
+
+  // A live turn is steered instead.
+  via = 'steer';
+  await dispatcher.onQuestion('T4', '버튼 색은?');
+  expect(await dispatcher.onAnswer('T4', '파란색')).toEqual({ via: 'steer', questionId: 'question:T4:2' });
+  expect((await types(store, 'change_notified')).map((e) => (e.payload as { via: string }).via)).toEqual(['next_turn', 'steer']);
+});
+
+it('keeps the citation record when a technical citation failure survives the one re-judgement', async () => {
+  const emptyQuote = verdict([{ index: 1, met: true, file: 'flow-v2.md', quote: '' }]);
+  const { store, dispatcher } = await fixture([emptyQuote, emptyQuote]);
+  await store.append([submit('T3', 'r1', ['flow-v2.md'], 'designer')]);
+  const outcome = await dispatcher.onResultSubmitted('T3', 'r1');
+  expect(outcome).toMatchObject({ kind: 'error', message: expect.stringContaining('사람이 결과를 확인해 주세요'),
+    citationFailures: expect.arrayContaining([expect.objectContaining({ condition: 'D1의 문제 ①을 다룬다', reason: expect.stringContaining('인용문이 비어 있음') })]) });
+  expect(outcome.kind === 'error' && outcome.message).not.toContain('보완');
+  expect(await types(store, 'revision_requested')).toHaveLength(0);
 });

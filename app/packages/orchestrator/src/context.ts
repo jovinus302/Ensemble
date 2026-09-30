@@ -2,7 +2,7 @@ import { particle, channelText } from './channel-text.ts';
 // Task context for the next assignee: the six fixed slots, each item carrying the ID it came from.
 // Also the short human-facing summary of an agent result. Pure functions over the ledger; no LLM.
 import type { AnyEvent, EventPayloads, Id, LedgerEvent, ProjectState } from '@ensemble/core';
-import type { ResultReport, SourcedItem, TaskInstructionsInput } from '@ensemble/agents';
+import { INPUTS_DIR, MAX_FILE_BYTES, type ResultReport, type SourcedItem, type TaskInstructionsInput, type UpdateInstructionsInput } from '@ensemble/agents';
 
 /** Newest-first character budget for the related-conversation slot. */
 export const CONVERSATION_CHAR_LIMIT = 1500;
@@ -108,13 +108,22 @@ export function buildTaskContext(state: ProjectState, taskId: Id, events: readon
   const goal = state.goal;
 
   const byResult = results(events);
+  const name = (id: Id) => state.members.get(id)?.displayName ?? id;
+  const files = taskInputFiles(state, events, taskId);
   const inputs: SourcedItem[] = [];
   for (const depId of task.spec.dependsOn) {
     const dep = state.tasks.get(depId);
     const result = dep?.checkedResultId ? byResult.get(dep.checkedResultId) : undefined;
     if (!dep || !result) continue;
-    inputs.push({ text: `${depId} "${dep.spec.title}" 결과 요약: ${result.summary}`, sourceId: result.resultId });
-    for (const path of result.artifactIds) inputs.push({ text: `${depId} 결과 파일: ${path}`, sourceId: `${result.resultId}:${path}` });
+    inputs.push({ text: `선행 작업 "${dep.spec.title}" 결과 (${name(dep.spec.assignee)} 제출, PM 확인 완료) 요약: ${result.summary}`, sourceId: result.resultId });
+    if (dep.spec.handoffConditions.length) {
+      inputs.push({ text: `선행 작업 "${dep.spec.title}"에서 확인된 인계 조건: ${dep.spec.handoffConditions.join('; ')}`, sourceId: `${planSource}:${depId}.handoff` });
+    }
+    for (const file of files.filter((f) => f.taskId === depId)) {
+      inputs.push(file.data !== undefined
+        ? { text: `결과 파일: ${file.path} (원래 이름: ${file.name}, 올린 사람: ${file.uploaderName}, 선행 작업: ${dep.spec.title})`, sourceId: file.path }
+        : { text: `결과 파일: ${file.name} (올린 사람: ${file.uploaderName}, 선행 작업: ${dep.spec.title}) — ${file.skipped}`, sourceId: `${result.resultId}:${file.name}` });
+    }
   }
 
   const openQuestions = taskQuestions(events, taskId).filter((q) => !q.answer).map((q) => ({ text: q.text, sourceId: q.questionId }));
@@ -127,7 +136,166 @@ export function buildTaskContext(state: ProjectState, taskId: Id, events: readon
     decisions: relevantDecisions(state, taskId).map((d) => ({ text: d.summary, sourceId: d.decisionId })),
     inputs: [...inputs, ...conversation(state, events, taskId)],
     openQuestions,
+    files: files.flatMap((file) => file.data !== undefined ? [{ path: file.path, data: file.data }] : []),
   };
+}
+
+/** A predecessor result file and where the next assignee finds it: inputs/<task title>/<file name>. */
+export interface TaskInputFile {
+  /** The predecessor task. */
+  taskId: Id;
+  taskTitle: string;
+  resultId: Id;
+  attachmentId: Id;
+  /** Original file name. */
+  name: string;
+  /** Workspace-relative, "/"-separated. */
+  path: string;
+  uploaderId?: Id;
+  uploaderName: string;
+  uploaderKind?: 'human' | 'agent';
+  /** Base64 content; absent when the file is not copied (see `skipped`). */
+  data?: string;
+  skipped?: string;
+}
+
+const UNSAFE_NAME = /[<>:"/\\|?*\u0000-\u001f]/g;
+const RESERVED_NAME = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i;
+/** A single path segment that is valid on Windows and POSIX and never walks out of its folder. */
+function safeSegment(text: string, fallback: string, max: number): string {
+  const clean = (value: string) => value.normalize('NFC').replace(UNSAFE_NAME, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '');
+  const dot = text.lastIndexOf('.');
+  const ext = dot > 0 && text.length - dot <= 10 ? clean(text.slice(dot)) : '';
+  let stem = clean(ext ? text.slice(0, dot) : text).slice(0, max).trim().replace(/[. ]+$/, '');
+  if (!stem || /^\.+$/.test(stem) || RESERVED_NAME.test(stem)) stem = clean(fallback).slice(0, max) || 'file';
+  return `${stem}${ext}`;
+}
+
+/**
+ * Result files of the task's checked predecessors (human attachments and agent outputs alike), each
+ * with a stable workspace path. Pure: the same ledger always yields the same paths and contents.
+ */
+export function taskInputFiles(state: ProjectState, events: readonly LedgerEvent[], taskId: Id): TaskInputFile[] {
+  const task = state.tasks.get(taskId);
+  if (!task) return [];
+  const byResult = results(events);
+  const attachments = new Map<Id, { payload: EventPayloads['attachment_recorded']; actorId: Id }>();
+  for (const event of typed(events)) if (event.type === 'attachment_recorded') attachments.set(event.payload.attachmentId, { payload: event.payload, actorId: event.actor.id });
+  const submitters = new Map<Id, Id>();
+  for (const event of typed(events)) if (event.type === 'result_submitted') submitters.set(event.payload.resultId, event.actor.id);
+  const folders = new Set<string>();
+  const files: TaskInputFile[] = [];
+  for (const depId of task.spec.dependsOn) {
+    const dep = state.tasks.get(depId);
+    const result = dep?.checkedResultId ? byResult.get(dep.checkedResultId) : undefined;
+    if (!dep || !result) continue;
+    let folder = safeSegment(dep.spec.title, depId, 60);
+    if (folders.has(folder.toLowerCase())) folder = safeSegment(`${dep.spec.title}-${depId}`, depId, 80);
+    folders.add(folder.toLowerCase());
+    const names = new Set<string>();
+    for (const attachmentId of result.artifactIds) {
+      const attachment = attachments.get(attachmentId);
+      const original = attachment?.payload.name ?? attachmentId;
+      let name = safeSegment(original.split(/[\\/]/).at(-1) ?? original, 'file', 80);
+      for (let n = 2; names.has(name.toLowerCase()); n++) {
+        const dot = name.lastIndexOf('.');
+        name = dot > 0 ? `${name.slice(0, dot).replace(/-\d+$/, '')}-${n}${name.slice(dot)}` : `${name.replace(/-\d+$/, '')}-${n}`;
+      }
+      names.add(name.toLowerCase());
+      const uploaderId = [attachment?.actorId, submitters.get(result.resultId)].find((id) => id && state.members.has(id)) ?? dep.spec.assignee;
+      const member = state.members.get(uploaderId);
+      const file: TaskInputFile = { taskId: depId, taskTitle: dep.spec.title, resultId: result.resultId, attachmentId, name: original,
+        path: `${INPUTS_DIR}/${folder}/${name}`, uploaderId, uploaderName: member?.displayName ?? uploaderId, ...(member ? { uploaderKind: member.kind } : {}) };
+      const match = attachment ? /^data:[^,]*;base64,(.*)$/s.exec(attachment.payload.uri) : null;
+      if (!attachment) file.skipped = '파일 기록을 찾지 못해 작업 폴더에 복사하지 않았습니다';
+      else if (!match) file.skipped = '파일 내용을 읽을 수 없어 작업 폴더에 복사하지 않았습니다';
+      else if (Buffer.byteLength(match[1]!, 'base64') > MAX_FILE_BYTES) { const cap = `${MAX_FILE_BYTES / 1024 / 1024}MB`; file.skipped = `파일이 ${cap}${particle(cap)} 넘어 작업 폴더에 복사하지 않았습니다`; }
+      else file.data = match[1]!;
+      files.push(file);
+    }
+  }
+  return files;
+}
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+/**
+ * Replaces internal references an agent may echo (attachment IDs, UUIDs, question keys, source
+ * citations) with names people know; unknown UUIDs are dropped.
+ */
+export function humanizeRefs(text: string, events: readonly LedgerEvent[]): string {
+  const names = new Map<string, string>();
+  for (const event of typed(events)) if (event.type === 'attachment_recorded') names.set(event.payload.attachmentId.toLowerCase(), event.payload.name);
+  let result = text.replace(/\s*\[출처:[^\]]*\]/g, '').replace(/\bquestion:[\w-]+:\d+\b/g, '질문');
+  for (const [id, name] of names) result = result.replace(new RegExp(escape(id), 'gi'), `"${name}"`);
+  return result.replace(new RegExp(`\\s*[(\\[]\\s*(?:${UUID.source})\\s*[)\\]]`, 'gi'), '')
+    .replace(new RegExp(`(?:result|attachment|file):(?:${UUID.source})`, 'gi'), '')
+    .replace(UUID, '').replace(/ {2,}/g, ' ').trim();
+}
+
+/** The update that carries a person's answer to an agent question (steered or in a new turn). */
+export function answerUpdate(changeId: Id, planVersion: number, question: { text: string } | undefined, answerText: string): UpdateInstructionsInput {
+  return { updateId: changeId, fromVersion: planVersion, toVersion: planVersion, keep: [],
+    // The relayed channel sentence opens with "@person … 묻습니다."; the agent needs only its own question.
+    change: [question ? `질문 "${question.text.replace(/^@[^\n]*?묻습니다\.\s*/, '')}"에 대한 답: ${answerText}` : `담당자 메시지: ${answerText}`], drop: [], reason: '담당자가 질문에 답했습니다' };
+}
+
+/**
+ * The update for a change_notified record the agent could not receive in its turn. Coordinator
+ * records carry either a steer input that was refused (JSON UpdateInstructionsInput) or the
+ * agent's new tasks ({ summary, tasks, drop }); answers carry the answer text.
+ */
+export function pendingChangeUpdate(events: readonly LedgerEvent[], change: EventPayloads['change_notified'], taskId: Id): UpdateInstructionsInput {
+  if (change.changeId.startsWith(answerChangeId(''))) {
+    const question = taskQuestions(events, taskId).find((q) => q.answer?.changeId === change.changeId);
+    return answerUpdate(change.changeId, change.planVersion, question, change.text);
+  }
+  const updateId = `${change.changeId}:${change.recipientId}:turn`;
+  const base = { updateId, fromVersion: Math.max(1, change.planVersion - 1), toVersion: change.planVersion, keep: [] as string[], drop: [] as string[] };
+  let parsed: unknown;
+  try { parsed = JSON.parse(change.text); } catch { parsed = undefined; }
+  const fields = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : undefined;
+  const strings = (value: unknown) => Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+  if (fields && Array.isArray(fields.change)) {
+    return { ...base, fromVersion: typeof fields.fromVersion === 'number' ? fields.fromVersion : base.fromVersion,
+      toVersion: typeof fields.toVersion === 'number' ? fields.toVersion : base.toVersion, keep: strings(fields.keep),
+      change: strings(fields.change), drop: strings(fields.drop), reason: typeof fields.reason === 'string' ? fields.reason : '계획이 바뀌었습니다' };
+  }
+  if (fields && typeof fields.summary === 'string') {
+    const tasks = Array.isArray(fields.tasks) ? fields.tasks as { id?: unknown; title?: unknown; handoffConditions?: unknown }[] : [];
+    const mine = tasks.filter((t) => t.id === taskId);
+    return { ...base, drop: strings(fields.drop), reason: fields.summary,
+      change: (mine.length ? mine : tasks).map((t) => `${String(t.title ?? '담당 작업')}: 인계 조건 ${strings(t.handoffConditions).join('; ') || '없음'}`) };
+  }
+  return { ...base, change: [change.text], reason: '계획이 바뀌었습니다' };
+}
+
+/** The person to ask about a file-related question: whoever uploaded the file it names. */
+export function fileOwnerFor(state: ProjectState, events: readonly LedgerEvent[], taskId: Id, question: string): Id | undefined {
+  const humans = taskInputFiles(state, events, taskId).filter((file) => file.uploaderKind === 'human' && file.uploaderId);
+  const lower = question.toLowerCase();
+  const stem = (name: string) => (name.includes('.') ? name.slice(0, name.lastIndexOf('.')) : name).toLowerCase();
+  const named = humans.find((file) => lower.includes(file.attachmentId.toLowerCase()) || lower.includes(file.name.toLowerCase()) || lower.includes(file.path.toLowerCase())
+    || (stem(file.name).length >= 3 && lower.includes(stem(file.name))));
+  if (named) return named.uploaderId;
+  const byTitle = humans.find((file) => file.taskTitle.length >= 2 && question.includes(file.taskTitle));
+  if (byTitle) return byTitle.uploaderId;
+  const owners = new Set(humans.map((file) => file.uploaderId));
+  if (owners.size === 1 && /파일|자료|문서|첨부/.test(question)) return [...owners][0];
+  return undefined;
+}
+
+/**
+ * What a person hears about their next task: a reserved task has been booked for them to start now;
+ * a ready one merely can start (its start was not reserved, e.g. automation is paused).
+ */
+export function startNotice(state: ProjectState, taskId: Id): string | undefined {
+  const task = state.tasks.get(taskId);
+  if (!task) return undefined;
+  const mention = `@${state.members.get(task.spec.assignee)?.displayName ?? task.spec.assignee}`;
+  const title = task.spec.title;
+  if (task.status === 'reserved') return `${mention} ${title} 작업이 예약되었습니다. 지금 시작해 주세요.`;
+  if (task.status === 'ready') return `${mention} ${title}${particle(title)} 시작할 수 있습니다.`;
+  return undefined;
 }
 
 /** A short template summary for people: what got done, what you need to do, where to look. */
@@ -139,7 +307,8 @@ export function summarizeForHuman(state: ProjectState, taskId: Id, report: Resul
   if (task.status === 'checked') {
     for (const next of state.tasks.values()) {
       if (!next.spec.dependsOn.includes(taskId) || state.members.get(next.spec.assignee)?.kind !== 'human') continue;
-      if (next.status === 'ready' || next.status === 'reserved') todo.push(`@${name(next.spec.assignee)} ${next.spec.title}${particle(next.spec.title)} 시작할 수 있습니다.`);
+      const notice = startNotice(state, next.spec.id);
+      if (notice) todo.push(notice);
     }
   } else if (task.status === 'revising') todo.push('PM이 보완을 요청했습니다. 보완본이 오면 다시 알려드립니다.');
   else if (task.status === 'submitted') todo.push('PM이 인계 조건을 확인하는 중입니다.');

@@ -49,7 +49,7 @@ export async function setup(reverse: boolean, missing?: string, rejectForever = 
   let stage = 0;
   const llm: LlmProvider = { async complete(request) {
     let input: Record<string, unknown>;
-    if (request.forceTool === 'propose_plan') input = { tasks: (reverse ? [...tasks].reverse() : tasks).map(t => ({ templateKey: t.id, title: t.title, handoffConditions: t.handoffConditions, hours: { min: 2, max: 4 } })) };
+    if (request.forceTool === 'propose_plan') { stage = 0; input = { tasks: (reverse ? [...tasks].reverse() : tasks).map(t => ({ templateKey: t.id, title: t.title, handoffConditions: t.handoffConditions, hours: { min: 2, max: 4 } })) }; }
     else if (request.forceTool === 'record_handoff_review') {
       const content = request.messages[0]!.content, file = /### 파일: ([^\n]+)/.exec(content)![1]!;
       const interview = content.startsWith('taskId: interview ');

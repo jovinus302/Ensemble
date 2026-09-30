@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { project, type LedgerEvent } from '@ensemble/core';
 import type { ResultReport } from '@ensemble/agents';
-import { buildTaskContext, CONVERSATION_CHAR_LIMIT, relevantDecisions, summarizeForHuman } from '../src/context.ts';
+import { buildTaskContext, CONVERSATION_CHAR_LIMIT, fileOwnerFor, humanizeRefs, relevantDecisions, summarizeForHuman, taskInputFiles } from '../src/context.ts';
 
 const ctx = { projectId: 'context-tests', targetProductId: 'product' };
 function ledger(extra: { type: string; payload: unknown; kind?: 'human' | 'agent' | 'pm' }[] = []): LedgerEvent[] {
@@ -39,8 +39,8 @@ it('fills the six slots with source IDs and leaves out unrelated talk and unconf
     openQuestions: [],
   });
   expect(input.inputs).toEqual([
-    { text: 'T1 "조사" 결과 요약: 인터뷰 5건', sourceId: 'r-t1' },
-    { text: 'T1 결과 파일: notes.md', sourceId: 'r-t1:notes.md' },
+    { text: '선행 작업 "조사" 결과 (프로토타입 Agent 제출, PM 확인 완료) 요약: 인터뷰 5건', sourceId: 'r-t1' },
+    { text: '결과 파일: notes.md (올린 사람: 프로토타입 Agent, 선행 작업: 조사) — 파일 기록을 찾지 못해 작업 폴더에 복사하지 않았습니다', sourceId: 'r-t1:notes.md' },
     { text: '[대화] 리드: T4는 모바일 우선', sourceId: 'm1' },
     { text: '[대화] 리드: 맞아요', sourceId: 'm2' },
   ]);
@@ -62,6 +62,8 @@ it('summarizes an agent result for people: what got done, what to do, where to l
     { type: 'result_submitted', payload: { taskId: 'T4', resultId: 'r4', planVersion: 1, summary: 's', artifactIds: ['proto/index.html'] }, kind: 'agent' },
     { type: 'task_checked', payload: { taskId: 'T4', resultId: 'r4', reason: 'ok' }, kind: 'pm' },
   ]);
+  const reserved = [...checked, { ...checked.at(-1)!, id: 'e-res', seq: checked.length + 1, type: 'task_start_reserved', payload: { taskId: 'T5', specVersion: 1, trigger: 'r4' } }] as LedgerEvent[];
+  expect(summarizeForHuman(project(reserved), 'T4', report)).toContain('할 일: @리드 사용성 테스트 작업이 예약되었습니다. 지금 시작해 주세요.');
   expect(summarizeForHuman(project(checked), 'T4', report)).toBe([
     '[프로토타입] 프로토타입 Agent 결과',
     '무엇이 됐나: 클릭 가능한 3개 화면',
@@ -73,4 +75,65 @@ it('summarizes an agent result for people: what got done, what to do, where to l
     { type: 'revision_requested', payload: { taskId: 'T4', resultId: 'r4', missing: ['x'] }, kind: 'pm' },
   ]);
   expect(summarizeForHuman(project(revising), 'T4', { ...report, limitations: [] })).toContain('할 일: PM이 보완을 요청했습니다.');
+});
+
+/** A designer's flow attachment and a research agent's report, both checked, ahead of a prototype task. */
+function handoffLedger(flow = '# 흐름\n가입 → 요금제 → 완료'): LedgerEvent[] {
+  const b64 = (text: string) => Buffer.from(text).toString('base64');
+  const raw: { type: string; payload: unknown; actor: [kind: 'human' | 'agent' | 'pm', id: string] }[] = [
+    { type: 'member_joined', payload: { memberId: 'lead', kind: 'human', displayName: '사용자' }, actor: ['human', 'lead'] },
+    { type: 'member_joined', payload: { memberId: 'designer', kind: 'human', displayName: '디자이너' }, actor: ['human', 'lead'] },
+    { type: 'member_joined', payload: { memberId: 'research', kind: 'agent', displayName: '조사 Agent' }, actor: ['human', 'lead'] },
+    { type: 'member_joined', payload: { memberId: 'proto', kind: 'agent', displayName: '프로토타입 Agent' }, actor: ['human', 'lead'] },
+    { type: 'goal_set', payload: { text: 'PT 예약 프로토타입', decider: 'lead', delegation: { pmMayApply: [] } }, actor: ['human', 'lead'] },
+    { type: 'plan_committed', payload: { version: 1, basedOn: null, reason: 'r', approvedBy: 'lead', sourceMessageIds: [], tasks: [
+      { id: 'research', title: '경쟁 서비스 조사', assignee: 'research', dependsOn: [], handoffConditions: ['대안 2개 비교'] },
+      { id: 'design', title: '흐름: 설계/초안', assignee: 'designer', dependsOn: [], handoffConditions: ['가입부터 요금제까지 3화면'] },
+      { id: 'prototype', title: '프로토타입', assignee: 'proto', dependsOn: ['research', 'design'], handoffConditions: ['흐름 설계대로 클릭 가능'] },
+    ] }, actor: ['human', 'lead'] },
+    { type: 'attachment_recorded', payload: { attachmentId: 'report-md-abc123', name: 'report.md', mimeType: 'text/markdown', uri: `data:text/markdown;base64,${b64('# 조사')}`, taskId: 'research' }, actor: ['agent', 'research'] },
+    { type: 'result_submitted', payload: { taskId: 'research', resultId: 'result:turn-1:0', planVersion: 1, summary: '대안 2개', artifactIds: ['report-md-abc123'] }, actor: ['agent', 'research'] },
+    { type: 'task_checked', payload: { taskId: 'research', resultId: 'result:turn-1:0', reason: 'ok' }, actor: ['pm', 'pm'] },
+    { type: 'attachment_recorded', payload: { attachmentId: '0aae9b7c-1111-4222-8333-444455556666', name: 'flow.md', mimeType: 'text/markdown', uri: `data:text/markdown;base64,${b64(flow)}`, taskId: 'design' }, actor: ['human', 'designer'] },
+    { type: 'attachment_recorded', payload: { attachmentId: '1bbe9b7c-1111-4222-8333-444455556666', name: '../flow.md', mimeType: 'text/markdown', uri: `data:text/markdown;base64,${b64('second')}`, taskId: 'design' }, actor: ['human', 'designer'] },
+    { type: 'result_submitted', payload: { taskId: 'design', resultId: 'result:m9', planVersion: 1, summary: '흐름 초안', artifactIds: ['0aae9b7c-1111-4222-8333-444455556666', '1bbe9b7c-1111-4222-8333-444455556666'] }, actor: ['human', 'designer'] },
+    { type: 'task_checked', payload: { taskId: 'design', resultId: 'result:m9', reason: 'ok' }, actor: ['pm', 'pm'] },
+  ];
+  return raw.map((e, i) => ({ ...ctx, id: `h${i + 1}`, seq: i + 1, at: '', type: e.type, actor: { kind: e.actor[0], id: e.actor[1] }, payload: e.payload }) as LedgerEvent);
+}
+
+it('hands predecessor result files over by workspace path, original name and uploader — never by bare ID', () => {
+  const events = handoffLedger();
+  const input = buildTaskContext(project(events), 'prototype', events);
+  expect(input.files).toEqual([
+    { path: 'inputs/경쟁 서비스 조사/report.md', data: Buffer.from('# 조사').toString('base64') },
+    { path: 'inputs/흐름 설계 초안/flow.md', data: Buffer.from('# 흐름\n가입 → 요금제 → 완료').toString('base64') },
+    // A second file with the same name never overwrites the first, and "../" cannot leave the folder.
+    { path: 'inputs/흐름 설계 초안/flow-2.md', data: Buffer.from('second').toString('base64') },
+  ]);
+  const text = input.inputs.map((item) => item.text).join('\n');
+  expect(text).toContain('결과 파일: inputs/흐름 설계 초안/flow.md (원래 이름: flow.md, 올린 사람: 디자이너, 선행 작업: 흐름: 설계/초안)');
+  expect(text).toContain('결과 파일: inputs/경쟁 서비스 조사/report.md (원래 이름: report.md, 올린 사람: 조사 Agent, 선행 작업: 경쟁 서비스 조사)');
+  expect(text).toContain('선행 작업 "흐름: 설계/초안"에서 확인된 인계 조건: 가입부터 요금제까지 3화면');
+  expect(JSON.stringify(input.inputs)).not.toMatch(/0aae9b7c|1bbe9b7c/);
+  // Same ledger, same paths: a restart or retry copies to the same places.
+  expect(taskInputFiles(project(events), events, 'prototype').map((f) => f.path)).toEqual(input.files!.map((f) => f.path));
+});
+
+it('does not copy a file over the size cap and says so in the instructions', () => {
+  const events = handoffLedger('x'.repeat(2 * 1024 * 1024 + 1));
+  const input = buildTaskContext(project(events), 'prototype', events);
+  expect(input.files!.map((f) => f.path)).not.toContain('inputs/흐름 설계 초안/flow.md');
+  expect(input.inputs.map((item) => item.text)).toContainEqual('결과 파일: flow.md (올린 사람: 디자이너, 선행 작업: 흐름: 설계/초안) — 파일이 2MB를 넘어 작업 폴더에 복사하지 않았습니다');
+});
+
+it('addresses a file question to its uploader and replaces internal IDs with file names', () => {
+  const events = handoffLedger();
+  const state = project(events);
+  const question = '작업 폴더가 비어 있어 흐름 설계 결과 파일(0aae9b7c-1111-4222-8333-444455556666)을 확인할 수 없습니다 [출처: result:m9:0aae9b7c-1111-4222-8333-444455556666]';
+  expect(fileOwnerFor(state, events, 'prototype', question)).toBe('designer');
+  expect(fileOwnerFor(state, events, 'prototype', 'flow.md의 3번째 화면은 무엇인가요?')).toBe('designer');
+  expect(fileOwnerFor(state, events, 'prototype', '색상은 무엇으로 할까요?')).toBeUndefined();
+  expect(humanizeRefs(question, events)).toBe('작업 폴더가 비어 있어 흐름 설계 결과 파일("flow.md")을 확인할 수 없습니다');
+  expect(humanizeRefs('question:prototype:1 에 답해 주세요 (9f0e1d2c-1111-4222-8333-444455556666)', events)).toBe('질문 에 답해 주세요');
 });
