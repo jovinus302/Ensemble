@@ -73,6 +73,10 @@ it('adds a scope exclusion mark to the title only once, even when the same scope
   // The same scope named again, alone or with UI words around it, adds no second mark.
   expect(applyOps(once, [exclude('결제 화면(모의 결제 버튼 포함)')])[0]!.title).toBe('프로토타입 (결제 제외)');
   expect(applyOps([{ ...base, title: '프로토타입 (결제 화면 제외)' }], [exclude('결제')])[0]!.title).toBe('프로토타입 (결제 화면 제외)');
+  // Real PM wording of one payment cut, routed from a checked flow and named again for the prototype.
+  const real = applyOps([base], [exclude('결제 모형(모의) 화면 및 상호작용 설계'), exclude('결제 화면 및 모의 결제 버튼')])[0]!;
+  expect(real.title).toBe('프로토타입 (결제 모형(모의) 화면 및 상호작용 설계 제외)');
+  expect(real.handoffConditions).toEqual(expect.arrayContaining(['제외: 결제 모형(모의) 화면 및 상호작용 설계', '제외: 결제 화면 및 모의 결제 버튼']));
   // A different scope still gets its own mark.
   expect(applyOps(once, [exclude('예약 알림')])[0]!.title).toBe('프로토타입 (결제 제외) (예약 알림 제외)');
 });

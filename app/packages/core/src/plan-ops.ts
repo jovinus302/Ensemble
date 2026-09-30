@@ -23,9 +23,12 @@ function excludedNames(item: string): string[] {
 
 /** Whether the title already carries a "(… 제외)" mark for the same scope, however it was worded. */
 function hasExclusionMark(title: string, item: string): boolean {
-  const key = (text: string) => excludedNames(text).sort().join('|');
-  const wanted = key(item);
-  return [...title.matchAll(/\(((?:[^()]|\([^()]*\))*?)\s*제외\)/g)].some(match => match[1]!.trim() === item.trim() || key(match[1]!) === wanted);
+  const wanted = excludedNames(item);
+  // Scope names that contain one another ("결제" and "결제 모형") are the same scope for the title;
+  // each exclusion still keeps its own "제외:" handoff condition.
+  const same = (a: string, b: string) => a.includes(b) || b.includes(a);
+  return [...title.matchAll(/\(((?:[^()]|\([^()]*\))*?)\s*제외\)/g)].some(match => match[1]!.trim() === item.trim()
+    || excludedNames(match[1]!).some(name => wanted.some(other => same(name, other))));
 }
 
 function withoutScope(text: string, names: readonly string[]): string | undefined {
