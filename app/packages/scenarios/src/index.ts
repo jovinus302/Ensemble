@@ -12,7 +12,7 @@ export interface ScriptedStep {
   waitFor?: Condition;
   target?: Target;
   scene?: 1 | 2 | 3;
-  action?: 'goal' | 'approvePlan' | 'availability' | 'answerIfAsked';
+  action?: 'goal' | 'approvePlan' | 'availability' | 'answerIfAsked' | 'respondToRevision';
   weeklyHours?: number;
 }
 
@@ -27,3 +27,4 @@ export interface Scenario {
 export { SCENE_NOW, sceneTasks, sceneEvents, scene1, scene2, scene3 } from './scene-fixtures.ts';
 export * from './script.ts';
 export * from './continuous.ts';
+export * from './revision.ts';

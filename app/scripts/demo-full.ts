@@ -4,12 +4,12 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SqliteLedgerStore } from '@ensemble/store';
-import { continuousScenario } from '@ensemble/scenarios';
+import { continuousScenario, conditionMet, DEFAULT_TIMEOUT_MS } from '@ensemble/scenarios';
 import type { AnyEvent } from '@ensemble/core';
 
 // Observations only: the server owns all PM decisions and agent execution.
 const app = fileURLToPath(new URL('..', import.meta.url));
-const output = path.join(homedir(), 'ensemble-agent-workspaces', 'm6-demo', new Date().toISOString().replace(/[:.]/g, '-'));
+const output = path.join(homedir(), 'ensemble-agent-workspaces', 'm7-demo', new Date().toISOString().replace(/[:.]/g, '-'));
 const data = path.join(output, 'data');
 await mkdir(data, { recursive: true });
 const port = Number(process.env.ENSEMBLE_DEMO_PORT ?? 3196);
@@ -18,6 +18,7 @@ const timeline: unknown[] = [];
 const rows: string[] = [];
 const started = Date.now();
 let store: SqliteLedgerStore | undefined;
+let projectId: string | undefined;
 let failure: string | undefined;
 let seq = 0;
 let lastState: any;
@@ -43,9 +44,11 @@ async function api(route: string, body?: unknown): Promise<any> {
   return response.json();
 }
 async function events(): Promise<AnyEvent[]> {
-  const meta = JSON.parse(await readFile(path.join(data, 'runtime.json'), 'utf8'));
+  // Resolve once before playback. Concurrent reads hold a Windows file handle and
+  // can make the server's atomic metadata rename fail with EPERM.
+  projectId ??= JSON.parse(await readFile(path.join(data, 'runtime.json'), 'utf8')).projectId;
   store ??= new SqliteLedgerStore(path.join(data, 'ensemble.db'));
-  return await store.read({ projectId: meta.projectId }) as AnyEvent[];
+  return await store.read({ projectId }) as AnyEvent[];
 }
 async function snapshot(label: string, begin: number, error?: string) {
   const state = await api('state').catch(cause => { if (!lastState) throw cause; return lastState; });
@@ -72,6 +75,17 @@ try {
   for (const [index, step] of continuousScenario.steps.entries()) {
     const begin = Date.now();
     console.log(`step ${index + 1}: ${step.as}: ${step.text}`);
+    // Long dependency waits belong to the observer, not an open HTTP request.
+    while (step.waitFor) {
+      await checkStop();
+      const ledger = await events();
+      const meta = JSON.parse(await readFile(path.join(data, 'runtime.json'), 'utf8'));
+      if (conditionMet(step.waitFor, ledger, meta.script?.anchors ?? {})) break;
+      const blocked = ledger.findLast(e => e.type === 'task_blocked');
+      if (blocked?.type === 'task_blocked') throw new Error(blocked.payload.reason);
+      if (Date.now() - begin > (step.waitFor.timeoutMs ?? DEFAULT_TIMEOUT_MS)) throw new Error(`단계 ${index + 1} 선행 조건 대기 초과: ${JSON.stringify(step.waitFor)}`);
+      await pause(1000);
+    }
     // Observe while the HTTP call waits, stopping promptly on a blocked agent.
     const request = api('scenario/next', {});
     let finished = false;
@@ -111,6 +125,11 @@ try {
   try {
     const ledger = await events();
     await save('ledger.json', ledger);
+    const meta = JSON.parse(await readFile(path.join(data, 'runtime.json'), 'utf8'));
+    await save('script-progress.json', meta.script);
+    const revisions = meta.script?.revisionHistory ?? [];
+    rows.push('', '| 보완 작업 | 회차 | PM 요청 원문 | 보완 자료 |', '|---|---|---|---|');
+    for (const revision of revisions) rows.push(`| ${revision.taskId} | ${revision.round} | ${revision.request.replaceAll('|', '/').replaceAll('\n', '<br>')} | script-progress.json의 해당 content |`);
     const artifacts: unknown[] = [];
     await mkdir(path.join(output, 'artifacts'), { recursive: true });
     for (const e of ledger) {

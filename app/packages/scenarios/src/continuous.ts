@@ -13,9 +13,9 @@ export const continuousSteps: ScriptedStep[] = [
   { scene: 1, as: 'owner', text: demoGoal, action: 'goal' },
   { scene: 1, as: 'owner', text: '이 계획으로 진행해 주세요.', action: 'approvePlan', waitFor: { kind: 'any', conditions: [{ kind: 'planApprovalPending' }, { kind: 'planVersionAtLeast', version: 1 }] } },
   { scene: 1, as: 'owner', text: '고객 인터뷰 결과를 올렸어요.', target: { assignee: 'owner' }, waitFor: { kind: 'taskOf', assignee: 'owner', status: 'reserved' }, attachments: [{ name: 'interviews.txt', mimeType: 'text/plain', content: readFileSync(new URL('./fixtures/interviews.txt', import.meta.url), 'utf8') }] },
-  { scene: 1, as: 'owner', text: '첫 번째 선택지로 진행해 주세요.', action: 'answerIfAsked' },
+  { scene: 1, as: 'owner', text: 'PM 요청이 있으면 인터뷰 자료를 보완합니다.', action: 'respondToRevision', target: { assignee: 'owner' } },
   { ...scene2[0]!, scene: 2, target: { assignee: 'designer' }, waitFor: { kind: 'taskOf', assignee: 'designer', status: 'reserved' }, attachments: [{ name: 'flow.md', mimeType: 'text/markdown', content: fixture('flow.md') }] },
-  { ...scene2[1]!, scene: 2, target: { assignee: 'designer' }, waitFor: { kind: 'taskOf', assignee: 'designer', status: 'revising' }, attachments: [{ name: 'flow-v2.md', mimeType: 'text/markdown', content: fixture('flow-v2.md') }] },
+  { ...scene2[1]!, action: 'respondToRevision', scene: 2, target: { assignee: 'designer' }, waitFor: { kind: 'taskOf', assignee: 'designer', status: 'revising' }, attachments: [{ name: 'flow-v2.md', mimeType: 'text/markdown', content: fixture('flow-v2.md') }] },
   { ...scene3[0]!, scene: 3, waitFor: { kind: 'agentTurnRunning', agentId: 'prototype-agent' } },
   ...scene3.slice(1).map(step => ({ ...step, scene: 3 as const })),
 ];

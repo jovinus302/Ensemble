@@ -1,6 +1,7 @@
 ﻿import { project, type AnyEvent, type LedgerEvent, type ProjectState, type TaskStatus } from '@ensemble/core';
 import type { ProjectManager } from '@ensemble/orchestrator';
 import type { ScriptedStep } from './index.ts';
+import { respondToRevision, type RevisionGenerator } from './revision.ts';
 
 export interface Target { assignee: string; pick?: 'active' | 'next' }
 export type Condition = (
@@ -38,6 +39,8 @@ export interface ScriptProgress {
   /** Ledger sequence immediately before each human input. */
   anchors: Record<number, number>;
   stopped?: string;
+  revisions?: Record<string, number>;
+  revisionHistory?: { taskId: string; round: number; request: string; content: string }[];
 }
 export function conditionMet(condition: Condition, events: readonly LedgerEvent[], anchors: Record<number, number>): boolean {
   const state = project(events), typed = events as readonly AnyEvent[];
@@ -74,6 +77,7 @@ export async function waitForCondition(condition: Condition, read: () => Promise
   }
 }
 export interface ScriptHost {
+  generateRevision?: RevisionGenerator;
   pm: Pick<ProjectManager, 'startFreeProject' | 'decidePlan' | 'setAvailability' | 'postMessage'>;
   read(): Promise<LedgerEvent[]>;
   recordStop(reason: string): Promise<void>;
@@ -88,7 +92,9 @@ export async function advanceScript(host: ScriptHost, steps: readonly ScriptedSt
     const events = await host.read(), state = project(events);
     progress.anchors[progress.step] = state.lastSeq;
     if (state.members.get(step.as)?.kind !== 'human') throw new Error(`Script author ${step.as} is not human`);
-    if (step.action === 'goal') {
+    if (step.action === 'respondToRevision') {
+      await respondToRevision(host, step, progress);
+    } else if (step.action === 'goal') {
       const result = await host.pm.startFreeProject(step.text, '2026-10-12T00:00:00Z');
       if (result.failure) throw new Error(result.failure.reason);
     } else if (step.action === 'approvePlan') {
