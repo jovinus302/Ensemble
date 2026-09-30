@@ -2,6 +2,11 @@ import type { NewLedgerEvent } from "./ledger.ts";
 import type { EventContext } from "./events.ts";
 import type { ProjectState } from "./projection.ts";
 export const AUTOMATION_LIMIT = 12;
+/** Speech and bookkeeping do not spend the state-change budget. */
+export function isAutomationAction(event: Pick<NewLedgerEvent, 'type' | 'actor'>): boolean {
+  return ['plan_committed', 'task_start_reserved', 'update_sent', 'revision_requested', 'change_notified'].includes(event.type)
+    && (event.actor.kind === 'pm' || (event.type === 'change_notified' && event.actor.kind === 'system' && event.actor.id === 'pm'));
+}
 export function automationGate(state: ProjectState): { allowed: boolean; remaining: number } {
   const remaining = state.automation.limitReached ? 0 : Math.max(0, AUTOMATION_LIMIT - state.automation.actionsSinceResume);
   return { allowed: remaining > 0, remaining };

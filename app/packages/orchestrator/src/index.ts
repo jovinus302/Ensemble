@@ -9,6 +9,6 @@ export { Coordinator } from './coordination.ts';
 export { Dispatcher } from './dispatch.ts';
 export { buildTaskContext, summarizeForHuman } from './context.ts';
 export { judgeHandoff } from './handoff.ts';
-export { proposePlan, startFreeProject, decidePlan } from './planning.ts';
+export { proposePlan, startFreeProject, decidePlan, PlanDraftingError, type FreeStartResult } from './planning.ts';
 export type { PlanInput, PlanDraft, PlanningMember } from './planning.ts';
 export { decideAuthority } from './authority-flow.ts';

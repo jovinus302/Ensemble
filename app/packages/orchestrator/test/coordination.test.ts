@@ -9,9 +9,9 @@ import type { CoordinationInterpretation, CoordinationJudgement } from '../src/c
 const ctx = { projectId: 'coordination', targetProductId: 'product', clock: () => new Date('2026-09-28T00:00:00Z') };
 const task = (id: string, assignee: string, conditions: string[] = []): TaskSpec => ({ id, title: id, assignee, dependsOn: [], handoffConditions: conditions });
 const initialTasks = [task('prototype', 'agent', ['초안', '결제']), task('design', 'designer', ['초안', '결제']), task('review', 'outside', ['결제'])];
-const interpret = (patch: Partial<CoordinationInterpretation> = {}): CoordinationInterpretation => ({ category: 'question', summary: '결제 제외, 초안으로 계속', ops: [], conflicts: [], ...patch });
+const interpret = (patch: Partial<CoordinationInterpretation> = {}): CoordinationInterpretation => ({ category: 'question', summary: '결제 제외, 초안으로 계속', ops: [], conflicts: [], conversation: { questionMessageId: null, waitingOnMemberIds: [], directedToPm: false }, factMentions: [], ...patch });
 const exclusions = (sourceMessageIds = ['m1']): PlanOp[] => initialTasks.map(t => ({ type: 'exclude_scope', taskId: t.id, item: '결제', sourceMessageIds }));
-const judge = (patch: Partial<CoordinationJudgement> = {}): CoordinationJudgement => ({ whoseAction: 'designer: 다음 작업 선택', alreadyKnows: 'no', evidence: ['msg:m1'], decision: 'speak', reason: '계산된 영향으로 다음 행동을 고른다', openTopics: [], text: '계산 결과를 확인해 주세요.', ...patch });
+const judge = (patch: Partial<CoordinationJudgement> = {}): CoordinationJudgement => ({ whoseAction: 'designer: 다음 작업 선택', alreadyKnows: 'no', evidence: ['forecast:current'], decision: 'speak', reason: '계산된 영향으로 다음 행동을 고른다', openTopics: [], text: '계산 결과를 확인해 주세요.', targetMemberIds: ['designer'], changesOpenQuestionAnswer: false, answerFactIds: [], ...patch });
 function fake(responses: (object | null | ((r: LlmRequest) => object | null))[]) {
   responses = [...responses];
   const calls: LlmRequest[] = [];
@@ -45,7 +45,7 @@ async function fixture(responses: Parameters<typeof fake>[0], tasks = initialTas
 }
 
 it('records silence and the three answers while people coordinate a vacation', async () => {
-  const f = await fixture([interpret({ category: 'availability', ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 5, sourceMessageIds: ['m1'] }] }), judge({ decision: 'silent', whoseAction: null, alreadyKnows: 'yes', text: '', reason: '사람들이 조율 중', openTopics: ['휴가 후 초안'] })], initialTasks, '목요일에 휴가라 상세는 다음 주에 드려도 될까요?', 'designer');
+  const f = await fixture([interpret({ category: 'availability', ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 5, sourceMessageIds: ['m1'] }] }), judge({ decision: 'silent', evidence: ['msg:m1'], whoseAction: null, alreadyKnows: 'yes', text: '', reason: '사람들이 조율 중', openTopics: ['휴가 후 초안'] })], initialTasks, '목요일에 휴가라 상세는 다음 주에 드려도 될까요?', 'designer');
   const r = await f.coordinator.onMessage('m1');
   expect(r.posts).toEqual([]);
   expect(r.events.filter(e => e.type === 'pm_considered')).toEqual([expect.objectContaining({ type: 'pm_considered', payload: expect.objectContaining({ decision: 'silent', whoseAction: null, alreadyKnows: 'yes', evidence: ['msg:m1'], openTopics: ['휴가 후 초안'] }) })]);
@@ -97,7 +97,7 @@ it('does not repeat an answer supported by the same evidence', async () => {
   await f.message('m2', 'owner', '다시 질문');
   const r = await f.coordinator.onMessage('m2');
   expect(r.posts).toEqual([]);
-  expect(r.events[0]?.payload).toMatchObject({ decision: 'silent', reason: '이미 전달한 근거' });
+  expect(r.events[0]?.payload).toMatchObject({ decision: 'silent', alreadyKnows: 'yes', reason: expect.stringContaining('이미 전달한 근거') });
 });
 
 it.each([[null, null], [interpret(), null, null], [{ conclusion: true }, { conclusion: true }]])('retries invalid or empty responses once, then records inability without inventing speech: %j', async (...responses) => {
@@ -138,8 +138,8 @@ it('rejects a stale snapshot when a plan is committed during model judgement', a
 });
 
 it('stops at the automation limit, notifies once, and never commits or steers', async () => {
-  const f = await fixture([interpret({ ops: exclusions() }), judge(), interpret(), judge({ evidence: ['msg:m2'] })]);
-  for (let i = 0; i < 12; i++) await f.add('reply_recorded', { memberId: 'pm', text: `prior ${i}` }, true);
+  const f = await fixture([interpret({ ops: [{ type: 'handoff_early', taskId: 'design', sourceMessageIds: ['m1'] }] }), judge(), interpret(), judge({ decision: 'silent', evidence: ['msg:m2'] })], initialTasks, '초안 단계에서 넘길게요', 'designer');
+  for (let i = 0; i < 12; i++) await f.add('change_notified', { changeId: `prior:${i}`, planVersion: 1, recipientId: 'agent', text: 'changed', via: 'next_turn' }, true);
   const first = await f.coordinator.onMessage('m1');
   await f.message('m2');
   const second = await f.coordinator.onMessage('m2');
@@ -262,7 +262,7 @@ it('applies the decider’s deadline and goal messages without an unnecessary se
 
 it('settles only the matching approval request when the decider confirms the operation', async () => {
   const f = await fixture([
-    interpret({ ops: [{ type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['suggestion'] }, { type: 'set_deadline', date: '2026-10-12', sourceMessageIds: ['suggestion'] }] }), judge({ evidence: ['msg:suggestion'] }),
+    interpret({ ops: [{ type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['suggestion'] }, { type: 'set_deadline', date: '2026-10-12', sourceMessageIds: ['suggestion'] }] }), judge({ evidence: ['forecast:candidate'] }),
     interpret({ ops: [{ type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['agreement'] }] }), judge({ evidence: ['msg:agreement'] }),
   ]);
   await f.message('suggestion', 'designer', '결제는 빼고 기한은 늦추면 좋겠어요');
@@ -274,4 +274,86 @@ it('settles only the matching approval request when the decider confirms the ope
   expect(state.pendingAuthority.size).toBe(1);
   expect([...state.pendingAuthority.values()][0]?.changeKinds).toEqual(['deadline_change']);
   expect(state.plan?.version).toBe(2);
+});
+
+it('overrides a model speech citing only conversation and records why', async () => {
+  const f = await fixture([interpret(), judge({ evidence: ['msg:m1'] })]);
+  const r = await f.coordinator.onMessage('m1');
+  expect(r.posts).toEqual([]);
+  expect(r.events[0]?.payload).toMatchObject({ decision: 'silent', reason: expect.stringContaining('이미 나온 말의 반복') });
+});
+
+it('does not disguise the same forecast as new by adding another message citation', async () => {
+  const f = await fixture([interpret(), judge(), interpret(), request => {
+    const { facts } = JSON.parse(request.messages[0]!.content);
+    expect(facts.knowledge.find((k: { factId: string }) => k.factId === 'forecast:current')).toMatchObject({ posted: true });
+    return judge({ evidence: ['forecast:current', 'msg:m2'] });
+  }]);
+  expect((await f.coordinator.onMessage('m1')).posts).toHaveLength(1);
+  await f.message('m2');
+  const r = await f.coordinator.onMessage('m2');
+  expect(r.posts).toEqual([]);
+  expect(r.events[0]?.payload).toMatchObject({ decision: 'silent', alreadyKnows: 'yes' });
+});
+
+it('allows the same forecast ID when its calculated value changes', async () => {
+  const f = await fixture([interpret(), judge(), interpret(), judge()]);
+  await f.coordinator.onMessage('m1');
+  await f.add('availability_updated', { memberId: 'designer', weeklyHours: 5 });
+  await f.message('m2');
+  expect((await f.coordinator.onMessage('m2')).posts).toHaveLength(1);
+});
+
+it('fixes alreadyKnows to yes when the target already mentioned the fact', async () => {
+  const f = await fixture([interpret({ factMentions: [{ messageId: 'm1', factIds: ['availability:designer'] }] }), judge({ targetMemberIds: ['designer'], evidence: ['availability:designer'] })], initialTasks, '제 가용 시간은 주 10시간이에요', 'designer');
+  const r = await f.coordinator.onMessage('m1');
+  expect(r.posts).toEqual([]);
+  expect(r.events[0]?.payload).toMatchObject({ alreadyKnows: 'yes', decision: 'silent' });
+});
+
+it.each([false, true])('waits on an open human question unless a new fact changes its answer: %s', async changesOpenQuestionAnswer => {
+  const f = await fixture([interpret({ conversation: { questionMessageId: 'm1', waitingOnMemberIds: ['owner'], directedToPm: false } }), request => {
+    expect(JSON.parse(request.messages[0]!.content).facts.openHumanQuestion).toBe(true);
+    return judge({ changesOpenQuestionAnswer });
+  }], initialTasks, '다음 주에 전달해도 될까요?', 'designer');
+  const r = await f.coordinator.onMessage('m1');
+  expect(r.posts).toHaveLength(changesOpenQuestionAnswer ? 1 : 0);
+  if (!changesOpenQuestionAnswer) expect(r.events[0]?.payload).toMatchObject({ reason: '사람 사이 질문의 답을 바꾸는 새 사실 없음' });
+});
+
+it('does not turn an open handoff proposal into a confirmed summary while recording self availability', async () => {
+  const f = await fixture([interpret({
+    conversation: { questionMessageId: 'm1', waitingOnMemberIds: ['owner'], directedToPm: false },
+    ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 5, sourceMessageIds: ['m1'] }, { type: 'handoff_early', taskId: 'design', sourceMessageIds: ['m1'] }],
+  }), judge({ evidence: ['forecast:candidate'], changesOpenQuestionAnswer: false })], initialTasks, '주 5시간이고 초안으로 넘겨도 될까요?', 'designer');
+  const r = await f.coordinator.onMessage('m1');
+  const state = project(await f.read());
+  expect(r.posts).toEqual([]);
+  expect(state.availability.get('designer')).toBe(5);
+  expect(state.plan?.version).toBe(1);
+  expect(state.tasks.get('design')?.spec.handoffConditions).toEqual(['초안', '결제']);
+});
+
+it('does not accept the question itself as an answer fact', async () => {
+  const f = await fixture([interpret({ conversation: { questionMessageId: 'm1', waitingOnMemberIds: [], directedToPm: true } }), judge({ evidence: ['msg:m1'], answerFactIds: ['msg:m1'] })]);
+  expect((await f.coordinator.onMessage('m1')).posts).toEqual([]);
+});
+
+it.each([false, true])('permits a directly requested answer with message evidence only when it answers the question: %s', async hasAnswer => {
+  const f = await fixture([interpret({ conversation: { questionMessageId: 'question', waitingOnMemberIds: [], directedToPm: true } }), judge({ evidence: ['msg:m1'], answerFactIds: hasAnswer ? ['msg:m1'] : [] })], initialTasks, '월요일에 전달합니다', 'designer');
+  await f.message('question', 'owner', 'PM, 디자이너가 정한 전달일이 언제죠?');
+  const r = await f.coordinator.onMessage('question');
+  expect(r.posts).toHaveLength(hasAnswer ? 1 : 0);
+});
+
+it('a decider conclusion opens a new budget even after the previous window hit its cap', async () => {
+  const f = await fixture([interpret({ ops: exclusions() }), judge()]);
+  for (let i = 0; i < 12; i++) await f.add('change_notified', { changeId: `old:${i}`, planVersion: 1, recipientId: 'agent', text: 'changed', via: 'next_turn' }, true);
+  await f.add('action_limit_reached', { count: 12, limit: 12 });
+  const r = await f.coordinator.onMessage('m1');
+  const state = project(await f.read());
+  expect(r.posts[0]?.kind).toBe('summary');
+  expect(state.plan?.version).toBe(2);
+  expect(state.automation).toEqual({ actionsSinceResume: 5, limitReached: false });
+  expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
 });

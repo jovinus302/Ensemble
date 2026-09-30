@@ -31,6 +31,8 @@ export interface LlmResponse {
   toolCalls: ToolCall[];
   model: string;
   responseId: string;
+  /** Provider stop reason, e.g. "max_tokens" when the output was cut off. */
+  stopReason?: string;
   usage: { inputTokens: number; outputTokens: number };
 }
 
