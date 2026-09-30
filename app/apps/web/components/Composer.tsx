@@ -1,24 +1,25 @@
 "use client";
 
 import { useRef, useState, type KeyboardEvent } from "react";
+import type { ActionResult } from "./use-view-model";
 
-export function Composer({ busy, meName, onSend }: { busy: boolean; meName: string; onSend: (text: string, files: File[]) => Promise<void> }) {
+/** 보내는 즉시 입력창과 첨부를 비운다. 처리 중에도 다음 메시지를 쓸 수 있고, 실패하면 보낸 내용을 입력창에 되살린다. */
+export function Composer({ meName, onSend }: { meName: string; onSend: (text: string, files: File[]) => Promise<ActionResult> }) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [sending, setSending] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const canSend = !sending && (text.trim().length > 0 || files.length > 0);
+  const canSend = text.trim().length > 0 || files.length > 0;
 
   const send = async () => {
     if (!canSend) return;
-    setSending(true);
-    try {
-      await onSend(text.trim(), files);
-      setText("");
-      setFiles([]);
-    } finally {
-      setSending(false);
-    }
+    const sentText = text.trim(), sentFiles = files;
+    setText("");
+    setFiles([]);
+    const result = await onSend(sentText, sentFiles);
+    if (result.ok) return;
+    // 그사이 새로 쓴 글이 있으면 그 앞에 되살린다.
+    setText(current => (current.trim() ? `${sentText}\n${current}` : sentText));
+    setFiles(current => [...sentFiles, ...current]);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -31,11 +32,6 @@ export function Composer({ busy, meName, onSend }: { busy: boolean; meName: stri
 
   return (
     <div className="composer-wrap">
-      {busy && (
-        <div className="busy" role="status">
-          <span className="shimmer" aria-hidden /> PM·Agent가 처리 중…
-        </div>
-      )}
       {files.length > 0 && (
         <ul className="file-chips">
           {files.map((f, i) => (
