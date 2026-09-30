@@ -5,7 +5,7 @@ import path from 'node:path';
 import { SqliteLedgerStore, type LedgerStore } from '@ensemble/store';
 import { AnthropicProvider, loadEnv, modelFor } from '@ensemble/llm';
 import { CodexSessionConnector, type SessionConnector, type SessionEvent } from '@ensemble/agents';
-import { ProjectManager } from '@ensemble/orchestrator';
+import { ProjectManager, type FreeStartResult } from '@ensemble/orchestrator';
 import { project, type AnyEvent, type NewLedgerEvent } from '@ensemble/core';
 import { scene1, scene2, scene3, sceneEvents, SCENE_NOW } from '@ensemble/scenarios';
 import { buildViewModel } from './build-view-model';
@@ -21,6 +21,11 @@ class FakeConnector implements SessionConnector {
   async sendUpdate() { return { sent: true as const }; }
   onEvent(handler: (e: SessionEvent) => void) { this.listeners.add(handler); return () => { this.listeners.delete(handler); }; }
   async stop() { this.listeners.clear(); }
+}
+
+/** The PM already told the channel; the server log keeps the cause for diagnosis. */
+function logDraftFailure(result: FreeStartResult) {
+  if (result.failure) console.error(`[ensemble] plan drafting failed: ${result.failure.detail}`);
 }
 
 function appRoot() {
@@ -133,7 +138,7 @@ export class WebRuntime {
     await this.seed(me, false);
     for (const [memberId, weeklyHours] of previous.availability) if ([me, me === 'owner' ? 'designer' : 'owner'].includes(memberId)) await this.store.append([{ ...this.context(), actor: { kind: 'human', id: memberId }, type: 'availability_updated', payload: { memberId, weeklyHours } }]);
     this.createPm(); this.save();
-    await this.pm.startFreeProject(goal, deadline);
+    logDraftFailure(await this.pm.startFreeProject(goal, deadline));
   }
   async startScenario(name: string) {
     if (name !== 'scene-1-3') throw new Error('Unknown scenario');
@@ -156,7 +161,7 @@ export class WebRuntime {
       this.meta.scene = this.meta.scene === 1 ? 2 : 3; this.meta.step = 0; this.save(); return;
     }
     if (this.meta.scene === 1) {
-      await this.pm.startFreeProject(step.text, '2026-10-12T00:00:00Z');
+      logDraftFailure(await this.pm.startFreeProject(step.text, '2026-10-12T00:00:00Z'));
     } else {
       await this.pm.postMessage(step.as, step.text, step.attachments?.map(a => ({ ...a, taskId: 'design' })));
     }

@@ -9,6 +9,17 @@ export type PlanningMember = EventPayloads['member_joined'] & { weeklyHours?: nu
 export interface PlanInput { goal: string; deadline?: string; members: PlanningMember[]; roleTemplate: Record<string, string>; }
 export interface PlanDraft { tasks: TaskSpec[]; estimates: EventPayloads['plan_proposed']['estimates']; reason: string }
 const nonempty = (v: unknown): v is string => typeof v === 'string' && !!v.trim();
+/** Final drafting failure: `reason` is shown to people, `detail` is for server logs only. */
+export class PlanDraftingError extends Error {
+  constructor(readonly reason: string, readonly detail: string) { super(`Plan drafting failed after two attempts: ${detail}`); this.name = 'PlanDraftingError'; }
+}
+/** One rejected attempt whose cause is known: `message` goes back to the model, `reason` to people. */
+class AttemptFailure extends Error {
+  constructor(message: string, readonly reason: string, options?: ErrorOptions) { super(message, options); }
+}
+const INVALID_DRAFT_REASON = '모델이 만든 초안이 계획 규칙(담당자, 의존 관계, 예상 시간)을 지키지 못했습니다';
+// A full draft carries ids, titles, conditions and estimates for every task; 2048 tokens cut off 14 Korean tasks.
+const DRAFT_MAX_TOKENS = 8192;
 
 /** SOUND / COMMITTED CHANGE: bounded model draft, code validates identities and DAG;
  * only the human decider commits it. Fake-provider tests observe retries and zero early starts.
@@ -17,13 +28,19 @@ const nonempty = (v: unknown): v is string => typeof v === 'string' && !!v.trim(
 export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: string }): Promise<PlanDraft> {
   if (!nonempty(input.goal) || !input.members.length) throw new Error('Goal and members are required');
   const roles = [...new Set(input.members.map(m => m.role).filter(nonempty))];
-  let failure = '';
+  let failure = '', reason = INVALID_DRAFT_REASON, detail = '';
+  const complete = async (request: Parameters<LlmProvider['complete']>[0]) => {
+    let response;
+    try { response = await input.llm.complete(request); } catch (error) { throw new AttemptFailure('Model call failed', 'PM 모델을 호출하지 못했습니다', { cause: error }); }
+    if (response.stopReason === 'max_tokens') throw new AttemptFailure(`The ${request.forceTool} response was cut off by the output token limit; keep titles and handoff conditions short`, '초안이 너무 길어 모델 응답이 중간에 잘렸습니다');
+    return response;
+  };
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       // Obtain the draft's task inventory first so the dependency enum contains exactly
       // its IDs, rather than an arbitrary finite pool or references invented by the model.
       const facts = { goal: input.goal, deadline: input.deadline, members: input.members, roleTemplate: input.roleTemplate, ...(failure ? { validationError: failure } : {}) };
-      const inventory = await input.llm.complete({ model: input.model, forceTool: 'outline_plan',
+      const inventory = await complete({ model: input.model, forceTool: 'outline_plan',
         system: 'List the tasks needed for this goal, using only the supplied team capabilities and availability.',
         tools: [{ name: 'outline_plan', description: 'Draft task inventory', inputSchema: { type: 'object', additionalProperties: false, required: ['tasks'], properties: { tasks: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } } } } }],
         messages: [{ role: 'user', content: JSON.stringify(facts) }] });
@@ -42,7 +59,7 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
       } },
     },
   } };
-      const response = await input.llm.complete({ model: input.model, forceTool: tool.name, tools: [tool],
+      const response = await complete({ model: input.model, forceTool: tool.name, tools: [tool], maxTokens: DRAFT_MAX_TOKENS,
         system: 'Draft a feasible plan using only the supplied goal, team roles and availability. Select unique task IDs from the enum; dependencies must reference tasks included in this draft. Assign agents only work within their declared role. Each task needs 1–3 concrete handoff conditions and an hour range. Do not invent members or capabilities.',
         messages: [{ role: 'user', content: JSON.stringify({ ...facts, taskInventory: outline.map((title, i) => ({ id: taskIds[i], title })) }) }] });
       const call = response.toolCalls.length === 1 ? response.toolCalls[0] : undefined;
@@ -74,9 +91,14 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
       };
       tasks.forEach(t => visit(t.id));
       return { tasks, estimates, reason: value.reason };
-    } catch (error) { failure = error instanceof Error ? error.message : 'Invalid draft'; }
+    } catch (error) {
+      failure = error instanceof Error ? error.message : 'Invalid draft';
+      reason = error instanceof AttemptFailure ? error.reason : INVALID_DRAFT_REASON;
+      const cause = error instanceof Error && error.cause;
+      detail = cause ? `${failure}: ${cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)}` : failure;
+    }
   }
-  throw new Error(`Plan drafting failed after two attempts: ${failure}`);
+  throw new PlanDraftingError(reason, detail);
 }
 
 export function planningNotice(context: EventContext, key: string, memberId: string, text: string, openTopics: string[] = []): NewLedgerEvent[] {
@@ -87,23 +109,34 @@ export function planningNotice(context: EventContext, key: string, memberId: str
   ];
 }
 
-export async function startFreeProject(options: { store: LedgerStore; llm: LlmProvider; model: string; context: EventContext }, goal: string, deadline?: string): Promise<EventPayloads['plan_proposed']> {
+export type FreeStartResult = { proposal: EventPayloads['plan_proposed']; failure?: undefined } | { proposal?: undefined; failure: PlanDraftingError };
+
+/** A final drafting failure is recorded as the goal plus a short PM notice, not thrown to the caller. */
+export async function startFreeProject(options: { store: LedgerStore; llm: LlmProvider; model: string; context: EventContext }, goal: string, deadline?: string): Promise<FreeStartResult> {
   const state = project(await options.store.read({ projectId: options.context.projectId }));
   if (state.plan || state.pendingPlans.size) throw new Error('A plan or proposal already exists');
   if (!state.goal || state.members.get(state.goal.decider)?.kind !== 'human') throw new Error('A human decider must be configured');
   if (deadline !== undefined && !Number.isFinite(Date.parse(deadline))) throw new Error('Invalid deadline');
   const members = [...state.members.values()].map(m => ({ ...m, weeklyHours: state.availability.get(m.memberId) }));
-  const draft = await proposePlan({ goal, deadline, members, roleTemplate: Object.fromEntries(members.filter(m => m.role).map(m => [m.memberId, m.role!])), llm: options.llm, model: options.model });
-  const proposal = { ...draft, proposalId: randomUUID(), version: 1, forMemberId: state.goal.decider };
-  await options.store.transaction(options.context.projectId, events => {
+  const goalSet: NewLedgerEvent = { ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'goal_set', payload: { ...state.goal, text: goal, ...(deadline ? { deadline } : {}) } };
+  const record = (append: NewLedgerEvent[]) => options.store.transaction(options.context.projectId, events => {
     if (project(events).lastSeq !== state.lastSeq) throw new Error('Team changed while drafting; retry');
-    return { append: [
-      { ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'goal_set', payload: { ...state.goal!, text: goal, ...(deadline ? { deadline } : {}) } },
-      { ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'plan_proposed', payload: proposal },
-      ...planningNotice(options.context, proposal.proposalId, proposal.forMemberId, '계획 v1 초안을 확인하고 승인해 주세요.', state.openTopics),
-    ], result: undefined };
+    return { append, result: undefined };
   });
-  return proposal;
+  let draft: PlanDraft;
+  try {
+    draft = await proposePlan({ goal, deadline, members, roleTemplate: Object.fromEntries(members.filter(m => m.role).map(m => [m.memberId, m.role!])), llm: options.llm, model: options.model });
+  } catch (error) {
+    if (!(error instanceof PlanDraftingError)) throw error;
+    await record([goalSet, ...planningNotice(options.context, `plan-failed:${randomUUID()}`, state.goal.decider,
+      `계획 초안을 만들지 못했습니다: ${error.reason}. 목표를 조금 더 구체적으로 적어 '자유형식'에서 다시 시작해 주세요.`, state.openTopics)]);
+    return { failure: error };
+  }
+  const proposal = { ...draft, proposalId: randomUUID(), version: 1, forMemberId: state.goal.decider };
+  await record([goalSet,
+    { ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'plan_proposed', payload: proposal },
+    ...planningNotice(options.context, proposal.proposalId, proposal.forMemberId, '계획 v1 초안을 확인하고 승인해 주세요.', state.openTopics)]);
+  return { proposal };
 }
 
 export async function decidePlan(options: { store: LedgerStore; context: EventContext; dispatcher: Dispatcher }, proposalId: string, memberId: string, approve: boolean): Promise<PmPost[]> {

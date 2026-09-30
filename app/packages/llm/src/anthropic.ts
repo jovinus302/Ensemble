@@ -41,6 +41,7 @@ export class AnthropicProvider implements LlmProvider {
       toolCalls,
       model: response.model,
       responseId: response.id,
+      ...(response.stop_reason ? { stopReason: response.stop_reason } : {}),
       usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
     };
   }
