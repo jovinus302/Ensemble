@@ -23,6 +23,14 @@ let seq = 0;
 let lastState: any;
 const save = (name: string, value: unknown) => writeFile(path.join(output, name), JSON.stringify(value, null, 2));
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+console.log(`RUN: ${output}`);
+async function checkStop() {
+  const reason = await readFile(path.join(output, 'stop-request.txt'), 'utf8').catch(error => {
+    if (error.code === 'ENOENT') return '';
+    throw error;
+  });
+  if (reason.trim()) throw new Error(`시연 중단: ${reason.trim()}`);
+}
 const server = spawn(process.execPath, [path.join(app, 'node_modules/next/dist/bin/next'), 'start', '-p', String(port), '-H', '127.0.0.1'], {
   cwd: path.join(app, 'apps/web'), windowsHide: true, stdio: 'ignore',
   env: { ...process.env, ENSEMBLE_AGENT_RUNTIME: 'codex', ENSEMBLE_ENV_FILE: 'C:/Users/siheon.ryu/Desktop/workspace/ensemble/.env', ENSEMBLE_DATA_DIR: data,
@@ -73,6 +81,7 @@ try {
     try {
       while (!finished) {
         await Promise.race([settled.catch(() => undefined), pause(2000)]);
+        await checkStop();
         const current = await events();
         const blocked = current.findLast(e => e.type === 'task_blocked');
         if (blocked?.type === 'task_blocked') throw new Error(blocked.payload.reason);
@@ -84,6 +93,7 @@ try {
   }
   const begin = Date.now();
   while (true) {
+    await checkStop();
     const ledger = await events();
     const prototype = ledger.some(e => e.type === 'result_submitted' && e.actor.id === 'prototype-agent');
     const complete = ledger.some(e => e.type === 'turn_observed' && e.payload.agentId === 'prototype-agent' && e.payload.status === 'completed');

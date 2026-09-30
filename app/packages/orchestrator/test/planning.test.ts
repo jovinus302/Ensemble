@@ -4,23 +4,24 @@ import { project, type AnyEvent } from '@ensemble/core';
 import type { LlmProvider, LlmRequest } from '@ensemble/llm';
 import type { SessionConnector, TaskInstructionsInput } from '@ensemble/agents';
 import { ProjectManager } from '../src/pm.ts';
+import type { PlanningMember } from '../src/planning.ts';
 
 const context = { projectId: 'planning', targetProductId: 'product' };
 const members = [
   { memberId: 'owner', kind: 'human' as const, displayName: 'Owner', weeklyHours: 10 },
-  { memberId: 'person', kind: 'human' as const, displayName: 'Person' },
-  { memberId: 'agent', kind: 'agent' as const, displayName: 'Builder', role: 'build' },
+  { memberId: 'designer', kind: 'human' as const, displayName: 'Designer' },
+  { memberId: 'research-agent', kind: 'agent' as const, displayName: 'Research', role: 'research' },
+  { memberId: 'prototype-agent', kind: 'agent' as const, displayName: 'Builder', role: 'build' },
 ];
-const draft = () => ({ reason: 'Build then review', tasks: [
-  { id: 'task-1', title: 'Build', assignee: 'agent', role: 'build', dependsOn: [] as string[], handoffConditions: ['Working prototype'], hours: { min: 2, max: 4 } },
-  { id: 'task-2', title: 'Review', assignee: 'owner', role: 'human', dependsOn: ['task-1'], handoffConditions: ['Feedback recorded'], hours: { min: 1, max: 2 } },
-] });
+const draft = () => ({ tasks: ['research', 'interview', 'flow', 'prototype'].map(templateKey => ({
+  templateKey, title: `Arbitrary title for ${templateKey}`, handoffConditions: ['Concrete artifact'], hours: { min: 2, max: 4 },
+})) });
 const CUT_OFF = Symbol('max_tokens');
 function provider(replies: unknown[]) {
   const calls: LlmRequest[] = [];
   const llm: LlmProvider = { async complete(request) {
     calls.push(request);
-    const reply = request.forceTool === 'outline_plan' ? { tasks: ['Build', 'Review'] } : replies.shift();
+    const reply = replies.shift();
     if (reply instanceof Error) throw reply;
     // A response cut off at the output limit carries a tool call with an empty input.
     if (reply === CUT_OFF) return { text: '', model: 'fake', responseId: 'fake', stopReason: 'max_tokens', usage: { inputTokens: 0, outputTokens: 2048 }, toolCalls: [{ name: request.forceTool!, input: {} }] };
@@ -28,11 +29,11 @@ function provider(replies: unknown[]) {
   } };
   return { calls, llm };
 }
-async function setup(replies: unknown[] = [draft()]) {
+async function setup(replies: unknown[] = [draft()], team: PlanningMember[] = members, decider = 'owner') {
   const store = new MemoryLedgerStore();
   await store.append([
-    ...members.map(payload => ({ ...context, actor: { kind: 'system' as const, id: 'seed' }, type: 'member_joined', payload })),
-    { ...context, actor: { kind: 'human', id: 'owner' }, type: 'goal_set', payload: { text: 'Seed', decider: 'owner', delegation: { pmMayApply: [] } } },
+    ...team.map(payload => ({ ...context, actor: { kind: 'system' as const, id: 'seed' }, type: 'member_joined', payload })),
+    { ...context, actor: { kind: 'human', id: 'owner' }, type: 'goal_set', payload: { text: 'Seed', decider, delegation: { pmMayApply: [] } } },
   ]);
   const starts: TaskInstructionsInput[] = [];
   const connector: SessionConnector = {
@@ -54,45 +55,75 @@ it('draft → decider approval commits v1/estimates and starts only ready tasks 
   expect(project(await f.store.read()).plan).toBeUndefined();
   expect(f.starts).toHaveLength(0);
   expect(JSON.parse(f.calls[0]!.messages[0]!.content).members.find((m: { memberId: string }) => m.memberId === 'owner').weeklyHours).toBe(7);
-  await expect(f.pm.decidePlan(proposal.proposalId, 'person', true)).rejects.toThrow('decider');
+  await expect(f.pm.decidePlan(proposal.proposalId, 'designer', true)).rejects.toThrow('decider');
   await Promise.all([f.pm.decideCard(proposal.proposalId, 'owner', true), f.pm.decideCard(proposal.proposalId, 'owner', true)]);
   const state = project(await f.store.read());
   expect(state.plan).toMatchObject({ version: 1, approvedBy: 'owner' });
-  expect(state.estimates.get('task-1')).toEqual({ min: 2, max: 4, source: 'pm' });
+  expect(state.estimates.get('research')).toEqual({ min: 2, max: 4, source: 'pm' });
   expect(state.pendingPlans.size).toBe(0);
-  expect(state.tasks.get('task-2')?.status).toBe('waiting');
+  expect(state.tasks.get('flow')?.status).toBe('waiting');
   expect(f.starts).toHaveLength(1);
-  expect(f.starts[0]).toMatchObject({ taskId: 'task-1', planVersion: 1 });
+  expect(f.starts[0]).toMatchObject({ taskId: 'research', planVersion: 1 });
   await f.pm.stop();
 });
 
-it('retries a cyclic draft once and exposes constrained member and task enums', async () => {
-  const invalid = draft(); invalid.tasks[0]!.dependsOn = ['task-2'];
-  const f = await setup([invalid, draft()]);
-  await f.pm.startFreeProject('Ship');
-  expect(f.calls).toHaveLength(4);
-  expect(JSON.parse(f.calls[2]!.messages[0]!.content).validationError).toContain('Cyclic');
-  const schema = f.calls[1]!.tools![0]!.inputSchema as any;
-  expect(schema.properties.tasks.items.properties.assignee.enum).toEqual(['owner', 'person', 'agent']);
-  expect(schema.properties.tasks.items.properties.dependsOn.items.enum).toEqual(['task-1', 'task-2']);
+it('fixes exactly four task identities, assignments and dependencies independently of titles and output order', async () => {
+  const value = draft(); value.tasks.reverse(); value.tasks.forEach(t => { t.title = 'Unrelated title'; });
+  const f = await setup([value]);
+  const { proposal } = await f.pm.startFreeProject('Ship');
+  expect(proposal?.tasks.map(({ id, assignee, dependsOn }) => ({ id, assignee, dependsOn }))).toEqual([
+    { id: 'research', assignee: 'research-agent', dependsOn: [] },
+    { id: 'interview', assignee: 'owner', dependsOn: [] },
+    { id: 'flow', assignee: 'designer', dependsOn: ['research', 'interview'] },
+    { id: 'prototype', assignee: 'prototype-agent', dependsOn: ['flow'] },
+  ]);
+  const schema = f.calls[0]!.tools![0]!.inputSchema as any;
+  expect(Object.keys(schema.properties.tasks.items.properties)).toEqual(['templateKey', 'title', 'handoffConditions', 'hours']);
+  expect(schema.properties.tasks.items.properties.templateKey.enum).toEqual(['research', 'interview', 'flow', 'prototype']);
   await f.pm.stop();
 });
 
-it.each(['cycle', 'unknown dependency', 'missing assignee', 'role', 'conditions', 'estimate', 'duplicate'])('rejects two invalid %s drafts without recording a proposal or starting work', async kind => {
+it.each(['dependsOn', 'assignee', 'role', 'conditions', 'estimate', 'duplicate', 'extra task', 'missing task', 'unknown key'])('rejects two invalid %s drafts without recording a proposal or starting work', async kind => {
   const bad = draft();
-  if (kind === 'cycle') bad.tasks[0]!.dependsOn = ['task-2'];
-  if (kind === 'unknown dependency') bad.tasks[0]!.dependsOn = ['task-24'];
-  if (kind === 'missing assignee') bad.tasks[0]!.assignee = '';
-  if (kind === 'role') bad.tasks[0]!.role = 'research';
+  if (['dependsOn', 'assignee', 'role'].includes(kind)) Object.assign(bad.tasks[0]!, { [kind]: kind === 'dependsOn' ? ['flow'] : 'invented' });
   if (kind === 'conditions') bad.tasks[0]!.handoffConditions = [];
   if (kind === 'estimate') bad.tasks[0]!.hours = { min: 5, max: 2 };
-  if (kind === 'duplicate') bad.tasks[1]!.id = 'task-1';
+  if (kind === 'duplicate') bad.tasks[1]!.templateKey = 'research';
+  if (kind === 'extra task') bad.tasks.push({ ...bad.tasks[0]! });
+  if (kind === 'missing task') bad.tasks.pop();
+  if (kind === 'unknown key') bad.tasks[0]!.templateKey = 'invented';
   const f = await setup([bad, bad]);
   const result = await f.pm.startFreeProject('Ship');
   expect(result.failure?.message).toContain('two attempts');
-  expect(f.calls).toHaveLength(4);
+  expect(f.calls).toHaveLength(2);
+  expect(JSON.parse(f.calls[1]!.messages[0]!.content).validationError).toBeTruthy();
   expect((await f.store.read()).some(e => e.type === 'plan_proposed')).toBe(false);
   expect(f.starts).toHaveLength(0);
+  await f.pm.stop();
+});
+
+it.each(['designer', 'research-agent', 'prototype-agent'])('reports missing role %s once without calling the model', async id => {
+  const f = await setup([], members.filter(m => m.memberId !== id));
+  const result = await f.pm.startFreeProject('Ship');
+  expect(result.failure?.reason).toContain(id);
+  expect(f.calls).toEqual([]);
+  expect(f.starts).toEqual([]);
+  const events = await f.store.read() as AnyEvent[];
+  expect(events.filter(e => e.type === 'pm_spoke')).toHaveLength(1);
+  expect(project(events).pendingPlans.size).toBe(0);
+  await f.pm.stop();
+});
+
+it('uses the actual human decider for interview', async () => {
+  const f = await setup([draft()], members.map(m => m.memberId === 'owner' ? { ...m, memberId: 'alice' } : m), 'alice');
+  expect((await f.pm.startFreeProject('Ship')).proposal?.tasks.find(t => t.id === 'interview')?.assignee).toBe('alice');
+  await f.pm.stop();
+});
+
+it('rejects an agent slot occupied by a human before drafting', async () => {
+  const f = await setup([], members.map(m => m.memberId === 'research-agent' ? { ...m, kind: 'human' as const } : m));
+  expect((await f.pm.startFreeProject('Ship')).failure?.reason).toContain('research-agent');
+  expect(f.calls).toEqual([]);
   await f.pm.stop();
 });
 
@@ -112,9 +143,9 @@ it('rejection closes the card, asks once, and allows a new proposal', async () =
 it('a draft cut off at the output limit is retried with that reason and a larger budget', async () => {
   const f = await setup([CUT_OFF, draft()]);
   const { proposal } = await f.pm.startFreeProject('Ship');
-  expect(proposal?.tasks).toHaveLength(2);
-  expect(f.calls[1]!.maxTokens).toBeGreaterThan(2048);
-  expect(JSON.parse(f.calls[2]!.messages[0]!.content).validationError).toContain('cut off by the output token limit');
+  expect(proposal?.tasks).toHaveLength(4);
+  expect(f.calls[0]!.maxTokens).toBeGreaterThan(2048);
+  expect(JSON.parse(f.calls[1]!.messages[0]!.content).validationError).toContain('cut off by the output token limit');
   expect(project(await f.store.read()).pendingPlans.size).toBe(1);
   await f.pm.stop();
 });
@@ -143,10 +174,10 @@ it.each([
 
 it('availability accepts zero, rejects non-human and invalid amounts without authority cards', async () => {
   const f = await setup();
-  await f.pm.setAvailability('person', 0);
-  for (const n of [-1, NaN, Infinity]) await expect(f.pm.setAvailability('person', n)).rejects.toThrow();
-  await expect(f.pm.setAvailability('agent', 4)).rejects.toThrow('human');
-  expect(project(await f.store.read()).availability.get('person')).toBe(0);
+  await f.pm.setAvailability('designer', 0);
+  for (const n of [-1, NaN, Infinity]) await expect(f.pm.setAvailability('designer', n)).rejects.toThrow();
+  await expect(f.pm.setAvailability('research-agent', 4)).rejects.toThrow('human');
+  expect(project(await f.store.read()).availability.get('designer')).toBe(0);
   expect(project(await f.store.read()).pendingAuthority.size).toBe(0);
   await f.pm.stop();
 });
