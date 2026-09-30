@@ -181,3 +181,25 @@ it('availability accepts zero, rejects non-human and invalid amounts without aut
   expect(project(await f.store.read()).pendingAuthority.size).toBe(0);
   await f.pm.stop();
 });
+
+
+it.each([false, true])('allows messages during drafting but rejects team changes: teamChange=%s', async teamChange => {
+  const f = await setup();
+  const original = f.llm.complete.bind(f.llm);
+  f.llm.complete = async request => {
+    if (teamChange) await f.store.append([{ ...context, actor: { kind: 'human', id: 'owner' }, type: 'availability_updated', payload: { memberId: 'owner', weeklyHours: 1 } }]);
+    else await f.pm.recordMessage('owner', '참고 자료입니다', [{ name: 'brief.txt', mimeType: 'text/plain', content: '추가 설명' }]);
+    return original(request);
+  };
+  const pending = f.pm.startFreeProject('Ship');
+  if (teamChange) {
+    await expect(pending).rejects.toThrow('Team changed while drafting');
+    expect(project(await f.store.read()).pendingPlans.size).toBe(0);
+  } else {
+    expect((await pending).proposal?.tasks).toHaveLength(4);
+    const events = await f.store.read() as AnyEvent[];
+    expect(events.filter(e => e.type === 'pm_spoke' && e.payload.text === '계획 v1 초안을 확인하고 승인해 주세요.')).toHaveLength(1);
+    expect(events.filter(e => e.type === 'message_recorded')).toHaveLength(1);
+  }
+  await f.pm.stop();
+});

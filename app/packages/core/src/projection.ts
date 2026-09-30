@@ -22,6 +22,7 @@ export interface ProjectState {
   plan?: Pick<EventPayloads["plan_committed"], "version" | "tasks" | "reason" | "approvedBy">;
   tasks: Map<Id, TaskState>;
   availability: Map<Id, number>;
+  availabilityOverrides: Map<Id, Map<string, number>>;
   estimates: Map<Id, { min: number; max: number; source: EventPayloads["estimate_updated"]["source"] }>;
   activeTurn: Map<Id, Id>;
   sessions: Map<Id, { threadId: Id; workspace: string }>;
@@ -56,7 +57,7 @@ export function wasNotified(state: ProjectState, changeId: Id, recipientId: Id):
 /** Replay ledger order without retaining mutable references to input payloads. */
 export function project(events: readonly LedgerEvent[]): ProjectState {
   const state: ProjectState = {
-    lastSeq: 0, members: new Map(), tasks: new Map(), availability: new Map(),
+    lastSeq: 0, members: new Map(), tasks: new Map(), availability: new Map(), availabilityOverrides: new Map(),
     estimates: new Map(), activeTurn: new Map(), sessions: new Map(), reservedStartKeys: new Set(),
     automation: { actionsSinceResume: 0, limitReached: false },
     messages: [], openTopics: [], decisions: new Map(), pendingAuthority: new Map(), pendingPlans: new Map(), notified: new Set(),
@@ -101,7 +102,14 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
         }
         break;
       }
-      case "availability_updated": state.availability.set(event.payload.memberId, event.payload.weeklyHours); break;
+      case "availability_updated": {
+        const { memberId, weeklyHours, weekStart } = event.payload;
+        if (weekStart) {
+          const weeks = state.availabilityOverrides.get(memberId) ?? new Map<string, number>();
+          weeks.set(weekStart, weeklyHours); state.availabilityOverrides.set(memberId, weeks);
+        } else state.availability.set(memberId, weeklyHours);
+        break;
+      }
       case "estimate_updated": state.estimates.set(event.payload.taskId, { ...event.payload.hours, source: event.payload.source }); break;
       case "session_linked": state.sessions.set(event.payload.agentId, { threadId: event.payload.threadId, workspace: event.payload.workspace }); break;
       case "turn_observed":

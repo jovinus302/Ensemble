@@ -70,21 +70,21 @@ const reduced = initialTasks.map(t => ({ ...t, handoffConditions: t.handoffCondi
 it('summarises, commits v2, notifies absent changed people and steers with payment dropped once', async () => {
   const f = await fixture([interpret({ ops: exclusions(['m1', 'designer-agrees']) }), judge()]);
   await f.message('designer-agrees', 'designer', '초안으로 먼저 가세요');
-  const r = await f.coordinator.onMessage('m1');
+  const r = await f.coordinator.onMessage('designer-agrees');
   expect(r.posts[0]).toMatchObject({ kind: 'summary', text: expect.stringContaining('정리하면:') });
   expect(project(await f.read()).plan?.version).toBe(2);
-  expect(project(await f.read()).plan?.tasks.map(t => t.title)).toEqual(initialTasks.map(t => t.title));
+  expect(project(await f.read()).plan?.tasks.map(t => t.title)).toEqual(initialTasks.map(t => `${t.title} (결제 제외)`));
   expect(f.connector.sendUpdate).toHaveBeenCalledExactlyOnceWith('agent', expect.objectContaining({ fromVersion: 1, toVersion: 2, drop: ['결제'] }));
   expect(r.events.filter(e => e.type === 'change_notified').map(e => (e.payload as EventPayloads['change_notified']).recipientId).sort()).toEqual(['agent', 'outside']);
   expect(r.events.find(e => e.type === 'plan_committed')?.payload).toMatchObject({ sourceMessageIds: ['m1', 'designer-agrees'], basedOn: 1 });
-  expect((await f.coordinator.onMessage('m1')).posts).toEqual([]);
+  expect((await f.coordinator.onMessage('designer-agrees')).posts).toEqual([]);
   expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
 });
 
 it('asks the decider about another person’s deadline proposal and leaves the plan unchanged', async () => {
   const f = await fixture([interpret({ ops: [{ type: 'set_deadline', date: '2026-10-10', sourceMessageIds: ['proposal'] }] }), judge()]);
   await f.message('proposal', 'designer', '기한을 옮기면 좋겠어요');
-  const r = await f.coordinator.onMessage('m1');
+  const r = await f.coordinator.onMessage('proposal');
   expect(r.events.find(e => e.type === 'authority_requested')?.payload).toMatchObject({ personId: 'owner', changeKinds: ['deadline_change'] });
   expect(r.posts[0]?.kind).toBe('ask');
   expect(project(await f.read()).plan?.version).toBe(1);
@@ -318,7 +318,7 @@ it.each([false, true])('waits on an open human question unless a new fact change
   }], initialTasks, '다음 주에 전달해도 될까요?', 'designer');
   const r = await f.coordinator.onMessage('m1');
   expect(r.posts).toHaveLength(changesOpenQuestionAnswer ? 1 : 0);
-  if (!changesOpenQuestionAnswer) expect(r.events[0]?.payload).toMatchObject({ reason: '사람 사이 질문의 답을 바꾸는 새 사실 없음' });
+  if (!changesOpenQuestionAnswer) expect(r.events[0]?.payload).toMatchObject({ reason: '결정권자가 참여한 사람 사이 질문은 답을 기다린다' });
 });
 
 it('does not turn an open handoff proposal into a confirmed summary while recording self availability', async () => {
@@ -356,4 +356,63 @@ it('a decider conclusion opens a new budget even after the previous window hit i
   expect(state.plan?.version).toBe(2);
   expect(state.automation).toEqual({ actionsSinceResume: 5, limitReached: false });
   expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
+});
+
+
+it('retries unsupported numeric claims once and keeps person-specific before/after capacity facts', async () => {
+  const f = await fixture([interpret(), judge({ text: '999시간 늦어집니다.' }), request => {
+    const { facts } = JSON.parse(request.messages[0]!.content);
+    expect(facts.factList.find((f: any) => f.id === 'forecast:current').value.capacity).toContainEqual(expect.objectContaining({ memberId: 'designer', baselineWeeklyHours: 10 }));
+    return judge({ text: '최대 7일 걸립니다.' });
+  }]);
+  expect((await f.coordinator.onMessage('m1')).posts[0]?.text).toBe('최대 7일 걸립니다.');
+  expect(f.calls).toHaveLength(3);
+});
+
+it('stores this-week hours without changing baseline and asks about unclear duration', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 4, period: 'this_week', sourceMessageIds: ['m1'] } as any] }), judge({ decision: 'silent', text: '' }), interpret({ ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 6, period: 'unclear', sourceMessageIds: ['m2'] } as any] }), judge({ decision: 'silent', text: '' })], initialTasks, '이번 주는 4시간', 'designer');
+  await f.coordinator.onMessage('m1');
+  expect(project(await f.read()).availability.get('designer')).toBe(10);
+  expect(project(await f.read()).availabilityOverrides.get('designer')?.get('2026-09-28')).toBe(4);
+  await f.message('m2', 'designer', '당분간 6시간');
+  expect((await f.coordinator.onMessage('m2')).posts[0]?.text).toContain('이번 주만인가요');
+  expect(project(await f.read()).availability.get('designer')).toBe(10);
+});
+
+it('records both scope decisions, updates titles, and states remaining deadline overrun', async () => {
+  const f = await fixture([interpret({ ops: [
+    { type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['m1'] },
+    { type: 'limit_scope', taskId: 'design', items: ['요금제 비교', '가입'], sourceMessageIds: ['m1'] },
+  ] }), judge()]);
+  await f.add('availability_updated', { memberId: 'designer', weeklyHours: 5 });
+  const result = await f.coordinator.onMessage('m1');
+  expect(result.posts[0]?.text).toMatch(/결제 제외.*요금제 비교.*가입.*기한을 넘깁니다/);
+  const next = project(await f.read());
+  expect(next.plan?.version).toBe(2);
+  expect(next.tasks.get('design')?.spec.title).toContain('요금제 비교 · 가입');
+  expect(next.tasks.get('prototype')?.spec.title).toContain('결제 제외');
+});
+
+it('waits for a present decider even when model wants to announce new deadline impact', async () => {
+  const f = await fixture([interpret({ conversation: { questionMessageId: 'm2', waitingOnMemberIds: ['owner'], directedToPm: false } }), judge({ changesOpenQuestionAnswer: true })]);
+  await f.message('m2', 'designer', '다음 주에 드려도 될까요?');
+  expect((await f.coordinator.onMessage('m2')).posts).toEqual([]);
+});
+
+
+it('recognizes a previously spoken candidate forecast after it becomes current despite clock seconds', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 5, sourceMessageIds: ['m1'] }] }), judge({ evidence: ['forecast:candidate'], text: '최대 14일입니다.' }), interpret(), judge({ evidence: ['forecast:current'], text: '최대 14일입니다.' })], initialTasks, '매주 5시간입니다', 'designer');
+  expect((await f.coordinator.onMessage('m1')).posts).toHaveLength(1);
+  await f.message('m2', 'owner', '계산 결과는요?');
+  const retry = new Coordinator(f.store, fake([interpret(), judge({ evidence: ['forecast:current'], text: '최대 14일입니다.' })]).llm, f.connector, { ...ctx, clock: () => new Date('2026-09-28T00:00:20Z') });
+  const r = await retry.onMessage('m2');
+  expect(r.posts).toHaveLength(0);
+});
+
+
+it('records a declarative self-capacity update silently when the decider is in the conversation', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 4, period: 'this_week', sourceMessageIds: ['m2'] } as any] }), judge({ whoseAction: 'designer', evidence: ['forecast:candidate'] })]);
+  await f.message('m2', 'designer', '이번 주 휴가라 4시간밖에 안 돼요');
+  expect((await f.coordinator.onMessage('m2')).posts).toEqual([]);
+  expect(project(await f.read()).availabilityOverrides.get('designer')?.get('2026-09-28')).toBe(4);
 });

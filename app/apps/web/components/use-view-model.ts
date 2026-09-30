@@ -1,73 +1,218 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ViewModel } from "../lib/view-model";
+import type { ViewModel, VmMessage } from "../lib/view-model";
+import { koreanOr } from "./format";
+
+// 서버 경로는 여기 한 곳에만 둔다. 시나리오 재시도·건너뛰기 경로는 서버(W-S)가 확정하면 이 값만 바꾼다.
+export const API = {
+  state: (me: string) => `/api/state?me=${encodeURIComponent(me)}`,
+  events: "/api/events",
+  messages: "/api/messages",
+  availability: "/api/availability",
+  card: (id: string) => `/api/cards/${encodeURIComponent(id)}`,
+  freeStart: "/api/free/start",
+  scenarioStart: "/api/scenario/start",
+  scenarioNext: "/api/scenario/next",
+  scenarioRetry: "/api/scenario/retry",
+  scenarioSkip: "/api/scenario/skip",
+} as const;
+
+const ME_KEY = "ensemble.me";
+const NETWORK_ERROR = "서버에 연결하지 못했어요. 연결이 돌아오면 다시 시도해 주세요.";
+const GENERIC_ERROR = "요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.";
+/** 이벤트 스트림이 이 시간 넘게 끊겨 있어야 끊김으로 표시한다(순간 재연결은 숨김). */
+const LOST_AFTER_MS = 1500;
+
+export type ActionResult = { ok: true } | { ok: false; code?: string; message: string };
 
 export interface ViewModelActions {
-  sendMessage(text: string, files: File[]): Promise<void>;
-  decideCard(cardId: string, approve: boolean): Promise<void>;
-  setAvailability(memberId: string, weeklyHours: number): Promise<void>;
-  scenarioNext(): Promise<void>;
-  startFree(goal: string, deadline?: string): Promise<void>;
-  startScenario(name: string): Promise<void>;
+  /** 즉시 "보내는 중"으로 보이고, 이전 전송이 끝난 뒤 순서대로 서버에 보낸다. */
+  sendMessage(text: string, files: File[]): Promise<ActionResult>;
+  decideCard(cardId: string, approve: boolean): Promise<ActionResult>;
+  setAvailability(memberId: string, weeklyHours: number): Promise<ActionResult>;
+  scenarioNext(): Promise<ActionResult>;
+  scenarioRetry(): Promise<ActionResult>;
+  scenarioSkip(): Promise<ActionResult>;
+  /** confirmReplace 없이 진행 중 프로젝트가 있으면 code "project_exists"로 실패한다(오류 배너 없이). */
+  startFree(goal: string, deadline?: string, confirmReplace?: boolean): Promise<ActionResult>;
+  startScenario(name: string, confirmReplace?: boolean): Promise<ActionResult>;
   switchMe(memberId: string): void;
+  dismissError(): void;
 }
-export interface UseViewModelResult { vm: ViewModel | null; error: string | null; actions: ViewModelActions }
+/** pending: 이 탭이 보낸 요청이 아직 서버 상태에 반영되지 않음(버튼을 disabled로 막는 근거). */
+export interface UseViewModelResult { vm: ViewModel | null; error: string | null; connectionLost: boolean; pending: boolean; actions: ViewModelActions }
+
+interface OutboxItem { localId: string; authorId: string; text: string; fileNames: string[]; at: string; messageId?: string }
 
 function fileContent(file: File): Promise<{ name: string; mimeType: string; contentBase64: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve({ name: file.name, mimeType: file.type || "application/octet-stream", contentBase64: String(reader.result).split(",")[1] ?? "" });
-    reader.onerror = () => reject(new Error("첨부 파일을 읽지 못했습니다."));
+    reader.onerror = () => reject(new Error("첨부 파일을 읽지 못했어요."));
     reader.readAsDataURL(file);
   });
 }
+
+/** 오류 응답(계약 4 `{ error: { code, message } }`과 예전 `{ error: string }`)을 한국어 문구로. */
+export function readError(data: unknown): { code?: string; message: string } {
+  const error = data && typeof data === "object" ? (data as { error?: unknown }).error : undefined;
+  if (error && typeof error === "object") {
+    const { code, message } = error as { code?: unknown; message?: unknown };
+    return { ...(typeof code === "string" ? { code } : {}), message: koreanOr(message, GENERIC_ERROR) };
+  }
+  return { message: koreanOr(error, GENERIC_ERROR) };
+}
+
+function isViewModel(data: unknown): data is ViewModel {
+  return !!data && typeof data === "object" && Array.isArray((data as ViewModel).messages) && Array.isArray((data as ViewModel).members);
+}
+
+type CallResult = { ok: true; data: unknown } | { ok: false; code?: string; message: string };
+async function call(url: string, body: object): Promise<CallResult> {
+  let response: Response;
+  try {
+    response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  } catch {
+    return { ok: false, code: "network", message: NETWORK_ERROR };
+  }
+  let data: unknown = null;
+  try { data = await response.json(); } catch { /* 본문 없는 응답 */ }
+  return response.ok ? { ok: true, data } : { ok: false, ...readError(data) };
+}
+
+function readStoredMe(): string {
+  try { return (typeof window !== "undefined" && window.localStorage.getItem(ME_KEY)) || "owner"; } catch { return "owner"; }
+}
+
 export function useViewModel(): UseViewModelResult {
-  const [me, setMe] = useState("owner");
+  const [me, setMe] = useState(readStoredMe);
   const [vm, setVm] = useState<ViewModel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [outbox, setOutbox] = useState<OutboxItem[]>([]);
+  const [streamDown, setStreamDown] = useState(false);
+  const [fetchDown, setFetchDown] = useState(false);
   const currentMe = useRef(me);
   currentMe.current = me;
   const revision = useRef(0);
+  const sendQueue = useRef<Promise<unknown>>(Promise.resolve());
+
   const refresh = useCallback(async () => {
     const request = ++revision.current;
+    let response: Response;
     try {
-      const response = await fetch(`/api/state?me=${encodeURIComponent(me)}`, { cache: "no-store" });
-      if (!response.ok) throw new Error("상태를 불러오지 못했습니다.");
+      response = await fetch(API.state(me), { cache: "no-store" });
+    } catch {
+      if (currentMe.current === me) setFetchDown(true);
+      return;
+    }
+    if (currentMe.current !== me) return;
+    setFetchDown(false);
+    try {
+      if (!response.ok) throw new Error();
       const next = await response.json() as ViewModel;
       if (request === revision.current && currentMe.current === me) setVm(next);
-    } catch (e) { if (currentMe.current === me) setError(e instanceof Error ? e.message : "연결을 확인해 주세요."); }
+    } catch { if (currentMe.current === me) setError("상태를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요."); }
   }, [me]);
+
   useEffect(() => {
-    void refresh();
-    const events = new EventSource("/api/events");
+    let events: EventSource | null = null;
     let polling: ReturnType<typeof setInterval> | undefined;
-    events.addEventListener("changed", () => { void refresh(); });
-    events.onopen = () => { if (polling) clearInterval(polling); polling = undefined; };
-    events.onerror = () => { polling ??= setInterval(() => { void refresh(); }, 3000); };
-    return () => { events.close(); if (polling) clearInterval(polling); revision.current++; };
+    let reopen: ReturnType<typeof setTimeout> | undefined;
+    let lost: ReturnType<typeof setTimeout> | undefined;
+    let closed = false;
+    const open = () => {
+      const source = new EventSource(API.events);
+      events = source;
+      source.addEventListener("changed", () => { void refresh(); });
+      source.onopen = () => {
+        clearTimeout(lost); lost = undefined; setStreamDown(false);
+        if (polling) clearInterval(polling);
+        polling = undefined;
+      };
+      source.onerror = () => {
+        lost ??= setTimeout(() => setStreamDown(true), LOST_AFTER_MS);
+        polling ??= setInterval(() => { void refresh(); }, 3000);
+        // 서버가 오류로 응답하면 브라우저는 다시 연결하지 않으므로 직접 다시 연다.
+        if (source.readyState === EventSource.CLOSED && !closed) { source.close(); reopen = setTimeout(open, 3000); }
+      };
+    };
+    void refresh();
+    open();
+    return () => { closed = true; events?.close(); clearTimeout(reopen); clearTimeout(lost); if (polling) clearInterval(polling); revision.current++; };
   }, [refresh]);
-  const post = useCallback(async (url: string, body: object) => {
+
+  // 서버 기록에 나타난 내 메시지는 "보내는 중" 목록에서 뺀다.
+  useEffect(() => {
+    if (!vm) return;
+    const recorded = new Set(vm.messages.map(m => m.id));
+    setOutbox(items => items.some(x => x.messageId && recorded.has(x.messageId)) ? items.filter(x => !x.messageId || !recorded.has(x.messageId)) : items);
+  }, [vm]);
+
+  // 202처럼 상태가 없는 응답이면 새 상태를 받아 온 뒤에 끝낸다. 그 사이에 버튼이 다시 눌리지 않게 한다.
+  const accept = useCallback(async (data: unknown) => {
+    if (isViewModel(data) && currentMe.current === me) { revision.current++; setVm(data); } else await refresh();
+  }, [me, refresh]);
+
+  const post = useCallback(async (url: string, body: object, quiet: string[] = []): Promise<ActionResult> => {
     setPending(true); setError(null);
     try {
-      const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, me }) });
-      const next = await response.json();
-      if (!response.ok) throw new Error(next.error ?? "요청을 처리하지 못했습니다.");
-      if (currentMe.current === me) { revision.current++; setVm(next as ViewModel); }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "요청을 처리하지 못했습니다.");
-      await refresh();
+      const result = await call(url, { ...body, me });
+      if (result.ok) { await accept(result.data); return { ok: true }; }
+      if (!result.code || !quiet.includes(result.code)) setError(result.message);
+      void refresh();
+      return result;
     } finally { setPending(false); }
-  }, [me, refresh]);
+  }, [me, accept, refresh]);
+
   const actions = useMemo<ViewModelActions>(() => ({
-    sendMessage: async (text, files) => { try { await post("/api/messages", { authorId: me, text, attachments: await Promise.all(files.map(fileContent)) }); } catch (e) { setError(e instanceof Error ? e.message : "첨부 오류"); } },
-    decideCard: (id, approve) => post(`/api/cards/${encodeURIComponent(id)}`, { memberId: me, approve }),
-    setAvailability: (memberId, weeklyHours) => post("/api/availability", { memberId, weeklyHours }),
-    scenarioNext: () => post("/api/scenario/next", {}),
-    startFree: (goal, deadline) => post("/api/free/start", { goal, deadline }),
-    startScenario: name => post("/api/scenario/start", { name }),
-    switchMe: memberId => { setMe(memberId); setError(null); },
-  }), [me, post]);
-  return { vm: vm ? { ...vm, busy: vm.busy || pending } : null, error, actions };
+    sendMessage: (text, files) => {
+      const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setOutbox(items => [...items, { localId, authorId: me, text, fileNames: files.map(f => f.name), at: new Date().toISOString() }]);
+      setError(null);
+      const drop = () => setOutbox(items => items.filter(x => x.localId !== localId));
+      const run = async (): Promise<ActionResult> => {
+        let attachments: Awaited<ReturnType<typeof fileContent>>[];
+        try { attachments = await Promise.all(files.map(fileContent)); } catch {
+          drop(); setError("첨부 파일을 읽지 못했어요.");
+          return { ok: false, message: "첨부 파일을 읽지 못했어요." };
+        }
+        const result = await call(API.messages, { authorId: me, text, attachments, me });
+        if (!result.ok) { drop(); setError(result.message); void refresh(); return result; }
+        const messageId = result.data && typeof result.data === "object" ? (result.data as { messageId?: unknown }).messageId : undefined;
+        // 계약 1(202 + messageId): 기록된 메시지가 상태에 나타날 때까지 "보내는 중"을 유지한다.
+        if (typeof messageId === "string") { setOutbox(items => items.map(x => x.localId === localId ? { ...x, messageId } : x)); void refresh(); }
+        else { drop(); void accept(result.data); }
+        return { ok: true };
+      };
+      const next = sendQueue.current.then(run, run);
+      sendQueue.current = next.catch(() => undefined);
+      return next;
+    },
+    decideCard: (id, approve) => post(API.card(id), { memberId: me, approve }),
+    setAvailability: (memberId, weeklyHours) => post(API.availability, { memberId, weeklyHours }),
+    scenarioNext: () => post(API.scenarioNext, {}),
+    scenarioRetry: () => post(API.scenarioRetry, {}),
+    scenarioSkip: () => post(API.scenarioSkip, {}),
+    startFree: (goal, deadline, confirmReplace) => post(API.freeStart, { goal, deadline, ...(confirmReplace ? { confirmReplace: true } : {}) }, ["project_exists"]),
+    startScenario: (name, confirmReplace) => post(API.scenarioStart, { name, ...(confirmReplace ? { confirmReplace: true } : {}) }, ["project_exists"]),
+    switchMe: memberId => {
+      setMe(memberId); setError(null);
+      try { window.localStorage.setItem(ME_KEY, memberId); } catch { /* 저장소를 못 쓰면 이번 탭에서만 유지 */ }
+    },
+    dismissError: () => setError(null),
+  }), [me, post, accept, refresh]);
+
+  const merged = useMemo(() => {
+    if (!vm) return null;
+    const recorded = new Set(vm.messages.map(m => m.id));
+    const sending: VmMessage[] = outbox.filter(x => !x.messageId || !recorded.has(x.messageId)).map(x => ({
+      id: x.localId, authorId: x.authorId, kind: "human", text: x.text, at: x.at, local: "sending",
+      attachments: x.fileNames.map((name, i) => ({ id: `${x.localId}-${i}`, name, url: "" })),
+    }));
+    return { ...vm, busy: vm.busy || pending, messages: sending.length ? [...vm.messages, ...sending] : vm.messages };
+  }, [vm, outbox, pending]);
+
+  return { vm: merged, error, connectionLost: streamDown || fetchDown, pending, actions };
 }

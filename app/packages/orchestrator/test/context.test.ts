@@ -63,9 +63,9 @@ it('summarizes an agent result for people: what got done, what to do, where to l
     { type: 'task_checked', payload: { taskId: 'T4', resultId: 'r4', reason: 'ok' }, kind: 'pm' },
   ]);
   expect(summarizeForHuman(project(checked), 'T4', report)).toBe([
-    '[T4 프로토타입] 프로토타입 Agent 결과',
+    '[프로토타입] 프로토타입 Agent 결과',
     '무엇이 됐나: 클릭 가능한 3개 화면',
-    '할 일: @리드 T5 "사용성 테스트"을(를) 시작할 수 있습니다. 확인하지 못한 점: 태블릿 미확인',
+    '할 일: @리드 사용성 테스트를 시작할 수 있습니다. 확인하지 못한 점: 태블릿 미확인',
     '확인할 곳: proto/index.html',
   ].join('\n'));
   const revising = ledger([

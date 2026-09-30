@@ -16,7 +16,7 @@ export function forecastFromState(state: ProjectState, now: Date): ForecastResul
       assignee: spec.assignee,
       assigneeKind: member.kind,
       dependsOn: [...spec.dependsOn],
-      done: task?.status === "checked",
+      done: task?.status === "checked" && JSON.stringify(task.spec) === JSON.stringify(spec),
       hours: estimate === undefined ? undefined : { min: estimate.min, max: estimate.max },
     });
   }
@@ -25,5 +25,6 @@ export function forecastFromState(state: ProjectState, now: Date): ForecastResul
     deadline: state.goal?.deadline === undefined ? undefined : new Date(state.goal.deadline),
     tasks,
     weeklyHours: state.availability,
+    weeklyOverrides: state.availabilityOverrides,
   });
 }

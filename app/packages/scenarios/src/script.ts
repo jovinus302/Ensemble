@@ -5,7 +5,7 @@ import { respondToRevision, type RevisionGenerator } from './revision.ts';
 
 export interface Target { assignee: string; pick?: 'active' | 'next' }
 export type Condition = (
-  | { kind: 'taskOf'; assignee: string; status: TaskStatus }
+  | { kind: 'taskOf'; assignee: string; status: TaskStatus | readonly TaskStatus[] }
   | { kind: 'pmSpokeAfter' | 'silentAfter'; stepIndex: number }
   | { kind: 'planVersionAtLeast'; version: number }
   | { kind: 'planApprovalPending' }
@@ -26,7 +26,7 @@ export function resolveTarget(state: ProjectState, target: Target): string {
     ordered.push(id);
   };
   state.plan?.tasks.forEach(t => visit(t.id));
-  const statuses: TaskStatus[] = target.pick === 'next' ? ['ready', 'waiting'] : ['running', 'reserved', 'revising'];
+  const statuses: TaskStatus[] = target.pick === 'next' ? ['ready', 'waiting'] : ['running', 'reserved', 'revising', 'ready'];
   const id = ordered.find(id => {
     const t = state.tasks.get(id)!;
     return t.spec.assignee === target.assignee && statuses.includes(t.status);
@@ -38,6 +38,8 @@ export interface ScriptProgress {
   step: number;
   /** Ledger sequence immediately before each human input. */
   anchors: Record<number, number>;
+  /** Retain a delivered input when a subsequent completion wait is retried. */
+  executed?: Record<number, boolean>;
   stopped?: string;
   revisions?: Record<string, number>;
   revisionHistory?: { taskId: string; round: number; request: string; content: string }[];
@@ -47,7 +49,7 @@ export function conditionMet(condition: Condition, events: readonly LedgerEvent[
   switch (condition.kind) {
     case 'all': return condition.conditions.every(c => conditionMet(c, events, anchors));
     case 'any': return condition.conditions.some(c => conditionMet(c, events, anchors));
-    case 'taskOf': return [...state.tasks.values()].some(t => t.spec.assignee === condition.assignee && t.status === condition.status);
+    case 'taskOf': return [...state.tasks.values()].some(t => t.spec.assignee === condition.assignee && (Array.isArray(condition.status) ? condition.status.includes(t.status) : t.status === condition.status));
     case 'planVersionAtLeast': return (state.plan?.version ?? 0) >= condition.version;
     case 'planApprovalPending': return state.pendingPlans.size > 0;
     case 'pmSpokeAfter': case 'silentAfter': {
@@ -66,17 +68,29 @@ export function conditionMet(condition: Condition, events: readonly LedgerEvent[
     }
   }
 }
-export async function waitForCondition(condition: Condition, read: () => Promise<LedgerEvent[]>, anchors: Record<number, number>, options: { now?: () => number; pause?: (ms: number) => Promise<void> } = {}) {
+export interface WaitOptions {
+  now?: () => number;
+  pause?: (ms: number) => Promise<void>;
+  onWaiting?: (condition: Condition, events: readonly LedgerEvent[]) => void;
+  onReady?: () => void;
+  signal?: AbortSignal;
+}
+export async function waitForCondition(condition: Condition, read: () => Promise<LedgerEvent[]>, anchors: Record<number, number>, options: WaitOptions = {}) {
   const now = options.now ?? Date.now, pause = options.pause ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
   const started = now(), timeout = condition.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (!Number.isFinite(timeout) || timeout < 0) throw new Error('Invalid scenario condition timeout');
   while (true) {
-    if (conditionMet(condition, await read(), anchors)) return;
+    if (options.signal?.aborted) throw new Error('대본 대기를 취소했습니다.');
+    const events = await read();
+    if (conditionMet(condition, events, anchors)) { options.onReady?.(); return; }
+    options.onWaiting?.(condition, events);
     if (now() - started >= timeout) throw new Error(`Scenario timed out after ${timeout}ms waiting for ${JSON.stringify(condition)}`);
     await pause(Math.min(100, timeout - (now() - started)));
   }
 }
 export interface ScriptHost {
+  waitOptions?: WaitOptions;
+  recordHuman?: (authorId: string, text: string, step: number) => Promise<void>;
   generateRevision?: RevisionGenerator;
   pm: Pick<ProjectManager, 'startFreeProject' | 'decidePlan' | 'setAvailability' | 'postMessage'>;
   read(): Promise<LedgerEvent[]>;
@@ -88,40 +102,44 @@ export async function advanceScript(host: ScriptHost, steps: readonly ScriptedSt
   try {
     const step = steps[progress.step];
     if (!step) return;
-    if (step.waitFor) await waitForCondition(step.waitFor, () => host.read(), progress.anchors);
-    const events = await host.read(), state = project(events);
-    progress.anchors[progress.step] = state.lastSeq;
-    if (state.members.get(step.as)?.kind !== 'human') throw new Error(`Script author ${step.as} is not human`);
-    if (step.action === 'respondToRevision') {
-      await respondToRevision(host, step, progress);
-    } else if (step.action === 'goal') {
-      const result = await host.pm.startFreeProject(step.text, '2026-10-12T00:00:00Z');
-      if (result.failure) throw new Error(result.failure.reason);
-    } else if (step.action === 'approvePlan') {
-      const proposal = [...state.pendingPlans.values()].find(p => p.forMemberId === step.as);
-      const plan = proposal ?? state.plan;
-      if (!plan || (!proposal && state.plan?.approvedBy !== step.as)) throw new Error(`No plan approval pending or recorded for ${step.as}`);
-      // Validate the draft before approving; never replace or repair it for the script.
-      for (const assignee of ['owner', 'designer', 'prototype-agent']) {
-        if (!plan.tasks.some(t => t.assignee === assignee)) throw new Error(`Drafted plan lacks required tasks for ${assignee}`);
+    if (!progress.executed?.[progress.step]) {
+      if (step.waitFor) await waitForCondition(step.waitFor, () => host.read(), progress.anchors, host.waitOptions);
+      const events = await host.read(), state = project(events);
+      progress.anchors[progress.step] = state.lastSeq;
+      if (state.members.get(step.as)?.kind !== 'human') throw new Error(`Script author ${step.as} is not human`);
+      if (['goal', 'approvePlan', 'availability'].includes(step.action ?? '')) await host.recordHuman?.(step.as, step.text, progress.step);
+      if (step.action === 'respondToRevision') {
+        await respondToRevision(host, step, progress);
+      } else if (step.action === 'goal') {
+        const result = await host.pm.startFreeProject(step.text, '2026-10-12T00:00:00Z');
+        if (result.failure) throw new Error(result.failure.reason);
+      } else if (step.action === 'approvePlan') {
+        const proposal = [...state.pendingPlans.values()].find(p => p.forMemberId === step.as);
+        const plan = proposal ?? state.plan;
+        if (!plan || (!proposal && state.plan?.approvedBy !== step.as)) throw new Error(`No plan approval pending or recorded for ${step.as}`);
+        // Validate the draft before approving; never replace or repair it for the script.
+        for (const assignee of ['owner', 'designer', 'prototype-agent']) {
+          if (!plan.tasks.some(t => t.assignee === assignee)) throw new Error(`Drafted plan lacks required tasks for ${assignee}`);
+        }
+        if (proposal) await host.pm.decidePlan(proposal.proposalId, step.as, true);
+      } else if (step.action === 'availability') {
+        await host.pm.setAvailability(step.as, step.weeklyHours!);
+      } else if (step.action === 'answerIfAsked') {
+        // A literal human choice, conditional on a new PM question. Never invent PM dialogue.
+        const after = progress.anchors[progress.step - 1] ?? state.lastSeq;
+        const question = (events as AnyEvent[]).findLast(e => e.seq > after && e.type === 'pm_spoke' && e.payload.kind === 'ask' && e.payload.text.includes('(선택지:'));
+        if (question?.type === 'pm_spoke') {
+          const choice = /\(선택지:\s*([^)]*)\)/.exec(question.payload.text)?.[1]?.split(' / ')[0]?.trim();
+          if (!choice) throw new Error('PM decision question has no readable choice');
+          await host.pm.postMessage(step.as, choice);
+        }
+      } else {
+        const taskId = step.target ? resolveTarget(state, step.target) : undefined;
+        await host.pm.postMessage(step.as, step.text, step.attachments?.map(a => ({ ...a, ...(taskId ? { taskId } : {}) })));
       }
-      if (proposal) await host.pm.decidePlan(proposal.proposalId, step.as, true);
-    } else if (step.action === 'availability') {
-      await host.pm.setAvailability(step.as, step.weeklyHours!);
-    } else if (step.action === 'answerIfAsked') {
-      // A literal human choice, conditional on a new PM question. Never invent PM dialogue.
-      const after = progress.anchors[progress.step - 1] ?? state.lastSeq;
-      const question = (events as AnyEvent[]).findLast(e => e.seq > after && e.type === 'pm_spoke' && e.payload.kind === 'ask' && e.payload.text.includes('(선택지:'));
-      if (question?.type === 'pm_spoke') {
-        const choice = /\(선택지:\s*([^)]*)\)/.exec(question.payload.text)?.[1]?.split(' / ')[0]?.trim();
-        if (!choice) throw new Error('PM decision question has no readable choice');
-        await host.pm.postMessage(step.as, choice);
-      }
-    } else {
-      const taskId = step.target ? resolveTarget(state, step.target) : undefined;
-      await host.pm.postMessage(step.as, step.text, step.attachments?.map(a => ({ ...a, ...(taskId ? { taskId } : {}) })));
+      (progress.executed ??= {})[progress.step] = true;
     }
-    if (progress.step === steps.length - 1 && completion) await waitForCondition(completion, () => host.read(), progress.anchors);
+    if (progress.step === steps.length - 1 && completion) await waitForCondition(completion, () => host.read(), progress.anchors, host.waitOptions);
     progress.step++;
   } catch (error) {
     progress.stopped = `Step ${progress.step}: ${error instanceof Error ? error.message : String(error)}`;

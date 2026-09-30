@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { VmMember, VmRoadmap } from "../lib/view-model";
-import { formatDate, statusInfo } from "./format";
+import { useEffect, useRef, useState } from "react";
+import type { VmMember, VmRoadmap, VmRoadmapTask } from "../lib/view-model";
+import { availabilityLabel, formatDate, formatDays, formatHourRange, formatHours, spanLabel, statusInfo } from "./format";
+import type { ActionResult } from "./use-view-model";
 
 const TONE_ICON = { done: "✓", working: "◐", needs: "✋", failed: "!", queued: "◷" } as const;
 
@@ -25,12 +26,12 @@ function ScheduleBars({ roadmap }: { roadmap: VmRoadmap }) {
         const tone = statusInfo(t.status).tone;
         return (
           <div key={t.id} className="bar-row">
-            <span className="bar-label">{t.title}</span>
+            <span className="bar-label" title={t.title}>{t.title}</span>
+            <span className="bar-days num">{spanLabel(roadmap.origin, start, min, max)}</span>
             <div className="bar-track">
-              <span className={`bar bar-${tone}`} style={{ left: pct(start), width: pct(min - start) }} />
+              <span className={`bar bar-${tone}`} style={{ left: pct(start), width: pct(Math.max(min - start, 0)) }} />
               {max > min && <span className={`bar bar-range bar-${tone}`} style={{ left: pct(min), width: pct(max - min) }} />}
             </div>
-            <span className="bar-days num">D{start}–{min === max ? max : `${min}~${max}`}</span>
           </div>
         );
       })}
@@ -39,29 +40,72 @@ function ScheduleBars({ roadmap }: { roadmap: VmRoadmap }) {
   );
 }
 
-function AvailabilityRow({ member, editable, onSave }: { member: VmMember; editable: boolean; onSave: (h: number) => Promise<void> }) {
+type SaveState = "idle" | "saving" | "saved" | "failed";
+
+function AvailabilityRow({ member, editable, onSave }: { member: VmMember; editable: boolean; onSave: (h: number) => Promise<ActionResult> }) {
   const [draft, setDraft] = useState(String(member.weeklyHours ?? ""));
+  const [save, setSave] = useState<SaveState>("idle");
+  const inFlight = useRef<number | null>(null);
   useEffect(() => { setDraft(String(member.weeklyHours ?? "")); }, [member.weeklyHours]);
-  const commit = () => {
+  useEffect(() => {
+    if (save !== "saved") return;
+    const timer = setTimeout(() => setSave("idle"), 2500);
+    return () => clearTimeout(timer);
+  }, [save]);
+  // Enter와 칸 벗어남이 겹쳐도 같은 값은 한 번만 저장한다.
+  const commit = async () => {
     const n = Number(draft);
     if (draft.trim() === "" || !Number.isFinite(n) || n < 0 || n > 168) { setDraft(String(member.weeklyHours ?? "")); return; }
-    if (n !== member.weeklyHours) void onSave(n);
+    if (n === member.weeklyHours || n === inFlight.current) return;
+    inFlight.current = n; setSave("saving");
+    try {
+      const result = await onSave(n);
+      setSave(result.ok ? "saved" : "failed");
+    } finally { inFlight.current = null; }
   };
   return (
     <li className="avail-row">
-      <span>{member.displayName}{editable && <span className="me-tag">나</span>}</span>
+      <span>
+        {member.displayName}{editable && <span className="me-tag">나</span>}
+        {editable && member.weeklyHoursThisWeek !== undefined && <span className="avail-week">{availabilityLabel(member.weeklyHours, member.weeklyHoursThisWeek)}</span>}
+      </span>
       {editable ? (
-        <label className="avail-input">
-          <input
-            type="number" min={0} max={168} step={1} inputMode="numeric" value={draft}
-            aria-label={`${member.displayName} 주간 가용 시간`}
-            onChange={e => setDraft(e.target.value)} onBlur={commit}
-            onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-          />
-          <span>시간/주</span>
-        </label>
+        <span className="avail-edit">
+          <span className={`save-state save-${save}`} role="status" aria-live="polite">
+            {save === "saving" ? "저장 중…" : save === "saved" ? "✓ 저장됨" : save === "failed" ? "저장 못 함" : ""}
+          </span>
+          <label className="avail-input">
+            <input
+              type="number" min={0} max={168} step={0.5} inputMode="decimal" value={draft}
+              aria-label={`${member.displayName} 기본 주간 가용 시간`}
+              onChange={e => { setDraft(e.target.value); if (save !== "saving") setSave("idle"); }}
+              onBlur={() => void commit()}
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void commit(); } }}
+            />
+            <span>시간/주</span>
+          </label>
+        </span>
       ) : (
-        <span className="num muted">{member.weeklyHours !== undefined ? `${member.weeklyHours}시간/주` : "미입력"}</span>
+        <span className="num muted">{availabilityLabel(member.weeklyHours, member.weeklyHoursThisWeek)}</span>
+      )}
+    </li>
+  );
+}
+
+function TaskRow({ task }: { task: VmRoadmapTask }) {
+  const conditions = task.handoffConditions ?? [];
+  return (
+    <li>
+      <div className="task-row">
+        <span className="task-title">{task.title}</span>
+        <span className="muted small">{task.assigneeName}</span>
+        <StatusChip status={task.status} />
+      </div>
+      {(task.hours || conditions.length > 0) && (
+        <details className="task-details small">
+          <summary>{task.hours ? `추정 ${formatHourRange(task.hours.min, task.hours.max)}` : "자세히"}{conditions.length > 0 ? ` · 인계 조건 ${conditions.length}개` : ""}</summary>
+          {conditions.length > 0 && <ul>{conditions.map((c, i) => <li key={i}>{c}</li>)}</ul>}
+        </details>
       )}
     </li>
   );
@@ -69,7 +113,7 @@ function AvailabilityRow({ member, editable, onSave }: { member: VmMember; edita
 
 export function RoadmapCard({ roadmap, deadline, members, me, onSetAvailability }: {
   roadmap: VmRoadmap; deadline?: string; members: VmMember[]; me: string;
-  onSetAvailability: (memberId: string, weeklyHours: number) => Promise<void>;
+  onSetAvailability: (memberId: string, weeklyHours: number) => Promise<ActionResult>;
 }) {
   const f = roadmap.forecast;
   const late = f?.ok === true && (f.lateDaysMax ?? 0) > 0;
@@ -89,16 +133,16 @@ export function RoadmapCard({ roadmap, deadline, members, me, onSetAvailability 
           <>
             <div className="forecast-line">
               <span className="muted small">예상 종료</span>
-              <strong className="num">{formatDate(f.finishMin)}{f.finishMax !== f.finishMin && ` – ${formatDate(f.finishMax)}`}</strong>
+              <strong className="num">{formatDate(f.finishMin)}{formatDate(f.finishMax) !== formatDate(f.finishMin) && ` – ${formatDate(f.finishMax)}`}</strong>
             </div>
             <div className="forecast-line">
               <span className="muted small">기한</span>
               <strong className="num">{formatDate(f.deadline ?? deadline) || "없음"}</strong>
             </div>
-            {late && <p className="late-note"><span aria-hidden>⚠</span> 기한을 최대 {f.lateDaysMax}일 넘길 수 있어요</p>}
+            {late && <p className="late-note"><span aria-hidden>⚠</span> 기한을 최대 {formatDays(f.lateDaysMax ?? 0)} 넘길 수 있어요</p>}
             {f.shortage.length > 0 && (
               <ul className="shortage">
-                {f.shortage.map(s => <li key={s.memberName}>{s.memberName} <strong className="num">{s.hours}시간</strong> 부족</li>)}
+                {f.shortage.map(s => <li key={s.memberName}>{s.memberName} <strong className="num">{formatHours(s.hours)}</strong> 부족</li>)}
               </ul>
             )}
           </>
@@ -113,13 +157,7 @@ export function RoadmapCard({ roadmap, deadline, members, me, onSetAvailability 
       <section aria-label="작업 목록">
         <h3 className="section-label">작업</h3>
         <ul className="task-list">
-          {roadmap.tasks.map(t => (
-            <li key={t.id}>
-              <span className="task-title">{t.title}</span>
-              <span className="muted small">{t.assigneeName}</span>
-              <StatusChip status={t.status} />
-            </li>
-          ))}
+          {roadmap.tasks.map(t => <TaskRow key={t.id} task={t} />)}
         </ul>
         <ScheduleBars roadmap={roadmap} />
       </section>

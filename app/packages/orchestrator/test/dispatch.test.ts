@@ -109,7 +109,7 @@ it('requests a concrete revision for an insufficient draft, then starts T4 exact
   expect(JSON.stringify(input)).not.toContain('점심');
   expect(JSON.stringify(input)).not.toContain('flow-v1.md');
 
-  expect(second.kind === 'checked' && second.notices).toEqual([expect.stringMatching(/^@리드 T5 /)]);
+  expect(second.kind === 'checked' && second.notices).toEqual([expect.stringMatching(/^@리드 사용성 테스트 준비를/)]);
   expect(second.kind === 'checked' && second.started).toEqual([{ taskId: 'T4', agentId: 'proto', turnId: 'turn-1' }]);
   const events = await store.read();
   expect(events.filter((e) => e.type === 'handoff_reviewed')).toHaveLength(2);
@@ -149,7 +149,7 @@ it('reports an error to a person after one retry when the model returns nothing,
   const { store, llm, connector, dispatcher } = await fixture([[], []]);
   await store.append([submit('T3', 'r1', ['flow-v2.md'], 'designer')]);
   const outcome = await dispatcher.onResultSubmitted('T3', 'r1');
-  expect(outcome).toMatchObject({ kind: 'error', message: expect.stringContaining('비어 있음') });
+  expect(outcome).toMatchObject({ kind: 'error', message: expect.stringContaining('판단을 마치지 못했습니다') });
   expect(llm.requests).toHaveLength(2);
   expect(await types(store, 'handoff_reviewed')).toHaveLength(0);
   expect(await types(store, 'revision_requested')).toHaveLength(0);
@@ -177,7 +177,7 @@ it('relays agent questions to a person and routes answers by steering or into th
 
   const asked = await dispatcher.onQuestion('T4', '태블릿도 지원할까요?', { choices: ['모바일만', '둘 다'] });
   expect(asked).toMatchObject({ questionId: 'question:T4:1', to: 'lead' });
-  expect(asked.text).toMatch(/^@리드 T4 "프로토타입" 담당 프로토타입 Agent의 질문입니다: 태블릿도 지원할까요\? \(선택지: 모바일만 \/ 둘 다\)$/);
+  expect(asked.text).toMatch(/^@리드 "프로토타입" 담당 프로토타입 Agent의 질문입니다: 태블릿도 지원할까요\? \(선택지: 모바일만 \/ 둘 다\)$/);
   expect(await types(store, 'pm_considered')).toHaveLength(1);
   expect(buildTaskContext(project(await store.read()), 'T4', await store.read()).openQuestions).toEqual([{ text: asked.text, sourceId: 'question:T4:1' }]);
 

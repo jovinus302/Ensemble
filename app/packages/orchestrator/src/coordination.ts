@@ -1,3 +1,5 @@
+import { availabilityWeek } from '@ensemble/core';
+import { channelText, taskName, numericFacts, hasGroundedNumbers } from './channel-text.ts';
 import { affectedMembers, automationGate, diffPlans, forecastFromState, isAutomationAction, limitReachedEvent, project, applyOps, opAuthority } from '@ensemble/core';
 import { createHash } from 'node:crypto';
 import type { AnyEvent, EventContext, EventPayloads, EventType, LedgerEvent, NewLedgerEvent, PlanOp, ProjectState } from '@ensemble/core';
@@ -51,8 +53,9 @@ function interpretationTool(state: ProjectState): ToolSpec {
     conversation: { type: 'object', additionalProperties: false, required: ['questionMessageId', 'waitingOnMemberIds', 'directedToPm'], properties: { questionMessageId: { type: ['string', 'null'], description: '마지막 사람 메시지의 질문·제안 ID, 없으면 null' }, waitingOnMemberIds: { type: 'array', items: memberId, description: '답을 기다리는 다른 사람 ID. 질문자 자신은 금지. directedToPm=true이면 반드시 빈 배열 []' }, directedToPm: { type: 'boolean', description: 'PM에게 계산·기록의 답을 묻는 질문이면 true. 사람에게 허락을 구하는 제안은 false' } } },
     factMentions: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['messageId', 'factIds'], properties: { messageId: { type: 'string' }, factIds: stringArray } } },
     ops: { type: 'array', items: { oneOf: [
-      op('set_availability', { memberId: ids([...state.members.values()].filter(m => m.kind === 'human').map(m => m.memberId)), weeklyHours: { type: 'number', minimum: 0 } }),
+      op('set_availability', { memberId: ids([...state.members.values()].filter(m => m.kind === 'human').map(m => m.memberId)), weeklyHours: { type: 'number', minimum: 0 }, period: { enum: ['this_week', 'ongoing', 'unclear'], description: '이번 주만/앞으로 계속/기간 불명확' } }),
       op('exclude_scope', { taskId, item: { type: 'string', minLength: 1 } }),
+      op('limit_scope', { taskId, items: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } } }),
       op('handoff_early', { taskId }), op('reassign', { taskId, assignee: memberId }),
       op('set_deadline', { date: { type: 'string' } }), op('change_goal', { text: { type: 'string', minLength: 1 } }),
     ] } },
@@ -62,12 +65,13 @@ export function validOp(value: unknown, state: ProjectState): value is PlanOp {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   if (!strings(v.sourceMessageIds) || !v.sourceMessageIds.length || !v.sourceMessageIds.every(id => state.messages.some(m => m.messageId === id && state.members.get(m.authorId)?.kind === 'human'))) return false;
-  const fields: Record<string, string[]> = { set_availability: ['memberId', 'weeklyHours'], exclude_scope: ['taskId', 'item'], handoff_early: ['taskId'], reassign: ['taskId', 'assignee'], set_deadline: ['date'], change_goal: ['text'] };
+  const fields: Record<string, string[]> = { set_availability: ['memberId', 'weeklyHours', 'weekStart', 'period'], exclude_scope: ['taskId', 'item'], limit_scope: ['taskId', 'items'], handoff_early: ['taskId'], reassign: ['taskId', 'assignee'], set_deadline: ['date'], change_goal: ['text'] };
   const allowed = fields[String(v.type)];
   if (!allowed || Object.keys(v).some(k => !['type', 'sourceMessageIds', ...allowed].includes(k))) return false;
   if (allowed.includes('taskId') && !state.plan?.tasks.some(t => t.id === v.taskId)) return false;
   switch (v.type) {
-    case 'set_availability': return state.members.get(String(v.memberId))?.kind === 'human' && typeof v.weeklyHours === 'number' && Number.isFinite(v.weeklyHours) && v.weeklyHours >= 0;
+    case 'set_availability': return state.members.get(String(v.memberId))?.kind === 'human' && typeof v.weeklyHours === 'number' && Number.isFinite(v.weeklyHours) && v.weeklyHours >= 0 && (v.period === undefined || ['this_week', 'ongoing', 'unclear'].includes(String(v.period))) && (v.weekStart === undefined || (typeof v.weekStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.weekStart) && availabilityWeek(new Date(`${v.weekStart}T00:00:00+09:00`)) === v.weekStart));
+    case 'limit_scope': return strings(v.items) && v.items.length > 0;
     case 'exclude_scope': return typeof v.item === 'string' && !!v.item.trim();
     case 'handoff_early': return true;
     case 'reassign': return state.members.has(String(v.assignee));
@@ -76,12 +80,14 @@ export function validOp(value: unknown, state: ProjectState): value is PlanOp {
     default: return false;
   }
 }
-function describeOp(op: PlanOp): string {
+function describeOp(op: PlanOp, state: ProjectState): string {
+  const name = (id: string) => state.members.get(id)?.displayName ?? id;
   switch (op.type) {
-    case 'set_availability': return `${op.memberId} 가용 시간 주 ${op.weeklyHours}시간`;
-    case 'exclude_scope': return `${op.taskId}에서 ${op.item} 제외`;
-    case 'handoff_early': return `${op.taskId} 초안 단계에서 인계 가능`;
-    case 'reassign': return `${op.taskId} 담당 ${op.assignee}`;
+    case 'set_availability': return `${name(op.memberId)} 가용 시간 ${op.weekStart ? "이번 주만" : "매주"} ${op.weeklyHours}시간`;
+    case 'exclude_scope': return `${taskName(state, op.taskId)}에서 ${op.item} 제외`;
+    case 'limit_scope': return `${taskName(state, op.taskId)} 범위를 ${op.items.join(' · ')}까지만 한정`;
+    case 'handoff_early': return `${taskName(state, op.taskId)} 초안 단계에서 인계 가능`;
+    case 'reassign': return `${taskName(state, op.taskId)} 담당 ${name(op.assignee)}`;
     case 'set_deadline': return `기한 ${op.date}`;
     case 'change_goal': return `목표 ${op.text}`;
   }
@@ -94,6 +100,21 @@ const judgementTool: ToolSpec = { name: 'judge_coordination', description: '세 
   targetMemberIds: stringArray, changesOpenQuestionAnswer: { type: 'boolean' }, answerFactIds: stringArray,
 } } };
 const fingerprint = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+function forecastMeaning(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'number') return Number(value.toFixed(1));
+  if (Array.isArray(value)) return value.map(forecastMeaning);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k,v]) => [k, forecastMeaning(k === 'shortages' && Array.isArray(v) ? v.filter(s => Number(s.hours.toFixed(1)) > 0) : v)]));
+  return value;
+}
+function factFingerprint(id: string, value: unknown): string {
+  if (!id.startsWith('forecast:')) return fingerprint(value);
+  if (value && typeof value === 'object' && 'capacity' in value) {
+    const { capacity, ...rest } = value as Record<string, unknown>;
+    return fingerprint(forecastMeaning({ forecast: rest.forecast ?? rest, capacity }));
+  }
+  return fingerprint(forecastMeaning(value));
+}
 
 /** Fixed operations preserve task identity; authority and calculations stay in code. */
 export class Coordinator {
@@ -129,6 +150,7 @@ export class Coordinator {
     const state = project(events);
     const message = state.messages.find(m => m.messageId === messageId);
     if (!message) throw new Error(`Unknown message ${messageId}`);
+    state.messages = state.messages.filter(m => m.seq <= message.seq || state.members.get(m.authorId)?.kind !== 'human');
     if (events.some(e => e.type === 'pm_considered' && e.payload.triggerId === messageId)) return { posts: [], events: [] };
     const now = (this.options.clock ?? (() => new Date()))();
     const version = state.plan?.version ?? 0;
@@ -147,23 +169,31 @@ export class Coordinator {
     const lastHuman = humanMessages.at(-1);
     const facts = { messageId, planVersion: version, now, messages: state.messages, knownFacts, plan: state.plan, members: [...state.members.values()], activeTurns: [...state.activeTurn], availability: [...state.availability], estimates: [...state.estimates], goal: state.goal, currentForecast: current, forecastInputIds: forecastInputs, decisions: [...state.decisions.values()], pendingAuthority: [...state.pendingAuthority.values()], previousSpeech: prior, openTopics: state.openTopics };
     if (confirmed && (!confirmed.every(op => validOp(op, state) && opAuthority(state, op).allowed))) throw new Error('Invalid or unauthorized confirmed operation');
-    const interpretation = confirmed ? { category: 'authority', summary: 'Approved authority request', ops: confirmed, conflicts: [] } : await this.call<CoordinationInterpretation>(interpretationTool(state), facts, v =>
+    const interpretation = confirmed ? { category: 'authority', summary: '기록된 변경 승인', ops: confirmed, conflicts: [] } : await this.call<CoordinationInterpretation>(interpretationTool(state), facts, v =>
       Object.keys(v).every(k => ['category', 'summary', 'ops', 'conflicts', 'conversation', 'factMentions'].includes(k)) && typeof v.category === 'string' && typeof v.summary === 'string' && Array.isArray(v.ops) && v.ops.every(op => validOp(op, state)) && strings(v.conflicts) && v.conflicts.every(id => state.decisions.has(id))
       && validConversation(v.conversation, state, lastHuman?.messageId)
       && Array.isArray(v.factMentions) && v.factMentions.every(mention => mention && typeof mention === 'object' && humanMessages.some(m => m.messageId === mention.messageId) && strings(mention.factIds) && mention.factIds.every((id: string) => knownFacts.some(f => f.id === id))));
-    const ops = interpretation?.ops ?? [];
+    const unclearAvailability = (interpretation?.ops ?? []).filter(op => op.type === 'set_availability' && (op as PlanOp & { period?: string }).period === 'unclear');
+    const ops = (interpretation?.ops ?? []).filter(op => !unclearAvailability.includes(op)).map(op => {
+      if (op.type !== 'set_availability') return op;
+      const { period, ...operation } = op as Extract<PlanOp, { type: 'set_availability' }> & { period?: string };
+      return { ...operation, ...(period === 'this_week' ? { weekStart: availabilityWeek(now) } : {}) };
+    });
     const conversation = interpretation?.conversation ?? { questionMessageId: null, waitingOnMemberIds: [], directedToPm: false };
     const openHumanQuestion = conversation.questionMessageId !== null && conversation.waitingOnMemberIds.length > 0 && !conversation.directedToPm;
     const candidate = structuredClone(state);
     if (candidate.plan) candidate.plan.tasks = applyOps(candidate.plan.tasks, ops);
     for (const op of ops) {
-      if (op.type === 'set_availability') candidate.availability.set(op.memberId, op.weeklyHours);
+      if (op.type === 'set_availability') {
+        if (op.weekStart) { const weeks = candidate.availabilityOverrides.get(op.memberId) ?? new Map<string, number>(); weeks.set(op.weekStart, op.weeklyHours); candidate.availabilityOverrides.set(op.memberId, weeks); }
+        else candidate.availability.set(op.memberId, op.weeklyHours);
+      }
       if (op.type === 'set_deadline' && candidate.goal) candidate.goal.deadline = op.date;
     }
     const proposed = forecastFromState(candidate, now);
     const assessed = ops.map(op => ({ op, ...opAuthority(state, op) }));
     const applied = assessed.filter(a => a.allowed).map(a => a.op).filter(op => {
-      if (op.type === 'set_availability') return state.availability.get(op.memberId) !== op.weeklyHours;
+      if (op.type === 'set_availability') return (op.weekStart ? state.availabilityOverrides.get(op.memberId)?.get(op.weekStart) : state.availability.get(op.memberId)) !== op.weeklyHours;
       // A question/proposal awaiting a person is not a confirmed plan change,
       // even when its author would have authority to make that change.
       if (openHumanQuestion && op.sourceMessageIds.includes(conversation.questionMessageId!)) return false;
@@ -180,35 +210,43 @@ export class Coordinator {
     const absent = affected.filter(id => !participants.has(id));
     const impact = { current, proposed, deltaDays: current.ok && proposed.ok ? { min: proposed.days.min - current.days.min, max: proposed.days.max - current.days.max } : null, diff, affected, absent, operations: assessed, conflicts: interpretation?.conflicts ?? [] };
     const lastAvailability = events.findLastIndex(e => e.type === 'availability_updated');
-    const beforeAvailability = lastAvailability >= 0 ? forecastFromState(project(events.slice(0, lastAvailability)), now) : undefined;
-    const factList = [
+    const beforeState = lastAvailability >= 0 ? project(events.slice(0, lastAvailability)) : undefined;
+    const beforeAvailability = beforeState ? forecastFromState(beforeState, now) : undefined;
+    const capacity = (s: ProjectState) => [...s.members.values()].filter(m => m.kind === 'human').map(m => ({ memberId: m.memberId, name: m.displayName, baselineWeeklyHours: s.availability.get(m.memberId), overrides: [...(s.availabilityOverrides.get(m.memberId) ?? [])] }));
+    const factList: { id: string; description: string; value: unknown }[] = [
       ...state.messages.map(m => ({ id: `msg:${m.messageId}`, description: '기록된 사실', value: m })),
       ...[...state.decisions.values()].map(d => ({ id: `decision:${d.decisionId}`, description: '기록된 사실', value: d })),
-      { id: 'forecast:current', description: '현재 계획의 계산 결과', value: current },
-      { id: 'forecast:candidate', description: '후보 연산 적용 시 계산 결과와 현재 대비 일수 차이', value: { forecast: proposed, deltaDays: impact.deltaDays } },
-      ...(beforeAvailability?.ok ? [{ id: 'forecast:before_availability', description: '마지막 가용 시간 기록 직전의 계획을 현재 시각으로 계산한 결과', value: beforeAvailability }] : []),
+      { id: 'forecast:current', description: '현재 계획의 계산 결과와 사람별 기준 시간', value: { ...current, capacity: capacity(state) } },
+      { id: 'forecast:candidate', description: '후보 연산 적용 시 계산 결과와 현재 대비 일수 차이', value: { forecast: proposed, deltaDays: impact.deltaDays, capacity: capacity(candidate) } },
+      ...(beforeAvailability?.ok ? [{ id: 'forecast:before_availability', description: '마지막 가용 시간 기록 직전의 계획을 현재 시각으로 계산한 결과', value: { ...beforeAvailability, capacity: capacity(beforeState!) } }] : []),
       ...(state.plan?.tasks ?? []).map(t => ({ id: `task:${t.id}`, description: '현재 작업', value: t })),
       ...[...state.availability].map(([id, hours]) => ({ id: `availability:${id}`, description: '주간 가용 시간', value: hours })),
       ...absent.map(id => ({ id: `absent:${id}`, description: '변경 영향이 있지만 대화에 없는 담당자', value: id })),
     ];
+    const availabilityDelta = current.ok && beforeAvailability?.ok ? { min: current.days.min - beforeAvailability.days.min, max: current.days.max - beforeAvailability.days.max } : null;
+    factList.push({ id: 'forecast:availability_delta', description: '가용 시간 변경 전후의 예측 차이(일)', value: availabilityDelta });
+    const allowedNumbers = numericFacts(factList.map(f => f.value));
     const validIds = new Set(factList.map(f => f.id));
-    const factVersions = Object.fromEntries(factList.map(f => [f.id, fingerprint(f.value)]));
+    const factVersions = Object.fromEntries(factList.map(f => [f.id, factFingerprint(f.id, f.value)]));
     const knowledge = factList.map(f => {
-      const posted = prior.some(p => p.type === 'pm_considered' && p.payload.evidence.includes(f.id)
-        && (!(p.payload as Pick<CoordinationJudgement, 'factVersions'>).factVersions?.[f.id] || (p.payload as Pick<CoordinationJudgement, 'factVersions'>).factVersions?.[f.id] === factVersions[f.id]));
+      const posted = prior.some(p => p.type === 'pm_considered' && p.payload.evidence.some(id => {
+        const version = (p.payload as Pick<CoordinationJudgement, 'factVersions'>).factVersions?.[id];
+        return (id === f.id && (!version || version === factVersions[f.id]))
+          || (id.startsWith('forecast:') && f.id.startsWith('forecast:') && version === factVersions[f.id]);
+      }));
       const mentionedBy = humanMessages.filter(m => interpretation?.factMentions?.some(mention => mention.messageId === m.messageId && mention.factIds.includes(f.id))).map(m => m.authorId);
       return { factId: f.id, posted, knownBy: [...new Set([...mentionedBy, ...(posted ? humanMessages.map(m => m.authorId) : [])])] };
     });
     const tool = structuredClone(judgementTool);
     (tool.inputSchema.properties as Record<string, unknown>).evidence = { type: 'array', items: { type: 'string', enum: [...validIds] } };
-    let judgement: CoordinationJudgement | undefined = confirmed ? { whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: 'Person approved the recorded operation', openTopics: state.openTopics, text: '승인한 변경을 반영했습니다.' } : interpretation ? await this.call<CoordinationJudgement>(tool, { ...facts, factList, interpretation, impact, knowledge, conversation, openHumanQuestion }, v => (v.whoseAction === null || typeof v.whoseAction === 'string') && ['yes', 'no', 'unknown'].includes(String(v.alreadyKnows)) && strings(v.evidence) && v.evidence.every(id => validIds.has(id)) && ['speak', 'silent'].includes(String(v.decision)) && typeof v.reason === 'string' && strings(v.openTopics) && typeof v.text === 'string' && (v.decision !== 'speak' || v.text.trim().length > 0)
+    let judgement: CoordinationJudgement | undefined = confirmed ? { whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: '담당자가 기록된 변경을 승인했다', openTopics: state.openTopics, text: '승인한 변경을 반영했습니다.' } : interpretation ? await this.call<CoordinationJudgement>(tool, { ...facts, factList, allowedNumericValues: [...allowedNumbers], interpretation, impact, knowledge, conversation, openHumanQuestion }, v => (v.whoseAction === null || typeof v.whoseAction === 'string') && ['yes', 'no', 'unknown'].includes(String(v.alreadyKnows)) && strings(v.evidence) && v.evidence.every(id => validIds.has(id)) && ['speak', 'silent'].includes(String(v.decision)) && typeof v.reason === 'string' && strings(v.openTopics) && typeof v.text === 'string' && hasGroundedNumbers(v.text, allowedNumbers) && (v.decision !== 'speak' || v.text.trim().length > 0)
       && strings(v.targetMemberIds) && v.targetMemberIds.every(id => state.members.has(id)) && (v.decision !== 'speak' || v.targetMemberIds.length > 0)
       && typeof v.changesOpenQuestionAnswer === 'boolean'
       && strings(v.answerFactIds) && v.answerFactIds.every(id => validIds.has(id) && (v.evidence as string[]).includes(id))) : undefined;
     const validJudgement = !!judgement;
     judgement ??= { whoseAction: null, alreadyKnows: 'unknown', evidence: [], decision: 'silent', reason: '판단 불가', openTopics: state.openTopics, text: '' };
     judgement.factVersions = factVersions;
-    judgement.openTopics = [...new Set([...judgement.openTopics, ...pending.map(a => `${describeOp(a.op)} — ${a.personId ?? '결정권자'} 확인 필요`)])];
+    judgement.openTopics = [...new Set([...judgement.openTopics, ...pending.map(a => `${describeOp(a.op, state)} — ${a.personId ?? '결정권자'} 확인 필요`)])];
     if (judgement.decision === 'speak' && (!judgement.whoseAction?.trim() || judgement.alreadyKnows === 'yes' || !judgement.evidence.length)) judgement = { ...judgement, decision: 'silent', reason: '행동 변화 또는 새로운 근거 없음' };
     const computedEvidence = judgement.evidence.filter(id => !id.startsWith('msg:'));
     const targets = judgement.targetMemberIds?.length ? judgement.targetMemberIds : state.members.has(judgement.whoseAction ?? '') ? [judgement.whoseAction!] : [];
@@ -218,8 +256,17 @@ export class Coordinator {
     if (!confirmed && judgement.decision === 'speak') {
       if (!computedEvidence.length && !directAnswer) judgement = { ...judgement, decision: 'silent', reason: '이미 나온 말의 반복: 대화 밖에서 계산한 새 사실 없음' };
       else if ((computedEvidence.length > 0 && !newFacts.length) || (!computedEvidence.length && judgement.evidence.every(known))) judgement = { ...judgement, alreadyKnows: 'yes', decision: 'silent', reason: '이미 전달한 근거: 대상자가 이미 아는 사실' };
-      else if (openHumanQuestion && (!newFacts.length || judgement.changesOpenQuestionAnswer !== true)) judgement = { ...judgement, decision: 'silent', reason: '사람 사이 질문의 답을 바꾸는 새 사실 없음' };
+      else if (openHumanQuestion && (participants.has(state.goal?.decider ?? '') || !newFacts.length || judgement.changesOpenQuestionAnswer !== true)) judgement = { ...judgement, decision: 'silent', reason: '결정권자가 참여한 사람 사이 질문은 답을 기다린다' };
+      // A person's own capacity update is already shared with the present decider.
+      // It records a commitment, not a request for the PM to start coordinating it.
+      if (!conversation.directedToPm && participants.has(state.goal?.decider ?? '')
+        && applied.length > 0 && applied.every(op => op.type === 'set_availability' && op.memberId === message.authorId)
+        && pending.length === 0 && !interpretation?.conflicts.length) {
+        judgement = { ...judgement, decision: 'silent', reason: '본인이 공유한 가용 시간은 기록하고 참여 중인 결정권자와의 조율을 기다린다' };
+      }
     }
+    if (unclearAvailability.length) judgement = { ...judgement, decision: 'speak', whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], reason: '기간이 불명확하여 가용 시간을 바꾸기 전에 확인이 필요하다', text: '말씀하신 가용 시간은 이번 주만인가요, 앞으로도 매주 같은가요?' };
+    judgement.text = channelText(judgement.text, state);
     let post: CoordinationResult['posts'][number] | undefined = judgement.decision === 'speak' ? { text: judgement.text, kind: 'answer' } : undefined;
     const append: NewLedgerEvent[] = [];
     if (confirmed && requestId) {
@@ -230,12 +277,12 @@ export class Coordinator {
     }
     const changeId = `${key}:change`;
     const deliveries: { agentId: string; taskId: string; input: UpdateInstructionsInput }[] = [];
-    const summary = applied.map(describeOp).join(', ');
+    const summary = applied.map(op => describeOp(op, state)).join(', ');
     const sourceMessageIds = [...new Set(applied.flatMap(op => op.sourceMessageIds))];
     const dropFor = (taskId: string) => applied.filter((op): op is Extract<PlanOp, { type: 'exclude_scope' }> => op.type === 'exclude_scope' && op.taskId === taskId).map(op => op.item);
     for (const [index, a] of pending.entries()) {
       if (judgement.decision !== 'speak' || !a.personId) continue;
-      const text = `${a.personId}님, ${describeOp(a.op)} 변경을 승인하시겠어요?`;
+      const text = channelText(`${state.members.get(a.personId)?.displayName ?? '담당자'}님, ${describeOp(a.op, state)} 변경을 승인하시겠어요?`, state);
       append.push(make('authority_requested', { requestId: `${changeId}:${index}:${a.personId}`, operationKey: operationKey(a.op), personId: a.personId, changeKinds: [a.kind], text }, `authority:${index}`));
       append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:ask:${index}`, text, kind: 'ask' }, `ask:${index}`, true));
       post = undefined;
@@ -247,7 +294,7 @@ export class Coordinator {
         }
       }
       for (const [index, op] of applied.entries()) {
-        if (op.type === 'set_availability') append.push(make('availability_updated', { memberId: op.memberId, weeklyHours: op.weeklyHours }, `availability:${index}`));
+        if (op.type === 'set_availability') append.push(make('availability_updated', { memberId: op.memberId, weeklyHours: op.weeklyHours, ...(op.weekStart ? { weekStart: op.weekStart } : {}) }, `availability:${index}`));
       }
       const goal = { ...state.goal };
       for (const op of applied) {
@@ -257,14 +304,25 @@ export class Coordinator {
       const goalChanged = JSON.stringify(goal) !== JSON.stringify(state.goal);
       if (goalChanged) append.push(make('goal_set', goal, 'goal', true));
       if (planChanged || goalChanged) {
-        post = { text: `정리하면: ${summary}`, kind: 'summary' };
+        const appliedState = structuredClone(state);
+        if (appliedState.plan) appliedState.plan.tasks = tasks;
+        appliedState.goal = goal;
+        for (const op of applied) if (op.type === 'set_availability') {
+          if (op.weekStart) {
+            const weeks = appliedState.availabilityOverrides.get(op.memberId) ?? new Map<string, number>();
+            weeks.set(op.weekStart, op.weeklyHours); appliedState.availabilityOverrides.set(op.memberId, weeks);
+          } else appliedState.availability.set(op.memberId, op.weeklyHours);
+        }
+        const after = forecastFromState(appliedState, now);
+        const late = after.ok && after.lateness && after.lateness.maxDays > 0 ? ` 그래도 최대 ${after.end.max.getUTCMonth() + 1}/${after.end.max.getUTCDate()}로 기한을 넘깁니다.` : '';
+        post = { text: `정리하면: ${summary}.${late}`, kind: 'summary' };
         judgement = { ...judgement, decision: 'speak', whoseAction: affected.join(', ') || state.goal.decider, alreadyKnows: 'no', evidence: sourceMessageIds.map(id => `msg:${id}`), reason: '확인된 변경을 계획과 담당자에게 반영', text: post.text };
         append.push(make('decision_recorded', { decisionId: changeId, summary, sourceMessageIds, approvedBy: 'pm', changeKinds: [...new Set(applied.map(op => opAuthority(state, op).kind))] }));
         if (planChanged) append.push(make('plan_committed', { version: version + 1, basedOn: version, tasks, reason: summary, approvedBy: 'pm', sourceMessageIds }, 'plan_committed', true));
       }
       for (const id of absent.filter(id => state.members.get(id)?.kind === 'human')) {
         const details = diff.changed.filter(c => c.prev.assignee === id || c.next.assignee === id).map(c => `${c.next.title}: ${c.next.assignee === id ? c.next.handoffConditions.join(', ') : '담당 작업에서 제외'}`);
-        const text = `${id}님, 계획 v${version + 1}: ${details.join('; ')}`;
+        const text = channelText(`${state.members.get(id)?.displayName ?? '담당자'}님, 계획 v${version + 1}: ${details.join('; ')}`, state);
         append.push(make('change_notified', { changeId, planVersion: version + 1, recipientId: id, text, via: 'channel' }, `notify:${id}`));
         append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:speech:${id}`, text, kind: 'nudge' }, `speech:${id}`, true));
       }
@@ -280,7 +338,7 @@ export class Coordinator {
       if (fresh.some(e => e.idempotencyKey === `${key}:pm_considered`)) return { append: [], result: false };
       const latest = project(fresh);
       if (confirmed && latest.lastSeq !== state.lastSeq) throw new Error('Ledger changed while applying approval; retry');
-      if (latest.lastSeq !== state.lastSeq) { judgement = { ...judgement!, decision: 'silent', reason: '기록이 변경되어 재판단 필요' }; post = undefined; append.length = 0; deliveries.length = 0; }
+      if (fresh.slice(events.length).some(e => !['message_recorded', 'attachment_recorded'].includes(e.type))) { judgement = { ...judgement!, decision: 'silent', reason: '기록이 변경되어 재판단 필요' }; post = undefined; append.length = 0; deliveries.length = 0; }
       // Human approvals and decider conclusions start a new window before its changes.
       const approvals = append.filter(e => ['authority_granted', 'decision_recorded'].includes(e.type));
       const budgetState = project([...fresh, ...approvals.map((e, i) => ({ ...e, id: `budget:${i}`, seq: latest.lastSeq + i + 1, at: now.toISOString() }))]);
@@ -300,6 +358,7 @@ export class Coordinator {
         }
       }
       append.unshift(make('pm_considered', { considerationId: key, triggerId: messageId, ...judgement! }));
+      if (post) post.text = channelText(post.text, state);
       if (post) append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:speech`, ...post }, 'pm_spoke', true));
       return { append, result: true };
     });

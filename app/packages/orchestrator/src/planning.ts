@@ -104,10 +104,10 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
   throw new PlanDraftingError(reason, detail);
 }
 
-export function planningNotice(context: EventContext, key: string, memberId: string, text: string, openTopics: string[] = []): NewLedgerEvent[] {
+export function planningNotice(context: EventContext, key: string, memberId: string, text: string, openTopics: string[] = [], reason = '사람이 다음 행동을 결정해야 한다'): NewLedgerEvent[] {
   const actor = { kind: 'system' as const, id: 'pm' };
   return [
-    { ...context, actor, type: 'pm_considered', idempotencyKey: `${key}:considered`, payload: { considerationId: key, triggerId: key, whoseAction: memberId, alreadyKnows: 'no', evidence: [key], decision: 'speak', reason: 'A person must decide the next action', openTopics } },
+    { ...context, actor, type: 'pm_considered', idempotencyKey: `${key}:considered`, payload: { considerationId: key, triggerId: key, whoseAction: memberId, alreadyKnows: 'no', evidence: [key], decision: 'speak', reason, openTopics } },
     { ...context, actor, type: 'pm_spoke', idempotencyKey: `${key}:speech`, payload: { considerationId: key, messageId: `${key}:speech`, text, kind: 'ask' } },
   ];
 }
@@ -123,7 +123,7 @@ export async function startFreeProject(options: { store: LedgerStore; llm: LlmPr
   const members = [...state.members.values()].map(m => ({ ...m, weeklyHours: state.availability.get(m.memberId) }));
   const goalSet: NewLedgerEvent = { ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'goal_set', payload: { ...state.goal, text: goal, ...(deadline ? { deadline } : {}) } };
   const record = (append: NewLedgerEvent[]) => options.store.transaction(options.context.projectId, events => {
-    if (project(events).lastSeq !== state.lastSeq) throw new Error('Team changed while drafting; retry');
+    if (events.some(e => e.seq > state.lastSeq && !['message_recorded', 'attachment_recorded', 'pm_considered', 'pm_spoke', 'reply_recorded'].includes(e.type))) throw new Error('Team changed while drafting; retry');
     return { append, result: undefined };
   });
   let draft: PlanDraft;
@@ -138,7 +138,7 @@ export async function startFreeProject(options: { store: LedgerStore; llm: LlmPr
   const proposal = { ...draft, proposalId: randomUUID(), version: 1, forMemberId: state.goal.decider };
   await record([goalSet,
     { ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'plan_proposed', payload: proposal },
-    ...planningNotice(options.context, proposal.proposalId, proposal.forMemberId, '계획 v1 초안을 확인하고 승인해 주세요.', state.openTopics)]);
+    ...planningNotice(options.context, proposal.proposalId, proposal.forMemberId, '계획 v1 초안을 확인하고 승인해 주세요.', state.openTopics, '계획 초안에 대한 결정권자 승인이 필요하다')]);
   return { proposal };
 }
 
@@ -163,6 +163,6 @@ export async function decidePlan(options: { store: LedgerStore; context: EventCo
   if (!approve) return [{ text: '계획에서 무엇을 바꾸면 좋을까요?', kind: 'ask' }];
   const starts = await options.dispatcher.startReady(proposalId);
   const posts: PmPost[] = [...starts.notices, ...starts.failures].map(text => ({ text, kind: 'ask' }));
-  for (const [i, post] of posts.entries()) await options.store.append(planningNotice(options.context, `start:${proposalId}:${i}`, memberId, post.text));
+  for (const [i, post] of posts.entries()) await options.store.append(planningNotice(options.context, `start:${proposalId}:${i}`, memberId, post.text, [], '승인된 계획에서 다음 작업을 시작할 수 있다'));
   return posts;
 }

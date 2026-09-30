@@ -27,6 +27,15 @@ const PM_KIND: Record<string, string> = { fact: "사실", summary: "요약", ask
 export function MessageItem({ message, author, grouped }: { message: VmMessage; author: VmMember | undefined; grouped: boolean }) {
   const [showWhy, setShowWhy] = useState(false);
 
+  if (message.record?.kind === "plan_decision") {
+    const r = message.record;
+    const time = formatTime(message.at);
+    return (
+      <div className={`msg-system msg-record${r.approved ? "" : " msg-record-rejected"}`} role="note">
+        <span aria-hidden>{r.approved ? "✓" : "✕"}</span> 계획 v{r.planVersion} {r.approved ? "승인" : "거절"} — {r.byName}{time && <>, <time dateTime={message.at} className="num">{time}</time></>}
+      </div>
+    );
+  }
   if (message.kind === "system") {
     return <div className="msg-system" role="note">{message.text}</div>;
   }
@@ -35,7 +44,7 @@ export function MessageItem({ message, author, grouped }: { message: VmMessage; 
   const bubbleStyle = voice ? { ["--voice-c" as string]: `var(--ens-voice-${voice}-container)`, ["--voice-on" as string]: `var(--ens-voice-${voice}-on)`, ["--voice" as string]: `var(--ens-voice-${voice})` } : undefined;
 
   return (
-    <article className={`msg msg-${message.kind}${grouped ? " msg-grouped" : ""}`} style={bubbleStyle}>
+    <article className={`msg msg-${message.kind}${grouped ? " msg-grouped" : ""}${message.local ? " msg-sending" : ""}`} style={bubbleStyle} aria-busy={message.local ? true : undefined}>
       <div className="msg-avatar">{!grouped && <Avatar member={author} size={message.kind === "pm" ? 40 : 36} />}</div>
       <div className="msg-main">
         {!grouped && (
@@ -44,7 +53,7 @@ export function MessageItem({ message, author, grouped }: { message: VmMessage; 
             {message.kind === "agent" && <span className="badge badge-ai">AI</span>}
             {message.kind === "pm" && <span className="badge badge-pm">PM</span>}
             {author?.role && <span className="msg-role">{author.role}</span>}
-            <time className="msg-time" dateTime={message.at}>{formatTime(message.at)}</time>
+            {message.local ? <span className="msg-time">보내는 중…</span> : <time className="msg-time" dateTime={message.at}>{formatTime(message.at)}</time>}
           </header>
         )}
         <div className="msg-body">
@@ -55,11 +64,18 @@ export function MessageItem({ message, author, grouped }: { message: VmMessage; 
           <ul className="attachments">
             {message.attachments.map(a => (
               <li key={a.id}>
-                <a className="attachment" href={a.url} target="_blank" rel="noreferrer">
-                  <span className="attachment-icon" aria-hidden>📄</span>
-                  <span className="attachment-name">{a.name}</span>
-                  <span className="attachment-open">열기</span>
-                </a>
+                {a.url ? (
+                  <a className="attachment" href={a.url} target="_blank" rel="noreferrer">
+                    <span className="attachment-icon" aria-hidden>📄</span>
+                    <span className="attachment-name">{a.name}</span>
+                    <span className="attachment-open">열기</span>
+                  </a>
+                ) : (
+                  <span className="attachment">
+                    <span className="attachment-icon" aria-hidden>📄</span>
+                    <span className="attachment-name">{a.name}</span>
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -73,7 +89,7 @@ export function MessageItem({ message, author, grouped }: { message: VmMessage; 
               <div className="why-body">
                 <p><strong>이유</strong> {message.pm.reason}</p>
                 {message.pm.evidence.length > 0 && (
-                  <ul>{message.pm.evidence.map((e, i) => <li key={i}><code>{e}</code></li>)}</ul>
+                  <ul>{message.pm.evidence.map((e, i) => <li key={i}>{e}</li>)}</ul>
                 )}
               </div>
             )}

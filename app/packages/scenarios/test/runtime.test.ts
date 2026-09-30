@@ -14,7 +14,7 @@ function runtime() {
 }
 it('starts a scenario with team facts only, never a committed fixture plan', async () => {
   const { app, store } = runtime();
-  await app.startScenario('scene-1-3-continuous');
+  await app.startScenario('scene-1-3-continuous', true);
   const state = project(await store.read());
   expect(state.plan).toBeUndefined();
   expect(state.estimates.size).toBe(0);

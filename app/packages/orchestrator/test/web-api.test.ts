@@ -3,10 +3,10 @@ const app = vi.hoisted(() => ({
   state: vi.fn(async (me = 'owner') => ({ me, busy: false })),
   listeners: new Set<() => void>(),
   run: async (action: () => Promise<unknown>) => action(),
-  message: vi.fn(), startFree: vi.fn(), startScenario: vi.fn(), scenarioNext: vi.fn(), attachment: vi.fn(),
+  message: vi.fn(async () => ({ accepted: true, messageId: 'm' })), startFree: vi.fn(), startScenario: vi.fn(), scenarioNext: vi.fn(), attachment: vi.fn(),
   pm: { decideCard: vi.fn(), setAvailability: vi.fn() },
 }));
-vi.mock('../../../apps/web/lib/runtime', () => ({ getRuntime: () => app }));
+vi.mock('../../../apps/web/lib/runtime', async importOriginal => ({ ...await importOriginal<typeof import('../../../apps/web/lib/runtime')>(), getRuntime: () => app }));
 import { GET, POST } from '../../../apps/web/app/api/[...path]/route.ts';
 const context = (path: string) => ({ params: Promise.resolve({ path: path.split('/') }) });
 const request = (path: string, body: unknown) => new Request(`http://localhost/api/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -25,7 +25,7 @@ it('preserves attachment bytes and selected free-project decider', async () => {
   await POST(request('messages', { authorId: 'owner', text: 'File', attachments: [attachment] }), context('messages'));
   expect(app.message).toHaveBeenCalledWith('owner', 'File', [attachment]);
   await POST(request('free/start', { me: 'designer', goal: 'Goal', deadline: '2026-10-07' }), context('free/start'));
-  expect(app.startFree).toHaveBeenCalledWith('Goal', '2026-10-07', 'designer');
+  expect(app.startFree).toHaveBeenCalledWith('Goal', '2026-10-07', 'designer', false);
 });
 
 it('SSE emits changed and removes the subscriber on disconnect', async () => {

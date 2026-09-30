@@ -37,6 +37,7 @@ const context = { projectId: `live-pm-${Date.now()}`, targetProductId: 'prototyp
 const store = new MemoryLedgerStore();
 await store.append(sceneEvents(3, context));
 const pm = new ProjectManager({ ...context, store, connector, llm, model, clock: () => SCENE_NOW });
+if (process.env.M8_BARE === '1') await pm.recordMessage('owner', '다들 점심 뭐 드셨어요?');
 await pm.sessions.startSession('prototype-agent');
 await pm.sessions.startTask('prototype-agent', buildTaskContext(project(await store.read()), 'prototype', await store.read()));
 const directory = join(homedir(), 'ensemble-agent-workspaces', 'live-pm');
@@ -51,7 +52,12 @@ const save = async () => {
 console.log(`Live PM observation; model=${model}; connector=fake; report=${reportPath}`);
 await save();
 try {
-  for (const step of scene3) {
+  for (const step of (process.env.M8_FREE === '1' ? [
+    { as: 'designer', text: process.env.M8_BARE === '1' ? '아 그리고 저 이번 주 목요일부터 휴가라 이번 주는 주 10시간이 아니라 4시간 정도밖에 못 할 것 같아요 ㅠ' : '목요일 휴가라 이번 주는 4시간만 가능해요. 흐름 상세는 다음 주에 드려도 될까요?', attachments: [] },
+    { as: 'owner', text: 'PM, 그럼 프로토타입이 얼마나 밀리나?', attachments: [] },
+    { as: 'owner', text: '결제는 빼자. 흐름 설계는 요금제 비교랑 가입까지만 하자.', attachments: [] },
+    { as: 'designer', text: '당분간 6시간 가능해요.', attachments: [] },
+  ] : scene3)) {
     console.log(`Human ${step.as}: ${step.text}`);
     const before = project(await store.read()).lastSeq;
     const row: typeof rows[number] = { author: step.as, message: step.text, considerations: [], posts: [] };

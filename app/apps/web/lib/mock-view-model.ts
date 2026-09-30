@@ -1,10 +1,10 @@
-// 장면 3 중간 상태의 가짜 뷰 모델. 실제 API(Y3)가 붙기 전까지 화면을 그리는 데 쓴다.
+// 장면 3 중간 상태의 가짜 뷰 모델. 서버 계약 필드(activity 등)가 붙기 전에 화면을 그려 보는 데 쓴다.
 // 디자이너가 가용 시간 감소를 알렸고, 사용자가 "프로토타입이 밀리나?"라고 물은 직후다.
-import type { VmCard, VmMember, VmMessage, VmPmJudgement, VmRoadmap, ViewModel } from "./view-model";
+import type { VmActivity, VmCard, VmMember, VmMessage, VmPmJudgement, VmRoadmap, ViewModel } from "./view-model";
 
 export const mockMembers: VmMember[] = [
   { id: "owner", kind: "human", displayName: "사용자", role: "결정권자", weeklyHours: 20 },
-  { id: "designer", kind: "human", displayName: "디자이너", role: "흐름·상세 설계", weeklyHours: 5 },
+  { id: "designer", kind: "human", displayName: "디자이너", role: "흐름·상세 설계", weeklyHours: 10, weeklyHoursThisWeek: 5 },
   { id: "reviewer", kind: "human", displayName: "검토자", role: "사용자 검토", weeklyHours: 7 },
   { id: "pm", kind: "pm", displayName: "PM", role: "지휘자" },
   { id: "prototype-agent", kind: "agent", displayName: "프로토타입 Agent", role: "프로토타입 제작", busy: true },
@@ -17,7 +17,11 @@ const messages: VmMessage[] = [
   {
     id: "m3", authorId: "pm", kind: "pm", at: "2026-09-28T00:02:00Z", attachments: [],
     text: "계획 v1로 시작합니다. 디자이너가 흐름 초안을 넘기면 프로토타입 Agent가 이어받고, 검토자가 가입·결제 흐름을 확인합니다.",
-    pm: { kind: "summary", reason: "계획이 확정되어 모두가 같은 순서를 알아야 함", evidence: ["plan_committed v1", "goal_set: 2026-10-12 기한"] },
+    pm: { kind: "summary", reason: "계획이 확정되어 모두가 같은 순서를 알아야 함", evidence: ["계획 v1 제안", "메시지 · 사용자: \"2주 안에 고객 반응을 확인하고…\""] },
+  },
+  {
+    id: "m3r", authorId: "system", kind: "system", at: "2026-09-28T00:02:30Z", attachments: [], text: "계획 v1 승인 — 사용자",
+    record: { kind: "plan_decision", planVersion: 1, approved: true, byName: "사용자" },
   },
   {
     id: "m4", authorId: "designer", kind: "human", text: "흐름 초안 올렸어요.", at: "2026-09-29T02:10:00Z",
@@ -28,6 +32,10 @@ const messages: VmMessage[] = [
     attachments: [{ id: "a2", name: "flow-v2.md", url: "#flow-v2.md" }],
   },
   { id: "m6", authorId: "prototype-agent", kind: "agent", text: "flow-v2.md를 받아 가입 화면 프로토타입을 만들고 있어요. 결제 화면은 흐름 확정 후 진행할게요.", at: "2026-09-29T06:00:00Z", attachments: [] },
+  {
+    id: "m6b", authorId: "research-agent", kind: "agent", at: "2026-09-29T06:30:00Z", attachments: [{ id: "a3", name: "comparison.md", url: "#comparison.md" }],
+    text: "[경쟁 서비스 조사] 조사 Agent 결과\n무엇이 됐나: 예약 서비스 3곳의 가입·예약 흐름을 비교했어요.\n할 일: PM이 인계 조건을 확인했습니다.\n확인할 곳: comparison.md",
+  },
   { id: "m7", authorId: "designer", kind: "human", text: "목요일에 휴가라 이번 주 가용 시간이 10시간에서 5시간으로 줄어요. 상세 설계는 다음 주에 드려도 될까요?", at: "2026-09-30T01:00:00Z", attachments: [] },
   { id: "m8", authorId: "owner", kind: "human", text: "그럼 프로토타입이 밀리나?", at: "2026-09-30T01:03:00Z", attachments: [] },
   {
@@ -45,11 +53,12 @@ const allCards: VmCard[] = [
   {
     kind: "plan_approval", id: "card-plan-2", planVersion: 2, forMemberId: "owner",
     reason: "디자이너 가용 시간이 줄어 상세 설계를 다음 주로 옮기고, 프로토타입은 흐름 초안 기준으로 먼저 진행합니다.",
+    finish: { min: "2026-10-10T00:00:00Z", max: "2026-10-15T00:00:00Z" },
     tasks: [
-      { id: "design", title: "흐름 초안", assigneeName: "디자이너", dependsOn: [] },
-      { id: "prototype", title: "프로토타입(가입 흐름)", assigneeName: "프로토타입 Agent", dependsOn: ["design"] },
-      { id: "review", title: "사용자 검토", assigneeName: "검토자", dependsOn: ["prototype"] },
-      { id: "detail", title: "상세 설계(다음 주)", assigneeName: "디자이너", dependsOn: [] },
+      { id: "design", title: "흐름 초안", assigneeName: "디자이너", dependsOn: [], hours: { min: 6, max: 10 }, expectedEnd: { min: "2026-09-30T00:00:00Z", max: "2026-10-01T00:00:00Z" }, handoffConditions: ["가입 정상 흐름과 오류 흐름이 모두 있음"] },
+      { id: "prototype", title: "프로토타입(가입 흐름)", assigneeName: "프로토타입 Agent", dependsOn: ["design"], hours: { min: 4, max: 8 }, expectedEnd: { min: "2026-10-03T00:00:00Z", max: "2026-10-06T00:00:00Z" } },
+      { id: "review", title: "사용자 검토", assigneeName: "검토자", dependsOn: ["prototype"], hours: { min: 3, max: 5 }, expectedEnd: { min: "2026-10-08T00:00:00Z", max: "2026-10-10T00:00:00Z" } },
+      { id: "detail", title: "상세 설계(다음 주)", assigneeName: "디자이너", dependsOn: [], hours: { min: 8, max: 12.5 } },
     ],
   },
   {
@@ -67,15 +76,16 @@ const allCards: VmCard[] = [
 const roadmap: VmRoadmap = {
   planVersion: 1,
   tasks: [
-    { id: "design", title: "흐름 초안", assigneeName: "디자이너", status: "done", startDay: 0, endDayMin: 2, endDayMax: 2 },
-    { id: "prototype", title: "프로토타입", assigneeName: "프로토타입 Agent", status: "in_progress", startDay: 2, endDayMin: 5, endDayMax: 8 },
-    { id: "review", title: "사용자 검토", assigneeName: "검토자", status: "todo", startDay: 8, endDayMin: 10, endDayMax: 12 },
+    { id: "design", title: "흐름 초안", assigneeName: "디자이너", status: "checked", startDay: 0, endDayMin: 2, endDayMax: 2, hours: { min: 6, max: 10 }, handoffConditions: ["가입 정상 흐름과 오류 흐름이 모두 있음"] },
+    { id: "prototype", title: "프로토타입", assigneeName: "프로토타입 Agent", status: "running", startDay: 2, endDayMin: 4.859469270833335, endDayMax: 8.2 },
+    { id: "review", title: "사용자 검토", assigneeName: "검토자", status: "waiting", startDay: 8.2, endDayMin: 10, endDayMax: 12 },
     { id: "detail", title: "상세 설계", assigneeName: "디자이너", status: "blocked", startDay: 3, endDayMin: 12, endDayMax: 17 },
   ],
+  origin: "2026-09-30T00:00:00Z",
   blocked: [{ taskId: "detail", reason: "디자이너 이번 주 가용 시간 10→5시간", unblockByName: "사용자" }],
   forecast: {
-    ok: true, finishMin: "2026-10-10T00:00:00Z", finishMax: "2026-10-15T00:00:00Z", deadline: "2026-10-12T00:00:00Z", lateDaysMax: 3,
-    shortage: [{ memberName: "디자이너", hours: 5 }],
+    ok: true, finishMin: "2026-10-10T00:00:00Z", finishMax: "2026-10-15T00:00:00Z", deadline: "2026-10-12T00:00:00Z", lateDaysMax: 2.859469270833335,
+    shortage: [{ memberName: "디자이너", hours: 2.5387443452380962 }],
   },
   lastChange: { version: 1, reason: "팀이 확인한 초기 계획" },
 };
@@ -88,10 +98,16 @@ const pmLog: VmPmJudgement[] = [
   { triggerMessageId: "m8", decision: "speak", reason: "사용자의 질문에 답할 사실이 기록에 있고 아무도 답하지 않음", whoseAction: "pm", alreadyKnows: "없음(예측은 PM만 계산함)", evidence: ["forecast 10/10–10/15", "deadline 10/12"] },
 ];
 
+// 시나리오가 사용자 작업 시작을 기다리다 멈춘 상태(계약 2의 stalled).
+export const mockActivity: VmActivity = {
+  kind: "scenario_waiting", label: "대본: 사용자 작업 시작을 기다리는 중", since: "2026-09-30T01:04:30Z",
+  stalled: { reason: "사용자 인터뷰 작업이 예약되지 않아 대본을 이어 갈 수 없어요.", canRetry: true, canSkip: true },
+};
+
 export function buildMockViewModel(me: string): ViewModel {
   return {
     mode: "scenario",
-    project: { goal: "2주 안에 고객 반응 확인", deadline: "2026-10-12T00:00:00Z" },
+    project: { goal: "시연용 가상 자료입니다. 2주 안에 고객 반응 확인", deadline: "2026-10-12T00:00:00Z", title: "2주 안에 고객 반응 확인", synthetic: true },
     me,
     members: mockMembers,
     messages,
@@ -104,5 +120,6 @@ export function buildMockViewModel(me: string): ViewModel {
       done: false,
     },
     busy: true,
+    activity: mockActivity,
   };
 }
