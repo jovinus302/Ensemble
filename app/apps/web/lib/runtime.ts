@@ -7,7 +7,7 @@ import { AnthropicProvider, loadEnv, modelFor } from '@ensemble/llm';
 import { CodexSessionConnector, codexSettingsFromEnv, type SessionConnector, type SessionEvent } from '@ensemble/agents';
 import { ProjectManager, type FreeStartResult } from '@ensemble/orchestrator';
 import { project, type AnyEvent, type NewLedgerEvent } from '@ensemble/core';
-import { continuousScenario, advanceScript, sceneEvents, SCENE_NOW, type ScriptProgress } from '@ensemble/scenarios';
+import { continuousScenario, advanceScript, createRevisionGenerator, sceneEvents, SCENE_NOW, type ScriptProgress } from '@ensemble/scenarios';
 import { buildViewModel } from './build-view-model';
 
 interface Metadata { projectId: string; mode: 'free' | 'scenario'; scene: 1 | 2 | 3; step: number; script?: ScriptProgress }
@@ -144,6 +144,7 @@ export class WebRuntime {
     if (!this.meta.script) throw new Error('Restart the scenario to use the continuous script');
     try {
       await advanceScript({ pm: this.pm,
+        generateRevision: input => createRevisionGenerator(new AnthropicProvider(), modelFor('pm'))(input),
         read: () => this.store.read({ projectId: this.meta.projectId }),
         recordStop: async reason => { await this.store.append([{ ...this.context(), actor: { kind: 'system', id: 'scenario' }, type: 'scenario_stopped', payload: { scenario: continuousScenario.key, step: this.meta.script!.step, reason } }]); },
       }, continuousScenario.steps, this.meta.script, continuousScenario.completion);
