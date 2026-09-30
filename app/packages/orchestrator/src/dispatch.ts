@@ -9,13 +9,16 @@ import {
 import type { LedgerStore } from '@ensemble/store';
 import type { LlmProvider } from '@ensemble/llm';
 import type { SendUpdateResult, TaskInstructionsInput, UpdateInstructionsInput } from '@ensemble/agents';
-import { handoffEvents, judgeHandoff, reviewKey, type HandoffReview, type ResultContent, type SubmittedResult } from './handoff.ts';
-import { answerChangeId, buildTaskContext, questionMessageId, relevantDecisions, taskQuestions } from './context.ts';
+import { handoffEvents, judgeHandoff, reviewKey, type CitationFailure, type HandoffReview, type ResultContent, type SubmittedResult } from './handoff.ts';
+import { answerChangeId, answerUpdate, buildTaskContext, fileOwnerFor, startNotice, humanizeRefs, questionMessageId, relevantDecisions, taskQuestions } from './context.ts';
+import type { Delivery } from './session-runner.ts';
 
 /** The part of a SessionConnector (or SessionRunner) the dispatcher drives. */
 export interface TaskStarter {
   startTask(agentId: string, input: TaskInstructionsInput): Promise<string>;
   sendUpdate(agentId: string, input: UpdateInstructionsInput): Promise<SendUpdateResult>;
+  /** Steers into the live turn or starts a new turn on the same thread (SessionRunner.deliver). */
+  deliver?(agentId: string, taskId: Id, input: UpdateInstructionsInput): Promise<Delivery>;
 }
 
 export interface DispatcherOptions {
@@ -31,8 +34,12 @@ export interface DispatcherOptions {
 export interface StartedTask { taskId: Id; agentId: Id; turnId: Id }
 export type ResultOutcome =
   | { kind: 'skipped'; reason: string }
-  /** The judge could not reach a verdict; tell a person, nothing was recorded. */
-  | { kind: 'error'; message: string }
+  /**
+   * The judge could not reach a verdict (a technical failure, not a content problem): the goal's
+   * decider checks the result; nothing was recorded. `citationFailures` is the PM record of what
+   * could not be verified.
+   */
+  | { kind: 'error'; message: string; citationFailures?: CitationFailure[] }
   | { kind: 'revision'; review: HandoffReview; notice: string }
   | { kind: 'checked'; review: HandoffReview; started: StartedTask[]; notices: string[]; failures: string[]; limitNotice?: string };
 
@@ -76,7 +83,7 @@ export class Dispatcher {
 
       const judged = await judgeHandoff({ state, result, resultContent: await this.options.readResult(result),
         decisions: relevantDecisions(state, taskId), llm: this.options.llm, model: this.options.model });
-      if (!judged.ok) return { kind: 'error', message: judged.error };
+      if (!judged.ok) return { kind: 'error', message: judged.error, ...(judged.citationFailures?.length ? { citationFailures: judged.citationFailures } : {}) };
 
       const { result: decided } = await this.options.store.transaction(this.options.context.projectId, (current) => {
         const now = project(current);
@@ -125,7 +132,7 @@ export class Dispatcher {
     const input = buildTaskContext(state, taskId, events);
     if (state.members.get(assignee)?.kind !== 'agent') {
 
-      outcome.notices.push(`@${this.name(state, assignee)} ${task.spec.title}${particle(task.spec.title)} 시작할 수 있습니다.`);
+      outcome.notices.push(startNotice(state, taskId) ?? `@${this.name(state, assignee)} ${task.spec.title}${particle(task.spec.title)} 시작할 수 있습니다.`);
       return;
     }
     try {
@@ -149,21 +156,30 @@ export class Dispatcher {
 
   /**
    * Records an agent's question and returns the sentence to post for the person who answers it:
-   * `to`, or else the goal's decider.
+   * `to`, else whoever uploaded the input file the question is about, else the goal's decider.
+   * `routeKey` makes a repeated relay of the same agent report a no-op.
    */
-  onQuestion(taskId: Id, question: string, options: { choices?: string[]; to?: Id } = {}): Promise<{ questionId: Id; to: Id; text: string }> {
+  onQuestion(taskId: Id, question: string, options: { choices?: string[]; to?: Id; routeKey?: string } = {}): Promise<{ questionId: Id; to: Id; text: string }> {
     return this.enqueue(async () => {
       const { events, state } = await this.ledger();
       const task = state.tasks.get(taskId);
       if (!task) throw new Error(`Unknown task ${taskId}`);
-      const to = options.to ?? state.goal?.decider;
+      if (options.routeKey) {
+        const relayed = typed(events).find((e): e is Extract<AnyEvent, { type: 'pm_considered' }> => e.type === 'pm_considered' && e.idempotencyKey === options.routeKey);
+        const spoken = relayed && typed(events).find((e): e is Extract<AnyEvent, { type: 'pm_spoke' }> => e.type === 'pm_spoke' && e.payload.considerationId === relayed.payload.considerationId);
+        if (relayed && spoken) return { questionId: spoken.payload.messageId, to: relayed.payload.whoseAction ?? '', text: spoken.payload.text };
+      }
+      const to = options.to ?? fileOwnerFor(state, events, taskId, question) ?? state.goal?.decider;
       if (!to) throw new Error('No person to ask: set a goal decider or pass `to`');
       const questionId = questionMessageId(taskId, taskQuestions(events, taskId).length + 1);
-      const choices = options.choices?.length ? ` (선택지: ${options.choices.join(' / ')})` : '';
-      const text = channelText(`@${this.name(state, to)} "${task.spec.title}" 담당 ${this.name(state, task.spec.assignee)}의 질문입니다: ${question}${choices}`, state);
+      const agent = this.name(state, task.spec.assignee);
+      const title = task.spec.title;
+      const choices = options.choices?.length ? ` 선택지: ${options.choices.map((choice) => humanizeRefs(choice, events)).join(' / ')}` : '';
+      const lead = `@${this.name(state, to)} "${title}" 작업을 맡은 ${agent}${particle(agent, '이/가')} 묻습니다.`;
+      const text = channelText(`${lead} ${humanizeRefs(question, events)}${choices}`, state, 12);
       await this.options.store.append([
         this.event('pm_considered', { considerationId: `consider:${questionId}`, triggerId: questionId, whoseAction: to, alreadyKnows: 'no',
-          evidence: [`${taskId} 담당 에이전트가 질문하고 멈춤`], decision: 'speak', reason: '답이 있어야 작업이 이어진다', openTopics: [...state.openTopics] }, `consider:${questionId}`),
+          evidence: [`"${title}" 담당 ${agent}${particle(agent, '이/가')} 질문하고 멈춤`], decision: 'speak', reason: '답이 있어야 작업이 이어진다', openTopics: [...state.openTopics] }, options.routeKey ?? `consider:${questionId}`),
         this.event('pm_spoke', { considerationId: `consider:${questionId}`, messageId: questionId, text, kind: 'ask' }, `spoke:${questionId}`),
       ]);
       return { questionId, to, text };
@@ -172,9 +188,11 @@ export class Dispatcher {
 
   /**
    * Delivers a person's answer to the oldest open question of the task: steered into the running
-   * turn when the agent is on this task, otherwise carried into the task's next turn input.
+   * turn when the agent is on this task; when its turn already ended, a new turn on the same thread
+   * carries the answer and the task resumes (`resumed`). Without that capability the answer waits
+   * for the task's next turn input.
    */
-  onAnswer(taskId: Id, answerText: string): Promise<{ via: 'steer' | 'next_turn'; questionId?: Id }> {
+  onAnswer(taskId: Id, answerText: string): Promise<{ via: 'steer' | 'next_turn'; questionId?: Id; resumed?: true }> {
     return this.enqueue(async () => {
       const { events, state } = await this.ledger();
       const task = state.tasks.get(taskId);
@@ -182,16 +200,20 @@ export class Dispatcher {
       const agentId = task.spec.assignee;
       const open = taskQuestions(events, taskId).find((q) => !q.answer);
       const changeId = answerChangeId(open?.questionId ?? `${questionMessageId(taskId, 0)}-${state.lastSeq}`);
+      const update = answerUpdate(changeId, state.plan.version, open, answerText);
       let via: 'steer' | 'next_turn' = 'next_turn';
-      if (state.activeTurn.get(agentId) === taskId) {
-        const version = state.plan.version;
-        const sent = await this.options.connector.sendUpdate(agentId, { updateId: changeId, fromVersion: version, toVersion: version, keep: [],
-          change: [open ? `질문 "${open.text}"에 대한 답: ${answerText}` : `담당자 메시지: ${answerText}`], drop: [], reason: '담당자가 질문에 답했습니다' });
+      let resumed = false;
+      if (this.options.connector.deliver) {
+        const delivery = await this.options.connector.deliver(agentId, taskId, update);
+        if (delivery.sent && delivery.via === 'steer') via = 'steer';
+        else resumed = delivery.sent;
+      } else if (state.activeTurn.get(agentId) === taskId) {
+        const sent = await this.options.connector.sendUpdate(agentId, update);
         if (sent.sent) via = 'steer';
       }
       await this.options.store.append([this.event('change_notified', { changeId, planVersion: state.plan.version, recipientId: agentId, text: answerText, via },
         `notify:${changeId}:${agentId}`)]);
-      return { via, ...(open ? { questionId: open.questionId } : {}) };
+      return { via, ...(open ? { questionId: open.questionId } : {}), ...(resumed ? { resumed: true as const } : {}) };
     });
   }
 }

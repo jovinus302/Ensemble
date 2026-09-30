@@ -1,7 +1,7 @@
-import { mkdir, realpath } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { parseReports, taskInstructions, updateInstructions, type TaskInstructionsInput, type UpdateInstructionsInput } from '../protocol.ts';
+import { continueInstructions, INPUTS_DIR, MAX_FILE_BYTES, parseReports, taskInstructions, updateInstructions, type ContinueTaskInput, type InputFile, type TaskInstructionsInput, type UpdateInstructionsInput } from '../protocol.ts';
 import { roleFor } from '../roles.ts';
 import type { SendUpdateResult, SessionConnector, SessionEvent, SessionInfo } from '../session.ts';
 import { CodexAppServerClient, declineServerRequest, SteerRejectedError } from './app-server.ts';
@@ -28,6 +28,40 @@ const component = (value: string) => {
   if (!/^[a-zA-Z0-9_-]+$/.test(value)) throw new Error('Project and agent IDs must contain only letters, numbers, underscores, or hyphens');
   return value;
 };
+
+const UNSAFE_SEGMENT = /[<>:"/\\|?*\u0000-\u001f]/;
+
+/**
+ * Copies predecessor result files into the workspace under inputs/. Every path segment is checked,
+ * no existing link may redirect a write outside the workspace, and identical files are left alone,
+ * so a restart or retry rewrites nothing.
+ */
+export async function writeInputFiles(workspace: string, files: readonly InputFile[] = []): Promise<void> {
+  if (!files.length) return;
+  const root = await realpath(workspace);
+  for (const file of files) {
+    const parts = file.path.split('/');
+    if (parts[0] !== INPUTS_DIR || parts.length < 2 || parts.some(part => !part || part === '.' || part === '..' || UNSAFE_SEGMENT.test(part) || /[. ]$/.test(part))) {
+      throw new Error(`Unsafe input file path: ${file.path}`);
+    }
+    const data = Buffer.from(file.data, 'base64');
+    if (data.length > MAX_FILE_BYTES) throw new Error(`Input file exceeds ${MAX_FILE_BYTES} bytes: ${file.path}`);
+    let dir = root;
+    for (const part of parts.slice(0, -1)) {
+      dir = path.join(dir, part);
+      const info = await lstat(dir).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return null; throw error; });
+      if (!info) await mkdir(dir);
+      else if (info.isSymbolicLink() || !info.isDirectory()) throw new Error(`Input folder is not a plain folder: ${file.path}`);
+    }
+    const relative = path.relative(root, await realpath(dir));
+    if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(`Input folder resolves outside the workspace: ${file.path}`);
+    const target = path.join(dir, parts.at(-1)!);
+    const existing = await lstat(target).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return null; throw error; });
+    if (existing && !existing.isFile()) throw new Error(`Input path is not a plain file: ${file.path}`);
+    if (existing && existing.size === data.length && (await readFile(target)).equals(data)) continue;
+    await writeFile(target, data);
+  }
+}
 
 export class CodexSessionConnector implements SessionConnector {
   private readonly client: CodexAppServerClient;
@@ -133,10 +167,30 @@ export class CodexSessionConnector implements SessionConnector {
     const session = this.sessions.get(agentId);
     if (!session) throw new Error('Start the agent session first');
     if (session.active) throw new Error('Agent already has an active or starting turn');
-    const active: ActiveTask = { taskId: input.taskId, started: false };
+    return this.turn(session, agentId, input.taskId, input.files, taskInstructions(input));
+  }
+
+  async continueTask(agentId: string, input: ContinueTaskInput): Promise<string> {
+    if (this.closed) throw new Error('Connector closed');
+    const session = this.sessions.get(agentId);
+    if (!session) throw new Error('Start the agent session first');
+    if (session.active) throw new Error('Agent already has an active or starting turn');
+    // A thread that never saw this task (a new session after a restart) gets the full instructions.
+    const known = [...session.tasks.values()].includes(input.taskId);
+    return this.turn(session, agentId, input.taskId, known ? [] : input.task.files, continueInstructions(input, !known));
+  }
+
+  private async turn(session: AgentSession, agentId: string, taskId: string, files: readonly InputFile[] | undefined, text: string): Promise<string> {
+    const active: ActiveTask = { taskId, started: false };
     session.active = active; // Reserve before awaiting: concurrent starts cannot both pass.
     try {
-      const turnId = await this.client.turnStart({ threadId: session.threadId, text: taskInstructions(input) });
+      await writeInputFiles(session.workspace, files);
+    } catch (error) {
+      if (session.active === active) session.active = undefined; // Nothing reached the runtime.
+      throw error;
+    }
+    try {
+      const turnId = await this.client.turnStart({ threadId: session.threadId, text });
       this.started(agentId, session, turnId);
       return turnId;
     } catch (error) {

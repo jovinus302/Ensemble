@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { CodexSessionConnector, type TaskInstructionsInput, type UpdateInstructionsInput } from '@ensemble/agents';
 import { project } from '@ensemble/core';
 import { MemoryLedgerStore } from '@ensemble/store';
@@ -52,6 +52,8 @@ it('records the complete flow once despite duplicate notifications and acknowled
   }
   expect(events.filter(event => event.type === 'turn_observed')).toHaveLength(2);
   expect(events.findIndex(event => event.type === 'update_sent')).toBeLessThan(events.findIndex(event => event.type === 'update_acknowledged'));
+  // The PM's steer is one automatic action by the PM, recorded once.
+  expect(events.find(event => event.type === 'update_sent')?.actor).toEqual({ kind: 'pm', id: 'pm' });
   expect(events.find(event => event.type === 'task_started')?.idempotencyKey).toBe(`turn:${turnId}`);
   expect(events.find(event => event.type === 'result_submitted')).toMatchObject({ idempotencyKey: `result:${turnId}:1`, payload: { artifactIds: [expect.stringMatching(/^onboarding-md-[0-9a-f]{12}$/)], planVersion: 2 } });
   expect(events.filter(event => event.type === 'attachment_recorded')).toHaveLength(1);
@@ -70,7 +72,38 @@ it.each(['bad-ack', 'bad-result', 'unsafe-path', 'errors'])('records validation 
   }
   if (mode === 'errors') {
     const replies = events.filter(event => event.type === 'reply_recorded');
-    expect(replies).toContainEqual(expect.objectContaining({ payload: expect.objectContaining({ text: expect.stringContaining('Agent question') }) }));
+    expect(replies).toContainEqual(expect.objectContaining({ payload: expect.objectContaining({ text: '질문이 있습니다. Which color?\n선택지: blue / green' }) }));
+    expect(replies.map(event => (event.payload as { text: string }).text).join('\n')).not.toMatch(/Agent question|Options/);
     expect(replies).toContainEqual(expect.objectContaining({ payload: expect.objectContaining({ text: expect.stringContaining('Invalid agent report') }) }));
   }
+});
+
+it('steers a change into a live turn through deliver, never starts a second turn, and never sends it twice', async () => {
+  const { runner, store, agentId } = await fixture('hold');
+  const turnId = await runner.startTask(agentId, input);
+  expect(await runner.deliver(agentId, 'task', update)).toEqual({ via: 'steer', sent: true, turnId });
+  await runner.flush();
+  expect(await runner.deliver(agentId, 'task', update)).toMatchObject({ sent: true });
+  await runner.flush();
+  const events = await store.read();
+  expect(events.filter(event => event.type === 'task_started')).toHaveLength(1);
+  expect(events.filter(event => event.type === 'update_sent')).toHaveLength(1);
+  expect(events.filter(event => event.type === 'update_acknowledged')).toHaveLength(1);
+});
+
+it('delivers to a task whose turn ended with a new turn on the same thread, and leaves tasks that are not running alone', async () => {
+  const { runner, store, agentId } = await fixture('question');
+  expect(await runner.deliver(agentId, 'task', update)).toMatchObject({ sent: false, via: 'next_turn' });
+  const first = await runner.startTask(agentId, input);
+  await vi.waitFor(async () => { await runner.flush(); expect(project(await store.read()).activeTurn.has(agentId)).toBe(false); });
+  const delivery = await runner.deliver(agentId, 'task', update);
+  expect(delivery).toMatchObject({ via: 'next_turn', sent: true, turnId: expect.not.stringMatching(first) });
+  await vi.waitFor(async () => { await runner.flush(); expect((await store.read()).some(event => event.type === 'result_submitted')).toBe(true); });
+  expect(await runner.deliver(agentId, 'task', update)).toMatchObject({ sent: true });
+  await runner.flush();
+  const events = await store.read();
+  expect(events.filter(event => event.type === 'task_started').map(event => (event.payload as { turnId: string }).turnId)).toEqual([first, delivery.sent ? delivery.turnId : '']);
+  expect(events.filter(event => event.type === 'update_sent')).toHaveLength(1);
+  expect(events.find(event => event.type === 'update_acknowledged')?.payload).toMatchObject({ updateId: 'u1', planVersion: 2, dropped: ['결제'] });
+  expect(events.find(event => event.type === 'result_submitted')?.payload).toMatchObject({ taskId: 'task', planVersion: 2 });
 });
