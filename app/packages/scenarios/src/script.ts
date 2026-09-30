@@ -2,6 +2,7 @@
 import type { ProjectManager } from '@ensemble/orchestrator';
 import type { ScriptedStep } from './index.ts';
 import { respondToRevision, type RevisionGenerator } from './revision.ts';
+import { ScenarioError, draftFailureDetail } from './errors.ts';
 
 export interface Target { assignee: string; pick?: 'active' | 'next' }
 export type Condition = (
@@ -31,7 +32,13 @@ export function resolveTarget(state: ProjectState, target: Target): string {
     const t = state.tasks.get(id)!;
     return t.spec.assignee === target.assignee && statuses.includes(t.status);
   });
-  if (!id) throw new Error(`No ${target.pick ?? 'active'} task for assignee ${target.assignee} in plan v${state.plan?.version ?? 0} (expected ${statuses.join('/')})`);
+  if (!id) {
+    console.error(`[ensemble] No ${target.pick ?? 'active'} task for assignee ${target.assignee} in plan v${state.plan?.version ?? 0} (expected ${statuses.join('/')})`);
+    const names: Record<string, string> = { waiting: '선행 작업 대기', ready: '시작 가능', reserved: '시작 준비', running: '진행 중', submitted: '확인 중', checked: '확인됨', revising: '보완 중', blocked: '멈춤', cancelled: '취소됨' };
+    const current = [...state.tasks.values()].filter(t => t.spec.assignee === target.assignee).map(t => names[t.status] ?? '알 수 없음');
+    const who = state.members.get(target.assignee)?.displayName ?? '담당자';
+    throw new ScenarioError(`대본: ${who} 작업이 진행 가능한 상태가 아닙니다(현재: ${current.join(', ') || '작업 없음'})`);
+  }
   return id;
 }
 export interface ScriptProgress {
@@ -106,20 +113,24 @@ export async function advanceScript(host: ScriptHost, steps: readonly ScriptedSt
       if (step.waitFor) await waitForCondition(step.waitFor, () => host.read(), progress.anchors, host.waitOptions);
       const events = await host.read(), state = project(events);
       progress.anchors[progress.step] = state.lastSeq;
-      if (state.members.get(step.as)?.kind !== 'human') throw new Error(`Script author ${step.as} is not human`);
+      if (state.members.get(step.as)?.kind !== 'human') throw new ScenarioError(`대본의 ${step.as === 'designer' ? '디자이너' : '사용자'} 담당자가 사람으로 등록되지 않았습니다.`);
       if (['goal', 'approvePlan', 'availability'].includes(step.action ?? '')) await host.recordHuman?.(step.as, step.text, progress.step);
       if (step.action === 'respondToRevision') {
         await respondToRevision(host, step, progress);
       } else if (step.action === 'goal') {
         const result = await host.pm.startFreeProject(step.text, '2026-10-12T00:00:00Z');
-        if (result.failure) throw new Error(result.failure.reason);
+        if (result.failure) {
+          const detail = draftFailureDetail(result.failure.detail);
+          console.error(`[ensemble] 계획 초안 실패: ${detail}`, result.failure.detail);
+          throw new ScenarioError(`계획 초안을 만들지 못했습니다: ${result.failure.reason}. 세부 원인: ${detail}`);
+        }
       } else if (step.action === 'approvePlan') {
         const proposal = [...state.pendingPlans.values()].find(p => p.forMemberId === step.as);
         const plan = proposal ?? state.plan;
         if (!plan || (!proposal && state.plan?.approvedBy !== step.as)) throw new Error(`No plan approval pending or recorded for ${step.as}`);
         // Validate the draft before approving; never replace or repair it for the script.
         for (const assignee of ['owner', 'designer', 'prototype-agent']) {
-          if (!plan.tasks.some(t => t.assignee === assignee)) throw new Error(`Drafted plan lacks required tasks for ${assignee}`);
+          if (!plan.tasks.some(t => t.assignee === assignee)) throw new ScenarioError(`계획 초안에 ${assignee === 'owner' ? '사용자' : assignee === 'designer' ? '디자이너' : '프로토타입 Agent'} 담당 작업이 없습니다.`);
         }
         if (proposal) await host.pm.decidePlan(proposal.proposalId, step.as, true);
       } else if (step.action === 'availability') {
@@ -150,7 +161,9 @@ export async function advanceScript(host: ScriptHost, steps: readonly ScriptedSt
     if (progress.step === steps.length - 1 && completion) await waitForCondition(completion, () => host.read(), progress.anchors, host.waitOptions);
     progress.step++;
   } catch (error) {
-    progress.stopped = `Step ${progress.step}: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(`[ensemble] 대본 ${progress.step + 1}단계 중단`, error);
+    const reason = error instanceof ScenarioError ? error.message : error instanceof Error && error.message === '대본 대기를 취소했습니다.' ? error.message : '대본 진행 조건을 확인하지 못했습니다. 현재 작업 상태를 확인한 뒤 다시 시도해 주세요.';
+    progress.stopped = `대본 ${progress.step + 1}단계: ${reason}`;
     await host.recordStop(progress.stopped);
     throw new Error(progress.stopped);
   }

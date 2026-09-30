@@ -29,9 +29,20 @@ export function forecastFromState(state: ProjectState, now: Date): ForecastResul
   });
   const stoppedTaskIds = (state.plan?.tasks ?? []).filter(spec => {
     const task = state.tasks.get(spec.id);
-    return task?.status === 'blocked' || (task?.status === 'revising' &&
+    return task?.status === 'submitted' || task?.status === 'blocked' || (task?.status === 'revising' &&
       (state.automation.limitReached || (state.members.get(spec.assignee)?.kind === 'agent' && state.activeTurn.get(spec.assignee) !== spec.id)));
   }).map(spec => spec.id);
-  if (stoppedTaskIds.length) result.uncertainty = { stoppedTaskIds, warning: `멈춘 작업 ${stoppedTaskIds.length}개 — 날짜 불확실` };
-  return result;
+  return withStopped(result, stoppedTaskIds);
+}
+
+/** A task a person is resolving right now (accept/retry/recheck) no longer makes the date uncertain. */
+export function withoutStopped(result: ForecastResult, resolvedTaskIds: Iterable<string>): ForecastResult {
+  if (!result.uncertainty) return result;
+  const resolved = new Set(resolvedTaskIds);
+  const { uncertainty, ...rest } = result;
+  return withStopped(rest, uncertainty.stoppedTaskIds.filter(id => !resolved.has(id)));
+}
+
+function withStopped(result: ForecastResult, stoppedTaskIds: string[]): ForecastResult {
+  return stoppedTaskIds.length ? { ...result, uncertainty: { stoppedTaskIds, warning: `멈춘 작업 ${stoppedTaskIds.length}개 — 날짜 불확실` } } : result;
 }

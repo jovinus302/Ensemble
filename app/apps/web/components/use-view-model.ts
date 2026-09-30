@@ -11,6 +11,7 @@ export const API = {
   messages: "/api/messages",
   availability: "/api/availability",
   card: (id: string) => `/api/cards/${encodeURIComponent(id)}`,
+  resolve: (id: string) => `/api/tasks/${encodeURIComponent(id)}/resolve`,
   freeStart: "/api/free/start",
   scenarioStart: "/api/scenario/start",
   scenarioNext: "/api/scenario/next",
@@ -27,6 +28,7 @@ const LOST_AFTER_MS = 1500;
 export type ActionResult = { ok: true } | { ok: false; code?: string; message: string };
 
 export interface ViewModelActions {
+  resolveTask(taskId: string, action: 'accept' | 'retry' | 'recheck', note?: string): Promise<ActionResult>;
   /** 즉시 "보내는 중"으로 보이고, 이전 전송이 끝난 뒤 순서대로 서버에 보낸다. */
   sendMessage(text: string, files: File[]): Promise<ActionResult>;
   decideCard(cardId: string, approve: boolean): Promise<ActionResult>;
@@ -167,6 +169,7 @@ export function useViewModel(): UseViewModelResult {
   }, [me, accept, refresh]);
 
   const actions = useMemo<ViewModelActions>(() => ({
+    resolveTask: (id, action, note) => post(API.resolve(id), { action, note }),
     sendMessage: (text, files) => {
       const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       setOutbox(items => [...items, { localId, authorId: me, text, fileNames: files.map(f => f.name), at: new Date().toISOString() }]);

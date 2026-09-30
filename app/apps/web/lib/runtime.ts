@@ -10,6 +10,8 @@ import { project, type AnyEvent, type LedgerEvent } from '@ensemble/core';
 import { continuousScenario, advanceScript, createRevisionGenerator, sceneEvents, SCENE_NOW, type ScriptProgress, type Condition, type RevisionGenerator } from '@ensemble/scenarios';
 import { FakeConnector } from './fake-connector';
 import { buildViewModel, projectTitle } from './build-view-model';
+import { taskResolutions, type ResolutionAction } from './task-resolution';
+import type { VmActivity } from './view-model';
 
 /** Cuts at a word boundary so the title (with "…") stays within `max` characters; a single long word is cut at `max`. */
 export function shortTitle(text: string, max = 40) {
@@ -26,7 +28,7 @@ export class RuntimeError extends Error {
 }
 export interface Activity {
   kind: 'pm_thinking' | 'scenario_waiting' | 'agent_working' | 'idle'; label: string; since: string;
-  stalled?: { reason: string; canRetry: boolean; canSkip: boolean };
+  stalled?: VmActivity['stalled'];
 }
 
 /** One Codex thread per agent, each in its own folder outside the repository, with a turn time limit. */
@@ -66,6 +68,8 @@ export class WebRuntime {
   private queue: Promise<unknown> = Promise.resolve();
   private intake: Promise<unknown> = Promise.resolve();
   private pendingMessages = 0;
+  private pendingResolutions = new Set<string>();
+  private resolutionErrors = new Map<string, string>();
   private replacing = false;
   private recovering = false;
   private scenarioFlight?: Promise<void>;
@@ -153,7 +157,13 @@ export class WebRuntime {
         ...(stopped ? { nextLine: { authorName: '시나리오 중단', text: '대본 진행이 멈췄습니다. 상태를 확인하고 재시도하거나 이 단계를 건너뛰세요.', hasAttachment: false } } : next ? { nextLine: { authorName: state.members.get(next.as)?.displayName ?? next.as, text: next.text, hasAttachment: !!next.attachments?.length } } : {}) } } : {}),
     });
     const goal = state.goal?.text?.replace(/^시연용 가상 자료입니다\.?\s*/, '') ?? '새 프로젝트';
-    return { ...view, project: { ...view.project, id: this.meta.projectId, title: shortTitle(goal.split(/[.!?。]/)[0]!), synthetic: this.meta.mode === 'scenario' }, activity: this.activity(events) };
+    const resolutions = taskResolutions(events, me).map(r => ({ ...r, actions: this.pendingResolutions.has(r.taskId) ? [] : r.actions }));
+    for (const task of view.roadmap.tasks) if (task.resolution && this.pendingResolutions.has(task.id)) task.resolution.actions = [];
+    const activity = this.activity(events);
+    if (resolutions.length && !activity.stalled) activity.stalled = { reason: resolutions[0]!.reason, canRetry: false, canSkip: false };
+    const resolutionError = [...this.resolutionErrors.values()].at(-1);
+    if (resolutionError) activity.stalled = { reason: resolutionError, canRetry: false, canSkip: false };
+    return { ...view, project: { ...view.project, id: this.meta.projectId, title: shortTitle(goal.split(/[.!?。]/)[0]!), synthetic: this.meta.mode === 'scenario' }, activity: { ...activity, ...(activity.stalled ? { stalled: { ...activity.stalled, tasks: resolutions } } : {}) } };
   }
 
   async archives() {
@@ -228,6 +238,7 @@ export class WebRuntime {
     }
     await this.intake;
     await this.pm.stop();
+    this.resolutionErrors.clear(); this.pendingResolutions.clear();
     (this.meta.archives ??= []).push({ id: this.meta.projectId, archivedAt: new Date().toISOString(), mode: this.meta.mode });
     return [...(this.meta.archivedProjectIds ?? []), ...(events.length ? [this.meta.projectId] : [])];
   }
@@ -329,6 +340,26 @@ export class WebRuntime {
     });
     this.intake = accept.catch(() => undefined);
     return accept;
+  }
+  async resolveTask(taskId: string, action: ResolutionAction, by: string, note?: string) {
+    await this.ready;
+    if (this.replacing) throw new RuntimeError('project_switching', '프로젝트를 전환 중입니다. 잠시 후 다시 시도해 주세요.');
+    if (this.pendingResolutions.has(taskId)) throw new RuntimeError('resolution_pending', '이 작업의 해결 요청을 처리 중입니다. 잠시 기다려 주세요.');
+    const events = await this.store.read({ projectId: this.meta.projectId });
+    const state = project(events);
+    if (!state.tasks.has(taskId)) throw new RuntimeError('task_not_found', '작업을 찾지 못했습니다.', 404);
+    const resolution = taskResolutions(events, by).find(t => t.taskId === taskId);
+    if (!resolution?.actions.includes(action)) throw new RuntimeError('resolution_unavailable', '현재 작업 상태나 권한으로는 이 방법을 사용할 수 없습니다.', 409);
+    if (this.replacing || this.pendingResolutions.has(taskId)) throw new RuntimeError('resolution_pending', '작업 상태가 바뀌고 있습니다. 잠시 후 다시 시도해 주세요.');
+    const pm = this.pm;
+    // Acceptance is prompt; the PM serializes and revalidates the actual operation.
+    this.pendingMessages++;
+    this.pendingResolutions.add(taskId); this.resolutionErrors.delete(taskId);
+    void pm.resolveTask(taskId, { action, by, ...(note?.trim() ? { note: note.trim() } : {}) })
+      .catch((error: unknown) => { console.error('[ensemble] 작업 해결 처리 실패', error); this.resolutionErrors.set(taskId, '작업 해결 요청을 처리하지 못했습니다. 현재 작업 상태를 확인한 뒤 다시 시도해 주세요.'); })
+      .finally(() => { this.pendingResolutions.delete(taskId); this.pendingMessages--; this.changed(); });
+    this.changed();
+    return { accepted: true as const };
   }
   async persistAttachments() {
     for (const e of await this.store.read({ projectId: this.meta.projectId }) as AnyEvent[]) {

@@ -60,73 +60,29 @@ function titleMarks(title: string): { base: string; marks: string[] } {
 
 const withMarks = (base: string, marks: readonly string[]): string => marks.length ? `${base} (${marks.join(', ')})` : base;
 
-/** Whether the title already marks the same excluded scope, however it was worded. */
-function hasExclusionMark(base: string, marks: readonly string[], item: string): boolean {
-  const wanted = excludedNames(item);
-  // Scope names that contain one another ("결제" and "결제 모형") are the same scope for the title;
-  // each exclusion still keeps its own "제외:" handoff condition.
-  const same = (a: string, b: string) => a.includes(b) || b.includes(a);
-  if (wanted.some(name => base.split(name).slice(1).some(after => /^\S*\s*제외/.test(after)))) return true;
-  return marks.filter(mark => mark.endsWith('제외')).map(mark => mark.replace(/\s*제외$/, '')).some(named => named.trim() === item.trim()
-    || excludedNames(named).some(name => wanted.some(other => same(name, other))));
+/** Normalization only removes UI nouns; never inspect or rewrite acceptance prose. */
+function scopeKey(item: string): string {
+  return [...new Set(excludedNames(item).map(name => name.replace(/\s+/g, '')))].sort().join('|');
 }
-
-/** "실제 결제 금지" agrees with a payment cut; only requirements to build the scope are removed. */
-const prohibition = (text: string): boolean => /금지|없음|않(?:는다|음|아야|도록|고)|하지\s*말/.test(text);
-
-function withoutScope(text: string, names: readonly string[]): string | undefined {
-  const includesScope = (part: string) => names.some(name => part.includes(name));
-  if (!includesScope(text)) return text;
-  // A parenthesized flow is only one part of a condition. Keep its enclosing
-  // artifact/format requirement even when one of the flow's steps is excluded.
-  text = text.replace(/\(([^()]*)\)/g, (whole, inner: string) => {
-    if (!includesScope(inner)) return whole;
-    const remaining = withoutScope(inner, names);
-    return remaining ? `(${remaining})` : '';
+function uniqueScope(items: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return items.map(scopeItem).filter(item => {
+    const key = scopeKey(item);
+    if (!item || seen.has(key)) return false;
+    seen.add(key); return true;
   });
-  if (!includesScope(text)) return text;
-  if (text.startsWith('범위:')) {
-    const remaining = withoutScope(text.slice('범위:'.length).trim(), names);
-    return remaining ? `범위: ${remaining}` : undefined;
-  }
-  // Object + prohibition + predicate are distinct clauses, not one comma list.
-  // QA C1: "가입..., 모의 결제 버튼 동작을 실제 개인정보 수집·결제 없이 시연...".
-  const objectWithout = /^(.*?[을를])\s+(실제\s+.+?)\s+없이\s+(.+)$/.exec(text);
-  if (objectWithout) {
-    const object = withoutScope(objectWithout[1]!, names);
-    return [object, `${objectWithout[2]!} 없이`, objectWithout[3]!].filter(Boolean).join(' ');
-  }
-  // Keep prohibitions whole: removing a mock payment button must not erase the ban
-  // on real payment, personal-data collection or external-service connections.
-  const without = /^(.*?)\s+없이\s+(.+)$/.exec(text);
-  if (without) {
-    const allowed = withoutScope(without[2]!, names);
-    return allowed ? `${without[1]!} 없이 ${allowed}` : `${without[1]!} 금지`;
-  }
-  let splitConjunction = false;
-  const parts = text.split(/,\s*|·|→|\s+및\s+/).flatMap(part => {
-    const pair = /^(.+?)(?:과|와)\s+(.+)$/.exec(part);
-    // In "결제 승인과 취소", both actions belong to payment; don't retain "취소".
-    if (pair && (!includesScope(pair[1]!) || /(?:화면|버튼|기능|흐름)$/.test(pair[1]!))) {
-      splitConjunction = true;
-      return [pair[1]!, pair[2]!];
-    }
-    return [part];
-  });
-  const dropped = (part: string) => includesScope(part) && !prohibition(part);
-  const kept = parts.filter(part => !dropped(part));
-  if (!kept.length) return undefined;
-  // The last list item can carry the predicate shared by all preceding items.
-  const last = parts.at(-1)!;
-  const candidate = dropped(last) ?/([이가을를])\s+(.+)$/.exec(last) : null;
-  const predicate = candidate && !includesScope(candidate[2]!) ? candidate : null;
-  // Keep punctuation inside unaffected list items (오류·재입력, 시간 선택·예약 확인).
-  let retained = text;
-  for (const part of parts.filter(dropped)) retained = retained.replace(part, '');
-  retained = retained.replace(/^[,·→\s]+|[,·→\s]+$/g, '').replace(/([,·→])\s*[,·→]/g, '$1');
-  // Conjunction splitting needs reconstruction; comma/middle-dot lists retain their original joins.
-  if (splitConjunction) retained = kept.join(', ');
-  return `${retained}${predicate ? ` 항목${/[이가]/.test(predicate[1]!) ? '이' : '을'} ${predicate[2]}` : ''}`;
+}
+/** Read older title annotations once, then use explicit metadata as the source of truth. */
+function updateScope(task: TaskSpec): void {
+  const legacy = titleMarks(task.title);
+  task.baseTitle ??= legacy.base;
+  // Stored items are names only: a seeded "…까지" or "… 제외" would otherwise be doubled in the title.
+  task.exclusions = uniqueScope((task.exclusions ?? legacy.marks.filter(mark => mark.endsWith('제외'))).map(mark => mark.replace(/\s*제외$/, '')));
+  task.limits = uniqueScope(task.limits ?? legacy.marks.filter(mark => mark.endsWith('까지')).flatMap(mark => scopeItem(mark).split(/\s*·\s*/)));
+  task.title = withMarks(task.baseTitle, [
+    ...task.exclusions.map(item => `${item} 제외`),
+    ...(task.limits.length ? [`${task.limits.join('·')}까지`] : []),
+  ]);
 }
 
 /** Accepted artifacts describe completed work. New reductions constrain remaining work. */
@@ -163,41 +119,13 @@ export function applyOps(plan: readonly TaskSpec[], ops: readonly PlanOp[]): Tas
     const task = tasks.find(t => t.id === op.taskId);
     if (!task) throw new Error(`Unknown task ${op.taskId}`);
     if (op.type === 'reassign') task.assignee = op.assignee;
-    else {
-      const condition = op.type === 'exclude_scope' ? `제외: ${op.item}` : op.type === 'limit_scope' ? `범위: ${op.items.map(scopeItem).join(', ')}만` : '초안 단계에서 인계 가능';
-      const { base, marks } = titleMarks(task.title);
-      const limits = marks.filter(mark => mark.endsWith('까지')), exclusions = marks.filter(mark => !limits.includes(mark));
-      if (op.type === 'exclude_scope' && !task.handoffConditions.includes(condition) && !hasExclusionMark(base, marks, op.item)) exclusions.push(`${op.item} 제외`);
-      if (op.type === 'exclude_scope') task.title = withMarks(base, [...exclusions, ...limits]);
-      if (op.type === 'exclude_scope') {
-        const names = excludedNames(op.item);
-        task.handoffConditions = task.handoffConditions.flatMap(c => {
-          const remaining = c.startsWith('제외:') ? c : withoutScope(c, names);
-          return remaining ? [remaining] : [];
-        });
-        if (!task.handoffConditions.some(c => !c.startsWith('제외:'))) {
-          const title = base.replace(/\([^)]*\)/g, '').trim();
-          const remainingTitle = withoutScope(title, names) ?? '남은 작업';
-          task.handoffConditions.unshift(`${remainingTitle}의 제외 범위를 뺀 결과물을 제출`);
-        }
-      }
-      if (op.type === 'limit_scope') {
-        const keptNames = op.items.map(scopeItem);
-        // Only lists that explicitly mention a kept scope establish an enumeration.
-        // Independent format/security/evidence conditions must survive unchanged.
-        task.handoffConditions = task.handoffConditions.map(c => {
-          if (c.startsWith('제외:') || !keptNames.some(name => c.includes(name))) return c;
-          const parts = c.split(/,\s*|\s+및\s+/);
-          const removed = parts.filter(p => !keptNames.some(name => p.includes(name)))
-            .filter(p => !/금지|없이|개인정보|HTML|로컬|출처|근거|오류|재입력/.test(p))
-            .map(p => p.replace(/(?:[을를이가])\s+.*$/, '').trim())
-            .flatMap(p => p.split(/[·→]/)).map(p => p.replace(/\s*항목$/, '').trim()).filter(Boolean);
-          return withoutScope(c, removed) ?? c;
-        });
-        task.title = withMarks(base, [...exclusions, `${keptNames.join('·')}까지`]);
-        task.handoffConditions = task.handoffConditions.filter(c => !c.startsWith('범위:'));
-      }
-      if (!task.handoffConditions.includes(condition)) task.handoffConditions.push(condition);
+    else if (op.type === 'handoff_early') {
+      if (!task.handoffConditions.includes('초안 단계에서 인계 가능')) task.handoffConditions.push('초안 단계에서 인계 가능');
+    } else {
+      updateScope(task);
+      if (op.type === 'exclude_scope') task.exclusions = uniqueScope([...task.exclusions!, op.item]);
+      if (op.type === 'limit_scope') task.limits = uniqueScope([...task.limits!, ...op.items]);
+      updateScope(task);
     }
   }
   return tasks;

@@ -1,6 +1,6 @@
 import { availabilityWeek, formatKstDate, scopeItem, remainingScopeOps, type ForecastResult } from '@ensemble/core';
 import { channelText, taskName, shortTaskName, numericFacts, hasGroundedNumbers } from './channel-text.ts';
-import { affectedMembers, automationGate, diffPlans, forecastFromState, isAutomationAction, limitReachedEvent, project, applyOps, opAuthority } from '@ensemble/core';
+import { affectedMembers, automationGate, diffPlans, forecastFromState, withoutStopped, isAutomationAction, limitReachedEvent, project, applyOps, opAuthority } from '@ensemble/core';
 import { createHash } from 'node:crypto';
 import type { AnyEvent, EventContext, EventPayloads, EventType, LedgerEvent, NewLedgerEvent, PlanOp, ProjectState } from '@ensemble/core';
 import type { SessionConnector, UpdateInstructionsInput } from '@ensemble/agents';
@@ -9,10 +9,16 @@ import type { LedgerStore } from '@ensemble/store';
 import { PM_SYSTEM_PROMPT } from './pm-prompt.ts';
 import { taskQuestions } from './context.ts';
 
+export type TaskRecoveryOp = (
+  | { type: 'resolve_task'; taskId: string; action: 'accept' | 'retry' | 'recheck'; note?: string }
+  | { type: 'reopen_task'; taskId: string; reason: string }
+) & { sourceMessageIds: string[] };
+export type CoordinationOp = PlanOp | TaskRecoveryOp;
+const isRecoveryOp = (op: CoordinationOp): op is TaskRecoveryOp => op.type === 'resolve_task' || op.type === 'reopen_task';
 export interface CoordinationInterpretation {
   category: string;
   summary: string;
-  ops: PlanOp[];
+  ops: CoordinationOp[];
   conflicts: string[];
   conversation?: { questionMessageId: string | null; waitingOnMemberIds: string[]; directedToPm: boolean };
   factMentions?: { messageId: string; factIds: string[] }[];
@@ -32,10 +38,16 @@ export interface CoordinationJudgement {
   /** Code-owned fingerprints, persisted with the consideration for replay. */
   factVersions?: Record<string, string>;
 }
-export interface CoordinationResult { posts: { text: string; kind: EventPayloads['pm_spoke']['kind'] }[]; events: LedgerEvent[]; agentAnswers?: { taskId: string; questionId: string; text: string }[] }
+export interface CoordinationResult {
+  posts: { text: string; kind: EventPayloads['pm_spoke']['kind'] }[]; events: LedgerEvent[];
+  agentAnswers?: { taskId: string; questionId: string; text: string }[];
+  resolutions?: { taskId: string; action: 'accept' | 'retry' | 'recheck'; note?: string }[];
+  reopens?: { taskId: string; reason: string }[];
+}
 export interface CoordinatorOptions extends EventContext { model?: string; clock?: () => Date }
 const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string' && x.length > 0);
 const stringArray = { type: 'array', items: { type: 'string' } };
+const JUDGEMENT_FAILURE_TEXT = '제가 이 요청을 판단하지 못했어요. 무엇을 바꾸길 원하는지 한 문장으로 다시 알려 주세요';
 function validConversation(value: unknown, state: ProjectState, lastHumanId?: string): boolean {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
@@ -64,18 +76,22 @@ function interpretationTool(state: ProjectState): ToolSpec {
       op('limit_scope', { taskId, items: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } } }),
       op('handoff_early', { taskId }), op('reassign', { taskId, assignee: memberId }),
       op('set_deadline', { date: { type: 'string' } }), op('change_goal', { text: { type: 'string', minLength: 1 } }),
+      op('resolve_task', { taskId, action: { enum: ['accept', 'retry', 'recheck'] }, note: { type: 'string', description: '사람이 요청한 보완 내용 또는 수락 사유. 없으면 빈 문자열' } }),
+      op('reopen_task', { taskId, reason: { type: 'string', minLength: 1 } }),
     ] } },
   } } };
 }
-export function validOp(value: unknown, state: ProjectState): value is PlanOp {
+function validCoordinationOp(value: unknown, state: ProjectState): value is CoordinationOp {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   if (!strings(v.sourceMessageIds) || !v.sourceMessageIds.length || !v.sourceMessageIds.every(id => state.messages.some(m => m.messageId === id && state.members.get(m.authorId)?.kind === 'human'))) return false;
-  const fields: Record<string, string[]> = { set_availability: ['memberId', 'weeklyHours', 'weekStart', 'period'], exclude_scope: ['taskId', 'item'], limit_scope: ['taskId', 'items'], handoff_early: ['taskId'], reassign: ['taskId', 'assignee'], set_deadline: ['date'], change_goal: ['text'] };
+  const fields: Record<string, string[]> = { set_availability: ['memberId', 'weeklyHours', 'weekStart', 'period'], exclude_scope: ['taskId', 'item'], limit_scope: ['taskId', 'items'], handoff_early: ['taskId'], reassign: ['taskId', 'assignee'], set_deadline: ['date'], change_goal: ['text'], resolve_task: ['taskId', 'action', 'note'], reopen_task: ['taskId', 'reason'] };
   const allowed = fields[String(v.type)];
   if (!allowed || Object.keys(v).some(k => !['type', 'sourceMessageIds', ...allowed].includes(k))) return false;
   if (allowed.includes('taskId') && !state.plan?.tasks.some(t => t.id === v.taskId)) return false;
   switch (v.type) {
+    case 'resolve_task': return ['accept', 'retry', 'recheck'].includes(String(v.action)) && (v.note === undefined || typeof v.note === 'string');
+    case 'reopen_task': return typeof v.reason === 'string' && !!v.reason.trim();
     case 'set_availability': return state.members.get(String(v.memberId))?.kind === 'human' && typeof v.weeklyHours === 'number' && Number.isFinite(v.weeklyHours) && v.weeklyHours >= 0 && (v.period === undefined || ['this_week', 'ongoing', 'unclear'].includes(String(v.period))) && (v.weekStart === undefined || (typeof v.weekStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.weekStart) && availabilityWeek(new Date(`${v.weekStart}T00:00:00+09:00`)) === v.weekStart));
     case 'limit_scope': return strings(v.items) && v.items.length > 0;
     case 'exclude_scope': return typeof v.item === 'string' && !!v.item.trim();
@@ -85,6 +101,27 @@ export function validOp(value: unknown, state: ProjectState): value is PlanOp {
     case 'change_goal': return typeof v.text === 'string' && !!v.text.trim();
     default: return false;
   }
+}
+/** Authority cards keep their original plan-only contract. */
+export function validOp(value: unknown, state: ProjectState): value is PlanOp {
+  return validCoordinationOp(value, state) && !isRecoveryOp(value);
+}
+/** The current human request must authorize the action; old decider messages never grant it. */
+export function recoveryAllowed(state: ProjectState, op: TaskRecoveryOp, messageId: string): boolean {
+  const message = state.messages.find(m => m.messageId === messageId);
+  const task = state.tasks.get(op.taskId);
+  if (!message || state.members.get(message.authorId)?.kind !== 'human' || !op.sourceMessageIds.includes(messageId) || !task) return false;
+  const decider = state.goal?.decider === message.authorId;
+  const downstream = (id: string, seen = new Set<string>()): boolean => {
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return (state.tasks.get(id)?.spec.dependsOn ?? []).some(dep => dep === op.taskId || downstream(dep, seen));
+  };
+  const assigned = task.spec.assignee === message.authorId || [...state.tasks.values()].some(t => t.status !== 'cancelled' && t.spec.assignee === message.authorId && downstream(t.spec.id));
+  if (op.type === 'reopen_task') return task.status === 'checked' && (decider || assigned);
+  if (op.action === 'recheck') return task.status === 'submitted' && task.results.length > 0;
+  if (!['blocked', 'submitted', 'revising'].includes(task.status)) return false;
+  return op.action === 'accept' ? decider && task.results.length > 0 : decider || assigned;
 }
 function describeOp(op: PlanOp, state: ProjectState): string {
   const name = (id: string) => state.members.get(id)?.displayName ?? id;
@@ -190,27 +227,37 @@ export class Coordinator {
     const humanMessages = state.messages.filter(m => state.members.get(m.authorId)?.kind === 'human');
     const lastHuman = humanMessages.at(-1);
     const pendingAgentQuestions = [...state.tasks.values()].filter(t => state.members.get(t.spec.assignee)?.kind === 'agent').flatMap(t => taskQuestions(events, t.spec.id).filter(q => !q.answer).map(q => ({ ...q, taskId: t.spec.id })));
-    const facts = { messageId, planVersion: version, now, messages: state.messages, knownFacts, pendingAgentQuestions, plan: state.plan, members: [...state.members.values()], activeTurns: [...state.activeTurn], availability: [...state.availability], estimates: [...state.estimates], goal: state.goal, currentForecast: calendarForecast(current), forecastInputIds: forecastInputs, decisions: [...state.decisions.values()], pendingAuthority: [...state.pendingAuthority.values()], previousSpeech: prior, openTopics: state.openTopics };
+    const facts = { messageId, planVersion: version, now, messages: state.messages, knownFacts, pendingAgentQuestions, plan: state.plan, taskStates: [...state.tasks.values()], members: [...state.members.values()], activeTurns: [...state.activeTurn], availability: [...state.availability], estimates: [...state.estimates], goal: state.goal, currentForecast: calendarForecast(current), forecastInputIds: forecastInputs, decisions: [...state.decisions.values()], pendingAuthority: [...state.pendingAuthority.values()], previousSpeech: prior, openTopics: state.openTopics };
     if (confirmed && (!confirmed.every(op => validOp(op, state) && opAuthority(state, op).allowed))) throw new Error('Invalid or unauthorized confirmed operation');
     const interpretation = confirmed ? { category: 'authority', summary: '기록된 변경 승인', ops: confirmed, conflicts: [] } : !state.plan ? undefined : await this.call<CoordinationInterpretation>(interpretationTool(state), facts, v => {
       const errors: string[] = [];
       if (!Object.keys(v).every(k => ['category', 'summary', 'ops', 'conflicts', 'conversation', 'factMentions', 'agentAnswers'].includes(k))) errors.push('최상위 필드는 category, summary, ops, conflicts, conversation, factMentions, agentAnswers만 허용합니다.');
       if (typeof v.category !== 'string' || typeof v.summary !== 'string') errors.push('category와 summary는 문자열이어야 합니다.');
-      if (!Array.isArray(v.ops) || !v.ops.every(op => validOp(op, state))) errors.push('ops: 허용된 연산 필드·작업/담당자 ID·실제 사람 sourceMessageIds만 사용하세요.');
+      if (!Array.isArray(v.ops) || !v.ops.every(op => validCoordinationOp(op, state))) errors.push('ops: 허용된 연산 필드·작업/담당자 ID·실제 사람 sourceMessageIds만 사용하세요.');
       if (!strings(v.conflicts) || !v.conflicts.every(id => state.decisions.has(id))) errors.push(`conflicts: 기존 결정의 decisionId만 허용합니다. 허용 ID=${JSON.stringify([...state.decisions.keys()])}. 작업/계획 이벤트/메시지 ID는 결정 ID가 아닙니다.${state.decisions.size ? '' : ' 기존 결정이 없으므로 conflicts는 반드시 []입니다.'}`);
       if (!(v.agentAnswers === undefined || (Array.isArray(v.agentAnswers) && v.agentAnswers.every(a => a && typeof a === 'object' && pendingAgentQuestions.some(q => q.questionId === a.questionId) && strings(a.sourceMessageIds) && a.sourceMessageIds.includes(messageId) && a.sourceMessageIds.every((id: string) => humanMessages.some(m => m.messageId === id)))))) errors.push('agentAnswers: 미해결 질문 ID와 현재 메시지를 포함한 사람 sourceMessageIds만 허용합니다.');
       if (!validConversation(v.conversation, state, lastHuman?.messageId)) errors.push(`conversation: questionMessageId는 ${lastHuman?.messageId} 또는 null이며, waitingOnMemberIds는 질문자를 제외한 사람 ID 배열입니다. 질문이 없으면 null/[]/false를 쓰세요.`);
       if (!Array.isArray(v.factMentions) || !v.factMentions.every(mention => mention && typeof mention === 'object' && humanMessages.some(m => m.messageId === mention.messageId) && strings(mention.factIds) && mention.factIds.every((id: string) => knownFacts.some(f => f.id === id)))) errors.push('factMentions: 실제 사람 messageId와 knownFacts의 id만 배열로 사용하세요.');
       return errors;
     });
-    const unclearAvailability = (interpretation?.ops ?? []).filter(op => op.type === 'set_availability' && (op as PlanOp & { period?: string }).period === 'unclear');
-    const ops = remainingScopeOps(state, (interpretation?.ops ?? []).filter(op => !unclearAvailability.includes(op)).map(op => {
+    const planOps = (interpretation?.ops ?? []).filter((op): op is PlanOp => !isRecoveryOp(op));
+    const unclearAvailability = planOps.filter(op => op.type === 'set_availability' && (op as PlanOp & { period?: string }).period === 'unclear');
+    const ops = remainingScopeOps(state, planOps.filter(op => !unclearAvailability.includes(op)).map(op => {
       if (op.type !== 'set_availability') return op;
       const { period, ...operation } = op as Extract<PlanOp, { type: 'set_availability' }> & { period?: string };
       return { ...operation, ...(period === 'this_week' ? { weekStart: availabilityWeek(now) } : {}) };
     }));
     const conversation = interpretation?.conversation ?? { questionMessageId: null, waitingOnMemberIds: [], directedToPm: false };
     const openHumanQuestion = conversation.questionMessageId !== null && conversation.waitingOnMemberIds.length > 0 && !conversation.directedToPm;
+    const requestedRecovery = (interpretation?.ops ?? []).filter(isRecoveryOp);
+    // Distinct actions for one task in one utterance are ambiguous; execute neither.
+    const recoveryOps = [...new Map(requestedRecovery.map(op => [JSON.stringify(op), op])).values()];
+    const authorizedRecovery = recoveryOps.filter(op => !openHumanQuestion && recoveryAllowed(state, op, messageId)
+      && recoveryOps.filter(other => other.taskId === op.taskId).length === 1);
+    const resolutions: NonNullable<CoordinationResult['resolutions']> = authorizedRecovery.flatMap(op => op.type === 'resolve_task' ? [{ taskId: op.taskId, action: op.action, ...(op.note ? { note: op.note } : {}) }] : []);
+    const reopens: NonNullable<CoordinationResult['reopens']> = authorizedRecovery.flatMap(op => op.type === 'reopen_task' ? [{ taskId: op.taskId, reason: op.reason }] : []);
+    // The PM carries these out right after this message, so speech must not warn about them as stopped.
+    const settled = (result: ForecastResult) => withoutStopped(result, resolutions.map(r => r.taskId));
     const candidate = structuredClone(state);
     if (candidate.plan) candidate.plan.tasks = applyOps(candidate.plan.tasks, ops);
     for (const op of ops) {
@@ -313,13 +360,22 @@ export class Coordinator {
       && applied.length > 0 && !interpretation?.conflicts.length && applied.every(op => op.type === 'exclude_scope' && op.sourceMessageIds.includes(messageId) && message.text.includes(op.item)) && /빼|제외/.test(message.text);
     if (!validJudgement && !exclusionConclusion && !directQuestion && message.authorId === state.goal?.decider && /빼|제외|확정|바꾸자/.test(message.text)) judgement = { ...judgement, whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: '결정권자의 변경 발언을 검증하지 못해 재확인한다', text: '변경 내용을 확인하지 못해, 적용할 작업과 변경할 범위를 다시 알려주시겠어요?' };
     if (!state.plan && state.members.get(message.authorId)?.kind === 'human') judgement = { ...judgement, whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: '계획이 없어 다음 시작 경로를 안내한다', text: state.pendingPlans.size ? '제안된 계획 초안을 확인하고 승인해 주세요.' : '자유형식에서 말씀하신 목표로 계획을 만들어 볼까요?' };
+    const failedJudgement = !!state.plan && !validJudgement;
+    if (failedJudgement && !directQuestion && !exclusionConclusion && !authorizedRecovery.length) judgement = { ...judgement, whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: 'judgement_failed', text: JUDGEMENT_FAILURE_TEXT };
+    if (requestedRecovery.length) {
+      // Execution owns success announcements and will revalidate against the latest ledger.
+      judgement = { ...judgement, whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`],
+        decision: authorizedRecovery.length === recoveryOps.length ? 'silent' : 'speak',
+        reason: '작업 해결 요청의 권한과 상태를 코드로 검증',
+        text: authorizedRecovery.length === recoveryOps.length ? '' : '이 요청은 현재 작업 상태나 요청 권한을 확인할 수 없어 실행하지 않았어요. 결정권자나 해당 작업 담당자가 원하는 조치를 다시 알려 주세요.' };
+    }
     // Conversational judgement does not run an artifact review. Only checkResult owns
     // positive acceptance speech and its task_checked/review evidence in the same handling.
     if (/(?:충족|통과|인계\s*가능|조건.{0,12}만족)/.test(judgement.text)) {
       judgement.text = '결과의 충족 여부는 인계 검토로 확인해야 합니다. 해당 작업에 결과물을 첨부해 확인을 요청해 주세요.';
       judgement.reason = '대화 판단만으로 인계 충족을 선언할 수 없어 검토 경로 안내';
     }
-    if (judgement.decision === 'speak' && current.uncertainty && judgement.evidence.some(id => id.startsWith('forecast:'))) judgement.text = forecastAnswer(current, state);
+    if (judgement.decision === 'speak' && settled(current).uncertainty && judgement.evidence.some(id => id.startsWith('forecast:'))) judgement.text = forecastAnswer(settled(current), state);
     judgement.text = channelText(judgement.text, state);
     let post: CoordinationResult['posts'][number] | undefined = judgement.decision === 'speak' ? { text: judgement.text, kind: 'answer' } : undefined;
     const append: NewLedgerEvent[] = [];
@@ -376,7 +432,7 @@ export class Coordinator {
             weeks.set(op.weekStart, op.weeklyHours); appliedState.availabilityOverrides.set(op.memberId, weeks);
           } else appliedState.availability.set(op.memberId, op.weeklyHours);
         }
-        const after = forecastFromState(appliedState, now);
+        const after = settled(forecastFromState(appliedState, now));
         const late = after.uncertainty ? ` ${after.uncertainty.warning}.` : after.ok && after.lateness && after.lateness.maxDays > 0 ? ` 그래도 최대 ${formatKstDate(after.end.max)}로 기한을 넘깁니다.` : '';
         post = { text: `정리하면: ${summary}.${late}`, kind: 'summary' };
         judgement = { ...judgement, decision: 'speak', whoseAction: affected.join(', ') || state.goal.decider, alreadyKnows: 'no', evidence: sourceMessageIds.map(id => `msg:${id}`), reason: '확인된 변경을 계획과 담당자에게 반영', text: post.text };
@@ -407,7 +463,7 @@ export class Coordinator {
         if (retry < 2) return { append: [], result: 'retry' };
         const text = '기록이 계속 바뀌어 변경을 반영하지 못했습니다. 잠시 후 다시 말씀해 주세요.';
         judgement = { ...judgement!, whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: '최신 기록 재판단 두 번 후에도 경합이 계속됨', text };
-        append.length = 0; deliveries.length = 0; agentAnswers.length = 0; post = { text, kind: 'ask' };
+        append.length = 0; deliveries.length = 0; agentAnswers.length = 0; resolutions.length = 0; reopens.length = 0; post = { text, kind: 'ask' };
       }
       // Human approvals and decider conclusions start a new window before its changes.
       const approvals = append.filter(e => ['authority_granted', 'decision_recorded'].includes(e.type));
@@ -417,7 +473,7 @@ export class Coordinator {
       const cost = append.filter(isAutomationAction).length + deliveries.length * 2;
       if (cost > gate.remaining) {
         if (confirmed) throw new Error('Automation limit reached; resume before applying approval');
-        judgement = { ...judgement!, decision: 'silent', reason: '자동 행동 상한' }; post = undefined; append.length = 0; deliveries.length = 0; agentAnswers.length = 0;
+        judgement = { ...judgement!, decision: 'silent', reason: '자동 행동 상한' }; post = undefined; append.length = 0; deliveries.length = 0; agentAnswers.length = 0; resolutions.length = 0; reopens.length = 0;
         if (!latest.automation.limitReached) {
           append.push(limitReachedEvent(latest, { projectId: this.options.projectId, targetProductId: this.options.targetProductId }) ?? make('action_limit_reached', { count: latest.automation.actionsSinceResume, limit: 12 }));
           // The one required limit notice is a system safety notification, not another
@@ -430,11 +486,17 @@ export class Coordinator {
       append.unshift(make('pm_considered', { considerationId: key, triggerId: messageId, ...judgement! }));
       if (post) post.text = channelText(post.text, state);
       if (post) append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:speech`, ...post }, 'pm_spoke', true));
+      if (failedJudgement) {
+        append.push(make('judgement_failed', { triggerId: messageId, stage: interpretation ? 'judgement' : 'interpretation', reason: '재생성 후에도 모델 응답 검증 실패' }));
+        // Preserve grounded deterministic answers, while still disclosing the failed model judgement.
+        if (post?.text !== JUDGEMENT_FAILURE_TEXT) append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:failure`, text: JUDGEMENT_FAILURE_TEXT, kind: 'ask' }, 'failure-notice'));
+      }
       return { append, result: 'applied' };
     });
     if (tx.result === 'retry') return this.consider(messageId, confirmed, requestId, retry + 1);
     if (tx.result === 'duplicate') return { posts: [], events: [] };
-    const result: CoordinationResult = { posts: post ? [post] : [], events: tx.appended, ...(agentAnswers.length ? { agentAnswers } : {}) };
+    const result: CoordinationResult = { posts: post ? [post] : [], events: tx.appended, ...(agentAnswers.length ? { agentAnswers } : {}), ...(resolutions.length ? { resolutions } : {}), ...(reopens.length ? { reopens } : {}) };
+    for (const e of tx.appended as AnyEvent[]) if (e.type === 'pm_spoke' && e.idempotencyKey === `${key}:failure-notice`) result.posts.push({ text: e.payload.text, kind: 'ask' });
     for (const e of tx.appended as AnyEvent[]) if (e.type === 'change_notified' && e.payload.via === 'channel') result.posts.push({ text: e.payload.text, kind: 'nudge' });
     for (const e of tx.appended as AnyEvent[]) if (e.type === 'pm_spoke' && e.idempotencyKey?.startsWith(`${key}:ask:`)) result.posts.push({ text: e.payload.text, kind: 'ask' });
     if (tx.appended.some(e => e.type === 'action_limit_reached')) result.posts.push({ text: '자동 행동 상한에 도달했습니다. 계속하려면 재개해 주세요.', kind: 'ask' });

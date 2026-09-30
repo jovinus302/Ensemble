@@ -69,7 +69,8 @@ it('summarizes an agent result for people: what got done, what to do, where to l
   expect(summarizeForHuman(project(checked), 'T4', report)).toBe([
     '[프로토타입] 프로토타입 Agent 결과',
     '무엇이 됐나: 클릭 가능한 3개 화면',
-    '할 일: @리드 사용성 테스트를 시작할 수 있습니다. 확인하지 못한 점: 태블릿 미확인',
+    '할 일: @리드 사용성 테스트를 시작할 수 있습니다.',
+    '확인하지 못한 점: 태블릿 미확인',
     '확인할 곳: proto/index.html',
   ].join('\n'));
   const revising = ledger([
@@ -166,4 +167,42 @@ it('builds the revision update for an agent from the recorded request: at most t
     reason: expect.stringContaining('result_report로 다시 제출') });
   expect(revisionUpdate(events, 1, 'T4', 'other')).toBeUndefined();
   expect(revisionCount(events, 'T4')).toBe(1);
+});
+
+it('M11 T2: the agent context carries the scope cut apart from the conditions, which stay as written', () => {
+  const events = ledger();
+  const plan = events.find(e => e.type === 'plan_committed')!;
+  const tasks = (plan.payload as { tasks: Record<string, unknown>[] }).tasks.map(t => t.id === 'T4' ? { ...t, handoffConditions: ['가입·시간 선택·예약 확인·결제 화면으로 이동 가능'], exclusions: ['결제'], limits: ['가입·시간 선택·예약 확인까지'] } : t);
+  const scoped = events.map(e => e === plan ? { ...e, payload: { ...(plan.payload as object), tasks } } : e);
+  const input = buildTaskContext(project(scoped), 'T4', scoped);
+  expect(input.handoffConditions.map(c => c.text)).toEqual(['가입·시간 선택·예약 확인·결제 화면으로 이동 가능']);
+  expect(input.exclusions).toEqual([{ text: '결제', sourceId: 'e4#v1:T4.exclusions[0]' }]);
+  expect(input.limits).toEqual([{ text: '가입·시간 선택·예약 확인까지', sourceId: 'e4#v1:T4.limits[0]' }]);
+  expect(buildTaskContext(project(events), 'T4', events)).not.toHaveProperty('exclusions');
+});
+
+it('M11 T1/T3: only PM revisions count toward the cap; a person\'s request or a hand-back starts it over', () => {
+  const pmRevision = (resultId: string) => ({ type: 'revision_requested', payload: { taskId: 'T4', resultId, missing: ['x'] }, kind: 'pm' as const });
+  const base = ledger([
+    { type: 'result_submitted', payload: { taskId: 'T4', resultId: 'r1', planVersion: 1, summary: 's', artifactIds: [] }, kind: 'agent' },
+    pmRevision('r1'), pmRevision('r1'), pmRevision('r1'),
+  ]);
+  expect(revisionCount(base, 'T4')).toBe(3);
+  const asked = ledger([...base.slice(-4).map(e => ({ type: e.type, payload: e.payload, kind: e.actor.kind as 'agent' | 'pm' })),
+    { type: 'revision_requested', payload: { taskId: 'T4', resultId: 'r1', missing: ['사용자 요청: 캘린더 버튼'] }, kind: 'human' }, pmRevision('r1')]);
+  expect(revisionCount(asked, 'T4')).toBe(1);
+  const handedBack = [...base, { ...base.at(-1)!, id: 'marker', seq: base.length + 1, type: 'pm_considered', idempotencyKey: 'resolve:retry:T4:m1', payload: {} }] as LedgerEvent[];
+  expect(revisionCount(handedBack, 'T4')).toBe(0);
+  // A person's request reaches the agent as that person's words, keyed by its own record.
+  const update = revisionUpdate(asked.slice(0, -1), 1, 'T4', 'r1')!;
+  expect(update.change[0]).toBe('사용자 요청: 캘린더 버튼');
+  expect(update.updateId).toMatch(/^revision:r1:e\d+$/);
+  expect(update.reason).toContain('다시 맡겼습니다');
+});
+
+it('U5: a limitation is its own line and an empty "할 일:" is never written (QA4 C6)', () => {
+  const report: ResultReport = { type: 'result_report', taskId: 'T4', planVersion: 1, summary: '시연용 가상 자료', files: [{ path: 'research.md', description: '' }], limitations: ['시연용 가상 자료이며 실제 조사·고객 검증이 아닙니다.'] };
+  const text = summarizeForHuman(project(ledger()), 'T4', report);
+  expect(text).not.toContain('할 일:');
+  expect(text).toContain('\n확인하지 못한 점: 시연용 가상 자료이며 실제 조사·고객 검증이 아닙니다.\n');
 });

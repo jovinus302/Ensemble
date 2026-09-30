@@ -55,13 +55,19 @@ export async function GET(request: Request, context: Context) {
 export async function POST(request: Request, context: Context) {
   try {
     const parts = (await context.params).path, route = parts.join('/');
-    if (!['messages', 'availability', 'free/start', 'scenario/start', 'scenario/next', 'scenario/retry', 'scenario/skip'].includes(route) && !(parts[0] === 'cards' && parts.length === 2)) return json({ error: { code: 'not_found', message: '요청한 경로를 찾지 못했습니다.' } }, 404);
+    const resolving = parts[0] === 'tasks' && parts.length === 3 && parts[2] === 'resolve';
+    if (!resolving && !['messages', 'availability', 'free/start', 'scenario/start', 'scenario/next', 'scenario/retry', 'scenario/skip'].includes(route) && !(parts[0] === 'cards' && parts.length === 2)) return json({ error: { code: 'not_found', message: '요청한 경로를 찾지 못했습니다.' } }, 404);
     let parsed: unknown;
     try { parsed = await request.json(); } catch { throw new InputError('요청 내용을 읽을 수 없습니다.'); }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new InputError('요청 형식이 올바르지 않습니다.');
     const body = parsed as Record<string, unknown>;
     const app = getRuntime();
     const me = typeof body.me === 'string' ? body.me : typeof body.memberId === 'string' ? body.memberId : typeof body.authorId === 'string' ? body.authorId : 'owner';
+    if (resolving) {
+      if (body.action !== 'accept' && body.action !== 'retry' && body.action !== 'recheck') throw new InputError('작업 해결 방법을 선택해 주세요.');
+      if (body.note !== undefined && typeof body.note !== 'string') throw new InputError('메모는 글로 입력해 주세요.');
+      return json(await app.resolveTask(parts[1]!, body.action, me, body.note as string | undefined), 202);
+    }
     if (body.confirmReplace !== undefined && typeof body.confirmReplace !== 'boolean') throw new InputError('프로젝트 교체 확인 값이 올바르지 않습니다.');
     if (route === 'messages') {
       const author = text(body.authorId, 'authorId');

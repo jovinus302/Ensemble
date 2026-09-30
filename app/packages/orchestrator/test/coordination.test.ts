@@ -68,6 +68,89 @@ it('answers using code-calculated seven-day delay and cites the forecast fact', 
 });
 
 const reduced = initialTasks.map(t => ({ ...t, handoffConditions: t.handoffConditions.filter(c => c !== '결제') }));
+it.each([
+  ['accept', '결제 화면 조건은 이제 필요 없어요. 이대로 확인해 주세요'],
+  ['retry', '@프로토타입 Agent 다시 맡길게요. 결제 없이 다시 만들어 주세요'],
+  ['recheck', '다시 검토해 주세요'],
+] as const)('T1 returns an authorized %s recovery request', async (action, text) => {
+  const op = { type: 'resolve_task', taskId: 'prototype', action, note: text, sourceMessageIds: ['m1'] };
+  const f = await fixture([interpret({ ops: [op as never] }), judge({ decision: 'silent', text: '' })], initialTasks, text);
+  await f.add('result_submitted', { taskId: 'prototype', resultId: 'r', planVersion: 1, summary: '결과', artifactIds: [] });
+  if (action !== 'recheck') await f.add('task_blocked', { taskId: 'prototype', reason: '보완 한도' });
+  const r = await f.coordinator.onMessage('m1');
+  expect(r).toMatchObject({ resolutions: [{ taskId: 'prototype', action, note: text }] });
+  expect(r.events.some(e => e.type === 'task_checked')).toBe(false);
+});
+it('T3 reopens a checked result for the exact missing calendar button request', async () => {
+  const reason = "@프로토타입 Agent 예약 확인 화면에 '캘린더에 추가' 버튼이 없어요. 추가해서 다시 올려 주세요";
+  const f = await fixture([interpret({ ops: [{ type: 'reopen_task', taskId: 'prototype', reason, sourceMessageIds: ['m1'] } as never] }), judge({ decision: 'silent', text: '' })], initialTasks, reason);
+  await f.add('result_submitted', { taskId: 'prototype', resultId: 'r', planVersion: 1, summary: '결과', artifactIds: [] });
+  await f.add('task_checked', { taskId: 'prototype', resultId: 'r', reason: '확인' });
+  expect(await f.coordinator.onMessage('m1')).toMatchObject({ reopens: [{ taskId: 'prototype', reason }] });
+});
+it('Z4 records failed judgement and tells the person how to retry after both invalid responses', async () => {
+  const f = await fixture([null, null], initialTasks, "@프로토타입 Agent 캘린더에 추가 버튼이 없어요. 추가해서 다시 올려 주세요");
+  const result = await f.coordinator.onMessage('m1');
+  expect(f.calls).toHaveLength(2);
+  expect(result.posts.map(p => p.text)).toContain('제가 이 요청을 판단하지 못했어요. 무엇을 바꾸길 원하는지 한 문장으로 다시 알려 주세요');
+  expect(result.events.some(e => e.type === 'judgement_failed')).toBe(true);
+});
+it.each([
+  ['accept', 'owner', true], ['accept', 'designer', false], ['accept', 'outside', false],
+  ['retry', 'owner', true], ['retry', 'designer', true], ['retry', 'outside', false],
+  ['recheck', 'owner', true], ['recheck', 'designer', true], ['recheck', 'outside', true],
+  ['reopen', 'owner', true], ['reopen', 'designer', true], ['reopen', 'outside', false],
+] as const)('checks current human authority for %s by %s (allowed=%s)', async (action, author, allowed) => {
+  const tasks = [initialTasks[0]!, { ...initialTasks[1]!, dependsOn: ['prototype'] }];
+  const op = action === 'reopen' ? { type: 'reopen_task', taskId: 'prototype', reason: '캘린더에 추가 버튼 보완', sourceMessageIds: ['m1'] } as const
+    : { type: 'resolve_task', taskId: 'prototype', action, sourceMessageIds: ['m1'] } as const;
+  const f = await fixture([interpret({ ops: [op as never] }), judge({ decision: 'silent', text: '' })], tasks, '현재 결과를 보완해 주세요', author);
+  await f.add('result_submitted', { taskId: 'prototype', resultId: 'r', planVersion: 1, summary: '결과', artifactIds: [] });
+  if (action === 'reopen') await f.add('task_checked', { taskId: 'prototype', resultId: 'r', reason: '확인' });
+  else if (action !== 'recheck') await f.add('task_blocked', { taskId: 'prototype', reason: '보완 한도' });
+  const result = await f.coordinator.onMessage('m1');
+  expect((result.resolutions?.length ?? 0) + (result.reopens?.length ?? 0)).toBe(allowed ? 1 : 0);
+  if (!allowed) expect(result.posts[0]?.text).toContain('권한');
+});
+it('does not reuse a previous decider request to authorize a new recovery message', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'resolve_task', taskId: 'prototype', action: 'accept', sourceMessageIds: ['m1'] }] }), judge()], initialTasks, '이대로 확인해 주세요');
+  await f.add('result_submitted', { taskId: 'prototype', resultId: 'r', planVersion: 1, summary: '결과', artifactIds: [] });
+  await f.add('task_blocked', { taskId: 'prototype', reason: '보완 한도' });
+  await f.message('m2', 'outside', '내가 확인할게요');
+  expect((await f.coordinator.onMessage('m2')).resolutions).toBeUndefined();
+});
+it('does not return a recovery twice or infer completed acceptance before execution', async () => {
+  const op = { type: 'resolve_task', taskId: 'prototype', action: 'accept', sourceMessageIds: ['m1'] } as const;
+  const f = await fixture([interpret({ ops: [op as never] }), judge()], initialTasks, '이대로 확인해 주세요');
+  await f.add('result_submitted', { taskId: 'prototype', resultId: 'r', planVersion: 1, summary: '결과', artifactIds: [] });
+  await f.add('task_blocked', { taskId: 'prototype', reason: '보완 한도' });
+  const first = await f.coordinator.onMessage('m1');
+  expect(first.resolutions).toHaveLength(1);
+  expect(first.posts).toEqual([]);
+  expect((await f.coordinator.onMessage('m1')).resolutions).toBeUndefined();
+  expect(project(await f.read()).tasks.get('prototype')?.status).toBe('blocked');
+});
+it('rejects conflicting recovery actions and recovery of a running task', async () => {
+  const op = { type: 'resolve_task', taskId: 'prototype', action: 'retry', sourceMessageIds: ['m1'] } as const;
+  const f = await fixture([interpret({ ops: [op as never, { ...op, action: 'accept' } as never] }), judge()], initialTasks, '다시 맡길게요');
+  expect((await f.coordinator.onMessage('m1')).resolutions).toBeUndefined();
+  const running = await fixture([interpret({ ops: [op as never] }), judge()], initialTasks, '다시 맡길게요');
+  expect((await running.coordinator.onMessage('m1')).resolutions).toBeUndefined();
+});
+it('rechecks recovery authority after concurrent reassignment while interpreting', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'resolve_task', taskId: 'design', action: 'retry', sourceMessageIds: ['m1'] }] }), judge()], initialTasks, '다시 맡길게요', 'designer');
+  await f.add('task_blocked', { taskId: 'design', reason: '보완 한도' });
+  const original = f.store.transaction.bind(f.store);
+  let changed = false;
+  f.store.transaction = (async (...args: Parameters<typeof original>) => {
+    if (!changed) {
+      changed = true;
+      await f.add('plan_committed', { version: 2, basedOn: 1, tasks: initialTasks.map(t => t.id === 'design' ? { ...t, assignee: 'outside' } : t), reason: '담당자 변경', approvedBy: 'owner', sourceMessageIds: [] });
+    }
+    return original(...args);
+  }) as typeof f.store.transaction;
+  expect((await f.coordinator.onMessage('m1')).resolutions).toBeUndefined();
+});
 it('does not declare handoff met from conversational model judgement alone', async () => {
   const f = await fixture([interpret({ conversation: { questionMessageId: 'm1', waitingOnMemberIds: [], directedToPm: true } }), judge({ text: '보고서가 인계 조건을 충족합니다.', evidence: ['task:prototype'], answerFactIds: ['task:prototype'] })], initialTasks, '보고서 다시 첨부했어요. 확인해 주세요.');
   const result = await f.coordinator.onMessage('m1');
@@ -101,6 +184,16 @@ it('does not present an optimistic forecast answer while revision work is stoppe
   const result = await f.coordinator.onMessage('m1');
   expect(result.posts[0]?.text).toContain('멈춘 작업 1개 — 날짜 불확실');
   expect(result.posts[0]?.text).not.toContain('기한 안');
+});
+it('M11 accept-1: a summary said with an accept in the same message does not warn about the task being accepted', async () => {
+  const text = '결제 화면 조건은 이제 필요 없어요. 이대로 확인해 주세요';
+  const f = await fixture([interpret({ ops: [{ type: 'exclude_scope', taskId: 'prototype', item: '결제 화면', sourceMessageIds: ['m1'] }, { type: 'resolve_task', taskId: 'prototype', action: 'accept', sourceMessageIds: ['m1'] } as never] }), judge()], initialTasks, text);
+  await f.add('result_submitted', { taskId: 'prototype', resultId: 'r', planVersion: 1, summary: '결과', artifactIds: [] });
+  await f.add('task_blocked', { taskId: 'prototype', reason: '보완 한도' });
+  const result = await f.coordinator.onMessage('m1');
+  expect(result.resolutions).toEqual([{ taskId: 'prototype', action: 'accept' }]);
+  expect(result.posts[0]?.text).toContain('정리하면');
+  expect(result.posts[0]?.text).not.toContain('날짜 불확실');
 });
 it('summarises, commits v2, notifies absent changed people and steers with payment dropped once', async () => {
   const f = await fixture([interpret({ ops: exclusions(['m1', 'designer-agrees']) }), judge()]);
@@ -138,8 +231,8 @@ it('does not repeat an answer supported by the same evidence', async () => {
 it.each([[null, null], [interpret(), null, null], [{ conclusion: true }, { conclusion: true }]])('retries once, then asks the decider to clarify rather than inventing a change: %j', async (...responses) => {
   const f = await fixture(responses);
   const r = await f.coordinator.onMessage('m1');
-  expect(r.posts[0]?.text).toContain('변경할 범위를 다시 알려주시겠어요');
-  expect(r.events[0]?.payload).toMatchObject({ decision: 'speak', reason: '결정권자의 변경 발언을 검증하지 못해 재확인한다' });
+  expect(r.posts[0]?.text).toContain('한 문장으로 다시 알려 주세요');
+  expect(r.events[0]?.payload).toMatchObject({ decision: 'speak', reason: 'judgement_failed' });
   expect(project(await f.read()).plan?.version).toBe(1);
   expect(f.calls.length).toBe(responses.length);
 });
@@ -212,16 +305,16 @@ it('records next-turn context for a changed agent that is not running', async ()
 it('rejects free-form rewrites and unknown task operations', async () => {
   const f = await fixture([{ ...interpret(), tasks: reduced }, interpret({ ops: [{ type: 'handoff_early', taskId: 'missing', sourceMessageIds: ['m1'] }] })]);
   const r = await f.coordinator.onMessage('m1');
-  expect(r.posts[0]?.text).toContain('변경할 범위를 다시 알려주시겠어요');
-  expect(r.events[0]?.payload).toMatchObject({ reason: '결정권자의 변경 발언을 검증하지 못해 재확인한다' });
+  expect(r.posts[0]?.text).toContain('한 문장으로 다시 알려 주세요');
+  expect(r.events[0]?.payload).toMatchObject({ reason: 'judgement_failed' });
   expect(project(await f.read()).plan?.version).toBe(1);
 });
 
 it('rejects fabricated evidence after one retry', async () => {
   const f = await fixture([interpret(), judge({ evidence: ['invented'] }), judge({ evidence: ['invented'] })], initialTasks, '오늘 회의 기록입니다');
   const r = await f.coordinator.onMessage('m1');
-  expect(r.posts).toEqual([]);
-  expect(r.events[0]?.payload).toMatchObject({ reason: '판단 불가' });
+  expect(r.posts[0]?.text).toContain('한 문장으로 다시 알려 주세요');
+  expect(r.events[0]?.payload).toMatchObject({ reason: 'judgement_failed' });
 });
 
 it('concurrent duplicate deliveries produce one decision and one steer', async () => {
@@ -478,6 +571,7 @@ it('answers a direct schedule question from calculated facts after two rejected 
   expect(f.calls).toHaveLength(3);
   expect(r.posts[0]?.text).toContain('예상 종료는 10/5~10/5(서울 시간)');
   expect(r.posts[0]?.text).not.toContain('999');
+  expect(r.posts.some(p => p.text === '제가 이 요청을 판단하지 못했어요. 무엇을 바꾸길 원하는지 한 문장으로 다시 알려 주세요')).toBe(true);
   expect(r.events[0]?.payload).toMatchObject({ decision: 'speak', evidence: ['forecast:current'] });
   expect(project(await f.read()).plan?.version).toBe(1);
 });
@@ -563,7 +657,7 @@ it.each([false, true])('preserves accepted flow and routes scope reduction to un
   const r = await f.coordinator.onMessage('m1');
   const state = project(await f.read());
   expect(state.tasks.get('design')).toMatchObject({ status: 'checked', checkedResultId: 'flow-result', specVersion: 1, spec: before.tasks.get('design')!.spec });
-  expect(state.tasks.get('prototype')).toMatchObject({ status: 'running', spec: { handoffConditions: ['초안', '제외: 결제'] } });
+  expect(state.tasks.get('prototype')).toMatchObject({ status: 'running', spec: { handoffConditions: ['초안', '결제'], exclusions: ['결제'] } });
   expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
   expect(r.events.filter(e => e.type === 'plan_committed')).toHaveLength(1);
   expect(planStarts(state, 'test', ctx).some(e => (e.payload as { taskId?: string }).taskId === 'design')).toBe(false);
@@ -624,7 +718,7 @@ it.each([['task:flow', 'task:prototype'], ['847fd924-16d1-426c-b815-9af7cd377e9e
   expect(r.posts[0]?.text).toContain('정리하면:');
   expect(state.plan?.version).toBe(2);
   expect(state.tasks.get('design')).toMatchObject({ status: 'checked', specVersion: 1, checkedResultId: 'flow-result' });
-  expect(state.tasks.get('prototype')?.spec.handoffConditions).toEqual(['초안', '제외: 결제']);
+  expect(state.tasks.get('prototype')?.spec).toMatchObject({ handoffConditions: ['초안', '결제'], exclusions: ['결제'] });
   expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
 });
 
@@ -653,7 +747,7 @@ it('never turns a repeatedly invented conflict ID into an approved change', asyn
   const invalid = interpret({ ops: exclusions(), conflicts: ['task:prototype'] });
   const f = await fixture([invalid, invalid]);
   const r = await f.coordinator.onMessage('m1');
-  expect(r.posts[0]?.text).toContain('다시 알려주시겠어요');
+  expect(r.posts[0]?.text).toContain('다시 알려 주세요');
   expect(project(await f.read()).plan?.version).toBe(1);
   expect(f.connector.sendUpdate).not.toHaveBeenCalled();
 });

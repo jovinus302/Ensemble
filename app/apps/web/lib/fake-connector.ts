@@ -29,6 +29,9 @@ const research = `# 조사 보고서
 `;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const excludesPayment = (text: string) => /결제|payment/i.test(text) && /제외|삭제|제거|빼|drop|exclude/i.test(text);
+const scopeExcludesPayment = (scope: { exclusions?: readonly string[]; limits?: readonly string[] }) =>
+  scope.exclusions?.some(s => /결제|payment/i.test(s)) || scope.limits?.some(s => /예약\s*확인|시간\s*선택/.test(s) && !/결제|payment/i.test(s));
+const instructionScope = (input: TaskInstructionsInput) => ({ exclusions: input.exclusions?.map(x => x.text), limits: input.limits?.map(x => x.text) });
 /** Describe observable demo behavior, never fabricate external verification. */
 function conditionResponse(condition: string, prototype: boolean, excludePayment: boolean): string {
   const parts: string[] = [];
@@ -46,9 +49,10 @@ function conditionResponse(condition: string, prototype: boolean, excludePayment
   return parts.join(' ') || '시연용: 실제 확인 없음. 이 조건에 대한 별도 근거는 만들지 않았으며 담당자의 직접 확인이 필요합니다.';
 }
 function conditionSections(input: TaskInstructionsInput, prototype: boolean, excludePayment: boolean): string {
-  return input.handoffConditions.map((c, i) => `### ${i + 1}. ${c.text}\n${conditionResponse(c.text, prototype, excludePayment)}`).join('\n\n');
+  return [...(input.exclusions ?? []).map(x => `제외: ${x.text}`), ...(input.limits ?? []).map(x => `범위: ${x.text}`), ...input.handoffConditions.map((c, i) => `### ${i + 1}. ${c.text}\n${conditionResponse(c.text, prototype, excludePayment)}`)].join('\n\n');
 }
 export function prototypeHtml(input: TaskInstructionsInput, excludePayment: boolean): string {
+  excludePayment ||= !!scopeExcludesPayment(instructionScope(input));
   return `<!doctype html><html lang="ko"><meta charset="utf-8"><title>Interview Loop 시연</title>
 <meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:17px/1.6 sans-serif;max-width:640px;margin:32px auto;padding:16px;color:#183a2c}input,select,button{font:inherit;padding:10px;margin:6px}label{display:block}button{cursor:pointer}section{padding:16px;border:1px solid #aecaba;border-radius:12px}[hidden]{display:none}#error{color:#a32020}</style>
 <body><h1>Interview Loop</h1><p>시연용 가상 자료입니다. 가상 이름과 이메일만 입력하세요. 실제 개인정보 저장·외부 서비스 연결·실제 결제는 없습니다.</p>
@@ -79,14 +83,14 @@ export class FakeConnector implements SessionConnector {
   private sessions = new Map<string, { threadId: string; workspace: string }>();
   private runs = new Map<string, { input: TaskInstructionsInput; turnId: string; timer?: ReturnType<typeof setTimeout>; index: number; excludePayment: boolean; generation: number; finished: boolean }>();
   constructor(private root: string, private generate?: RevisionGenerator, private readyToFinish: (agentId: string, planVersion: number) => boolean = () => true, private delayMs = 2000,
-    private currentTask?: (taskId: string) => Promise<{ title: string; handoffConditions: readonly string[] } | undefined>) {}
+    private currentTask?: (taskId: string) => Promise<{ title: string; handoffConditions: readonly string[]; exclusions?: readonly string[]; limits?: readonly string[] } | undefined>) {}
   async startSession(agentId: string, projectId: string) {
     const session = { threadId: `fake-${projectId}-${agentId}`, workspace: path.join(this.root, encodeURIComponent(projectId), encodeURIComponent(agentId)) };
     mkdirSync(session.workspace, { recursive: true }); this.sessions.set(agentId, session); return session;
   }
   async startTask(agentId: string, input: TaskInstructionsInput) {
     const old = this.runs.get(agentId); clearTimeout(old?.timer);
-    const run = { input: structuredClone(input), turnId: `fake-${randomUUID()}`, index: 0, excludePayment: input.decisions.some(d => excludesPayment(d.text)), generation: 0, finished: false };
+    const run = { input: structuredClone(input), turnId: `fake-${randomUUID()}`, index: 0, excludePayment: !!scopeExcludesPayment(instructionScope(input)) || input.decisions.some(d => excludesPayment(d.text)), generation: 0, finished: false };
     this.runs.set(agentId, run);
     setTimeout(() => {
       if (this.runs.get(agentId) !== run) return;
@@ -117,6 +121,9 @@ export class FakeConnector implements SessionConnector {
     if (current) {
       run.input.taskTitle = { ...run.input.taskTitle, text: current.title };
       run.input.handoffConditions = current.handoffConditions.map(text => ({ text, sourceId: `plan:${run.input.planVersion}` }));
+      run.input.exclusions = (current.exclusions ?? []).map(text => ({ text, sourceId: `plan:${run.input.planVersion}` }));
+      run.input.limits = (current.limits ?? []).map(text => ({ text, sourceId: `plan:${run.input.planVersion}` }));
+      run.excludePayment = !!scopeExcludesPayment(current) || run.excludePayment;
     }
     const prototype = agentId === 'prototype-agent';
     let content = prototype ? prototypeHtml(run.input, run.excludePayment) : `${research}\n## 인계 조건 확인\n${conditionSections(run.input, false, run.excludePayment)}`;

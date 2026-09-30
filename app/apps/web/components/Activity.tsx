@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import type { VmActivity } from "../lib/view-model";
 import { formatElapsed } from "./format";
 import type { ActionResult } from "./use-view-model";
+import { TaskResolution, type ResolveTask } from './TaskResolution';
 
 /** 서버가 지금 하는 일을 채널 아래 한 줄로. 멈췄으면 이유와 다시 시도·건너뛰기를 보여 준다. */
-export function ActivityLine({ activity, busy, onRetry, onSkip }: {
+export function ActivityLine({ activity, busy, onRetry, onSkip, onResolve }: {
   activity?: VmActivity; busy: boolean; onRetry: () => Promise<ActionResult>; onSkip: () => Promise<ActionResult>;
+  onResolve?: ResolveTask;
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [pending, setPending] = useState(false);
@@ -28,6 +30,7 @@ export function ActivityLine({ activity, busy, onRetry, onSkip }: {
     return (
       <div className="activity activity-stalled" role="alert">
         <span className="activity-text"><span aria-hidden>⚠</span> {reason}{elapsed && <span className="muted num"> · {elapsed}째</span>}</span>
+        {onResolve && activity.stalled.tasks?.map(task => <div key={task.taskId}><span className="small">{task.title}</span><TaskResolution task={task} onResolve={onResolve} /></div>)}
         {(canRetry || canSkip) && (
           <span className="activity-actions">
             {canRetry && <button type="button" className="btn-tonal btn-small" disabled={pending} onClick={() => void act(onRetry)}>다시 시도</button>}

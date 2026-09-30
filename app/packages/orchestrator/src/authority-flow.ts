@@ -11,9 +11,9 @@ import type { PmPost } from './pm.ts';
 export async function decideAuthority(options: { store: LedgerStore; context: EventContext; coordinator: Coordinator }, requestId: string, memberId: string, granted: boolean): Promise<PmPost[]> {
   const events = await options.store.read({ projectId: options.context.projectId }) as AnyEvent[];
   const original = events.find(e => e.type === 'authority_requested' && e.payload.requestId === requestId);
-  if (!original || original.type !== 'authority_requested') throw new Error('Unknown authority request');
+  if (!original || original.type !== 'authority_requested') throw new Error('해당 승인 요청을 찾지 못했습니다.');
   const state = project(events), request = original.payload;
-  if (request.personId !== memberId || state.members.get(memberId)?.kind !== 'human') throw new Error('Only the requested person may decide');
+  if (request.personId !== memberId || state.members.get(memberId)?.kind !== 'human') throw new Error('승인을 요청받은 사람만 결정할 수 있습니다.');
   if (!state.pendingAuthority.has(requestId)) return [];
   const key = `authority-answer:${requestId}`;
   if (!granted) {
@@ -28,15 +28,15 @@ export async function decideAuthority(options: { store: LedgerStore; context: Ev
     });
     return tx.result ? [{ text, kind: 'ask' }] : [];
   }
-  if (!state.plan || !state.goal) throw new Error('Authority changes require a committed plan');
+  if (!state.plan || !state.goal) throw new Error('계획을 확정한 뒤 변경을 승인해 주세요.');
   let operation: Record<string, unknown>;
   try { operation = Object.fromEntries(JSON.parse(request.operationKey ?? '')); }
-  catch { throw new Error('Authority request has no valid recorded operation'); }
+  catch { throw new Error('승인 요청에 변경 내용이 올바르게 기록되지 않았습니다.'); }
   const messageId = key;
   const op = { ...operation, sourceMessageIds: [messageId] } as PlanOp;
   const withAnswer = structuredClone(state);
   withAnswer.messages.push({ messageId, authorId: memberId, text: request.text, seq: state.lastSeq + 1 });
-  if (!validOp(op, withAnswer) || !opAuthority(withAnswer, op).allowed) throw new Error('Requested operation is invalid or authority changed');
+  if (!validOp(op, withAnswer) || !opAuthority(withAnswer, op).allowed) throw new Error('요청한 변경이 유효하지 않거나 승인 권한이 바뀌었습니다.');
   await options.store.append([{ ...options.context, actor: { kind: 'human', id: memberId }, type: 'message_recorded', idempotencyKey: `${key}:message`, payload: { messageId, authorId: memberId, text: `승인: ${request.text}`, attachmentIds: [] } }]);
   return (await options.coordinator.onConfirmedOperations(messageId, [op], requestId)).posts;
 }

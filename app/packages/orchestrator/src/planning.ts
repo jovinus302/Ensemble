@@ -33,7 +33,7 @@ export const unobservableHandoffCondition = (condition: string): boolean =>
  * Roles are explicit capabilities supplied by the caller, never inferred from task title words.
  */
 export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: string }): Promise<PlanDraft> {
-  if (!nonempty(input.goal) || !input.members.length) throw new Error('Goal and members are required');
+  if (!nonempty(input.goal) || !input.members.length) throw new Error('목표와 팀원을 먼저 입력해 주세요.');
   const template = [
     { id: 'research', assignee: 'research-agent', kind: 'agent', purpose: '경쟁사와 유사 사례 조사', dependsOn: [] as string[] },
     { id: 'interview', assignee: input.decider, kind: 'human', purpose: '고객 인터뷰', dependsOn: [] as string[] },
@@ -45,6 +45,7 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
     `역할 템플릿에 필요한 팀원이 부족합니다: ${missing.length ? missing.map(t => `${t.purpose} 담당(${t.assignee})`).join(', ') : '결정권자와 별도의 디자이너'}`);
   const taskIds = template.map(t => t.id);
   let failure = '', reason = INVALID_DRAFT_REASON, detail = '';
+  const failures: string[] = [];
   const complete = async (request: Parameters<LlmProvider['complete']>[0]) => {
     let response;
     try { response = await input.llm.complete(request); } catch (error) { throw new AttemptFailure('Model call failed', 'PM 모델을 호출하지 못했습니다', { cause: error }); }
@@ -53,7 +54,9 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
   };
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const facts = { goal: input.goal, deadline: input.deadline, members: input.members, template, ...(failure ? { validationError: failure } : {}) };
+      const facts = { goal: input.goal, deadline: input.deadline, members: input.members, template,
+        rules: { handoffConditions: 'Each task has 1–3 nonempty conditions. Group related requirements into a condition without omitting any goal requirement.', hours: 'Finite 0 <= min <= max', templateKeys: taskIds },
+        ...(failure ? { validationError: failure, retryInstruction: 'Fix this exact violation, then recheck all four tasks against rules. Preserve all requested scope and constraints.' } : {}) };
       const tool: ToolSpec = { name: 'propose_plan', description: 'Draft the first plan for human approval', inputSchema: {
         type: 'object', additionalProperties: false, required: ['tasks'], properties: {
           tasks: { type: 'array', minItems: taskIds.length, maxItems: taskIds.length, items: {
@@ -66,7 +69,7 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
         },
       } };
       const response = await complete({ model: input.model, forceTool: tool.name, tools: [tool], maxTokens: DRAFT_MAX_TOKENS,
-        system: 'Fill each of the four supplied MVP role-template tasks exactly once. Task identities, assignees and dependencies are fixed by code. Supply only templateKey, a goal-specific title, 1–3 concrete handoff conditions and an hour range. Keep work within the supplied role purpose and availability. If selecting a customer problem requires a decision, express it as a flow handoff condition, never as another task. Do not invent members or capabilities. Handoff conditions must be verifiable solely from artifact contents. Never require delivery, sharing, upload, notification, or evidence that someone received a document (전달, 공유, 업로드, 알림): those are system responsibilities. State required content, not communication actions.',
+        system: 'Fill each of the four supplied MVP role-template tasks exactly once. Task identities, assignees and dependencies are fixed by code. Supply only templateKey, a goal-specific title, 1–3 concrete handoff conditions and an hour range. The 3-condition maximum applies to EVERY task, especially flow: combine related screen requirements into one condition, preserving all requirements and prohibitions. Do not append a fourth condition for customer problem selection; combine it with the design rationale condition. Before responding, count the conditions for each task and check rules and validationError. Keep work within the supplied role purpose and availability. If selecting a customer problem requires a decision, express it as a flow handoff condition, never as another task. Do not invent members or capabilities. Handoff conditions must be verifiable solely from artifact contents. Never require delivery, sharing, upload, notification, or evidence that someone received a document (전달, 공유, 업로드, 알림): those are system responsibilities. State required content, not communication actions.',
         messages: [{ role: 'user', content: JSON.stringify(facts) }] });
       const call = response.toolCalls.length === 1 ? response.toolCalls[0] : undefined;
       const value = call?.input;
@@ -80,7 +83,7 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
         const slot = template.find(slot => slot.id === t.templateKey)!;
         const member = input.members.find(m => m.memberId === slot.assignee);
         if (!member || member.kind !== slot.kind || (member.kind === 'agent' && !nonempty(member.role))) throw new Error('Unknown assignee or incompatible agent role');
-        if (!Array.isArray(t.handoffConditions) || t.handoffConditions.length < 1 || t.handoffConditions.length > 3 || !t.handoffConditions.every(nonempty)) throw new Error('Invalid handoff conditions');
+        if (!Array.isArray(t.handoffConditions) || t.handoffConditions.length < 1 || t.handoffConditions.length > 3 || !t.handoffConditions.every(nonempty)) throw new Error(`Task ${slot.id}: handoffConditions must contain 1–3 nonempty strings; received ${Array.isArray(t.handoffConditions) ? t.handoffConditions.length : typeof t.handoffConditions}. Combine related requirements without dropping any scope or constraints.`);
         if (t.handoffConditions.some(unobservableHandoffCondition)) {
           if (attempt === 0) throw new Error('Handoff conditions must be verifiable in artifact contents; remove delivery/sharing/upload/notification requirements and regenerate');
           const observable = t.handoffConditions.filter(c => !unobservableHandoffCondition(c));
@@ -88,8 +91,8 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
           t.handoffConditions = observable;
         }
         const h = t.hours as { min: number; max: number } | undefined;
-        if (!h || !Number.isFinite(h.min) || !Number.isFinite(h.max) || h.min < 0 || h.max < h.min) throw new Error('Invalid estimate');
-        tasks.push({ id: slot.id, title: t.title, assignee: member.memberId, dependsOn: [...slot.dependsOn], handoffConditions: t.handoffConditions as string[] });
+        if (!h || !Number.isFinite(h.min) || !Number.isFinite(h.max) || h.min < 0 || h.max < h.min) throw new Error(`Task ${slot.id}: Invalid estimate ${JSON.stringify(h)}; hours must satisfy finite 0 <= min <= max.`);
+        tasks.push({ id: slot.id, title: t.title, baseTitle: t.title, exclusions: [], limits: [], assignee: member.memberId, dependsOn: [...slot.dependsOn], handoffConditions: t.handoffConditions as string[] });
         estimates.push({ taskId: slot.id, hours: { min: h.min, max: h.max } });
       }
       const byId = new Map(tasks.map(t => [t.id, t]));
@@ -109,9 +112,11 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
       reason = error instanceof AttemptFailure ? error.reason : INVALID_DRAFT_REASON;
       const cause = error instanceof Error && error.cause;
       detail = cause ? `${failure}: ${cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)}` : failure;
+      failures.push(`attempt ${attempt + 1}: ${detail}`);
+      console.warn('[planning] draft rejected', { attempt: attempt + 1, detail });
     }
   }
-  throw new PlanDraftingError(reason, detail);
+  throw new PlanDraftingError(reason, failures.join('\n'));
 }
 
 export function planningNotice(context: EventContext, key: string, memberId: string, text: string, openTopics: string[] = [], reason = '사람이 다음 행동을 결정해야 한다'): NewLedgerEvent[] {
@@ -127,13 +132,13 @@ export type FreeStartResult = { proposal: EventPayloads['plan_proposed']; failur
 /** A final drafting failure is recorded as the goal plus a short PM notice, not thrown to the caller. */
 export async function startFreeProject(options: { store: LedgerStore; llm: LlmProvider; model: string; context: EventContext }, goal: string, deadline?: string): Promise<FreeStartResult> {
   const state = project(await options.store.read({ projectId: options.context.projectId }));
-  if (state.plan || state.pendingPlans.size) throw new Error('A plan or proposal already exists');
-  if (!state.goal || state.members.get(state.goal.decider)?.kind !== 'human') throw new Error('A human decider must be configured');
-  if (deadline !== undefined && !Number.isFinite(Date.parse(deadline))) throw new Error('Invalid deadline');
+  if (state.plan || state.pendingPlans.size) throw new Error('이미 계획이나 승인 대기 중인 초안이 있습니다.');
+  if (!state.goal || state.members.get(state.goal.decider)?.kind !== 'human') throw new Error('계획을 결정할 사람을 먼저 지정해 주세요.');
+  if (deadline !== undefined && !Number.isFinite(Date.parse(deadline))) throw new Error('올바른 기한을 입력해 주세요.');
   const members = [...state.members.values()].map(m => ({ ...m, weeklyHours: state.availability.get(m.memberId) }));
   const goalSet: NewLedgerEvent = { ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'goal_set', payload: { ...state.goal, text: goal, ...(deadline ? { deadline } : {}) } };
   const record = (append: NewLedgerEvent[]) => options.store.transaction(options.context.projectId, events => {
-    if (events.some(e => e.seq > state.lastSeq && !['message_recorded', 'attachment_recorded', 'pm_considered', 'pm_spoke', 'reply_recorded'].includes(e.type))) throw new Error('Team changed while drafting; retry');
+    if (events.some(e => e.seq > state.lastSeq && !['message_recorded', 'attachment_recorded', 'pm_considered', 'pm_spoke', 'reply_recorded'].includes(e.type))) throw new Error('초안을 만드는 동안 팀 기록이 바뀌었습니다. 다시 시도해 주세요.');
     return { append, result: undefined };
   });
   let draft: PlanDraft;
@@ -157,12 +162,12 @@ export async function decidePlan(options: { store: LedgerStore; context: EventCo
     const state = project(events), proposal = state.pendingPlans.get(proposalId);
     if (!proposal) {
       const original = events.find(e => e.type === 'plan_proposed' && (e.payload as EventPayloads['plan_proposed']).proposalId === proposalId)?.payload as EventPayloads['plan_proposed'] | undefined;
-      if (original && (memberId !== original.forMemberId || state.members.get(memberId)?.kind !== 'human')) throw new Error('Only the decider may approve the plan');
+      if (original && (memberId !== original.forMemberId || state.members.get(memberId)?.kind !== 'human')) throw new Error('계획은 결정권자만 승인할 수 있습니다.');
       if (events.some(e => e.type === 'plan_decided' && (e.payload as EventPayloads['plan_decided']).proposalId === proposalId)) return { append: [], result: false };
-      throw new Error('Unknown plan proposal');
+      throw new Error('해당 계획 초안을 찾지 못했습니다.');
     }
-    if (memberId !== proposal.forMemberId || memberId !== state.goal?.decider || state.members.get(memberId)?.kind !== 'human') throw new Error('Only the decider may approve the plan');
-    if (state.plan) throw new Error('Initial plan already committed');
+    if (memberId !== proposal.forMemberId || memberId !== state.goal?.decider || state.members.get(memberId)?.kind !== 'human') throw new Error('계획은 결정권자만 승인할 수 있습니다.');
+    if (state.plan) throw new Error('초기 계획이 이미 확정됐습니다.');
     const base = { ...options.context, actor: { kind: 'human' as const, id: memberId } };
     const append: NewLedgerEvent[] = [{ ...base, type: 'plan_decided', payload: { proposalId, memberId, approved: approve } }];
     if (approve) append.push({ ...base, type: 'plan_committed', payload: { version: 1, basedOn: null, tasks: proposal.tasks, reason: proposal.reason, approvedBy: memberId, sourceMessageIds: [] } }, ...proposal.estimates.map(e => ({ ...base, type: 'estimate_updated', payload: { ...e, source: 'pm' } })));

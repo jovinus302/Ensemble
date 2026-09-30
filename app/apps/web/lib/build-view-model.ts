@@ -1,5 +1,6 @@
 import { project, forecast, forecastFromState, availabilityWeek, type AnyEvent, type EventPayloads, type LedgerEvent, type ProjectState, type TaskStatus } from '@ensemble/core';
 import type { ViewModel, VmActivity, VmMessage, VmCard, VmPmJudgement, VmPlanTask } from './view-model';
+import { taskResolutions } from './task-resolution';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -193,6 +194,7 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
         }
       } catch { /* 예측할 수 없는 초안이면 날짜 없이 보여 준다. */ }
       const tasks: VmPlanTask[] = p.tasks.map(t => { const h = hours.get(t.id), end = spans?.get(t.id); return { id: t.id, title: t.title, assigneeName: name(t.assignee), dependsOn: t.dependsOn,
+        exclusions: [...(t.exclusions ?? [])], limits: [...(t.limits ?? [])],
         ...(h ? { hours: h } : {}), ...(end ? { expectedEnd: end } : {}), ...(t.handoffConditions.length ? { handoffConditions: t.handoffConditions } : {}) }; });
       return { kind: 'plan_approval' as const, id: p.proposalId, planVersion: p.version, forMemberId: p.forMemberId, reason: p.reason, tasks, ...(finish ? { finish } : {}) };
     }),
@@ -221,9 +223,11 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
   return { mode: options.mode, project: { goal: state.goal?.text, deadline: state.goal?.deadline, ...projectTitle(state.goal?.text) }, me: options.me,
     members: [...[...state.members.values()].map(m => ({ id: m.memberId, kind: m.kind, displayName: m.displayName, role: m.role, weeklyHours: state.availability.get(m.memberId), ...thisWeek(m.memberId), busy: state.activeTurn.has(m.memberId) })), { id: 'pm', kind: 'pm', displayName: 'PM' }],
     messages, cards, busy: options.busy, ...(options.scenario ? { scenario: options.scenario } : {}), ...(options.activity ? { activity: options.activity } : {}),
-    roadmap: { planVersion: state.plan?.version ?? null,
+    roadmap: { planVersion: state.plan?.version ?? null, ...(options.mode === 'scenario' ? { clockLabel: '시연 시계' } : {}),
       tasks: (state.plan?.tasks ?? []).map(t => { const span = forecastNow?.ok ? forecastNow.tasks.find(f => f.taskId === t.id) : undefined; const h = state.estimates.get(t.id);
         return { id: t.id, title: t.title, assigneeName: name(t.assignee), status: state.tasks.get(t.id)?.status ?? 'waiting',
+          exclusions: [...(t.exclusions ?? [])], limits: [...(t.limits ?? [])],
+          resolution: taskResolutions(events, options.me).find(r => r.taskId === t.id),
           ...(uncertainty?.stoppedTaskIds.includes(t.id) ? { stopped: true } : {}),
           ...(span ? { startDay: span.min.startDay, endDayMin: span.min.endDay, endDayMax: span.max.endDay } : {}),
           ...(h ? { hours: { min: h.min, max: h.max } } : {}), ...(t.handoffConditions.length ? { handoffConditions: t.handoffConditions } : {}) }; }),

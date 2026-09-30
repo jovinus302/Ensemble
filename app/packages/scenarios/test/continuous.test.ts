@@ -68,7 +68,7 @@ it.each(['designer', 'prototype-agent'])('stops with evidence when drafted plan 
   const f = await setup(false, missing);
   try {
     for (let i = 0; i < (missing === 'designer' ? 1 : 2); i++) await advanceScript(f.host, continuousScenario.steps, f.progress);
-    await expect(advanceScript(f.host, continuousScenario.steps, f.progress)).rejects.toThrow(missing);
+    await expect(advanceScript(f.host, continuousScenario.steps, f.progress)).rejects.toThrow(missing === 'designer' ? '디자이너' : 'prototype-agent');
     expect(f.stops).toHaveLength(1);
     expect(project(await f.store.read()).plan).toBeUndefined();
     expect(f.connector.starts).toEqual([]);

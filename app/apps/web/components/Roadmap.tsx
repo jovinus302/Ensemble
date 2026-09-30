@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { VmMember, VmRoadmap, VmRoadmapTask } from "../lib/view-model";
 import { availabilityLabel, formatDate, formatDays, formatHourRange, formatHours, spanLabel, statusInfo } from "./format";
 import type { ActionResult } from "./use-view-model";
+import { ScopeLists, TaskResolution, type ResolveTask } from './TaskResolution';
 
 const TONE_ICON = { done: "✓", working: "◐", needs: "✋", failed: "!", queued: "◷" } as const;
 
@@ -92,7 +93,7 @@ function AvailabilityRow({ member, editable, onSave }: { member: VmMember; edita
   );
 }
 
-function TaskRow({ task }: { task: VmRoadmapTask }) {
+function TaskRow({ task, onResolve }: { task: VmRoadmapTask; onResolve?: ResolveTask }) {
   const conditions = task.handoffConditions ?? [];
   return (
     <li>
@@ -102,19 +103,22 @@ function TaskRow({ task }: { task: VmRoadmapTask }) {
         <StatusChip status={task.status} />
         {task.stopped && <span className="chip chip-failed">멈춤</span>}
       </div>
-      {(task.hours || conditions.length > 0) && (
+      {task.resolution && onResolve && <TaskResolution task={task.resolution} onResolve={onResolve} />}
+      {(task.hours || conditions.length > 0 || task.exclusions?.length || task.limits?.length) && (
         <details className="task-details small">
           <summary>{task.hours ? `추정 ${formatHourRange(task.hours.min, task.hours.max)}` : "자세히"}{conditions.length > 0 ? ` · 인계 조건 ${conditions.length}개` : ""}</summary>
           {conditions.length > 0 && <ul>{conditions.map((c, i) => <li key={i}>{c}</li>)}</ul>}
+          <ScopeLists exclusions={task.exclusions} limits={task.limits} />
         </details>
       )}
     </li>
   );
 }
 
-export function RoadmapCard({ roadmap, deadline, members, me, onSetAvailability }: {
+export function RoadmapCard({ roadmap, deadline, members, me, onSetAvailability, onResolve }: {
   roadmap: VmRoadmap; deadline?: string; members: VmMember[]; me: string;
   onSetAvailability: (memberId: string, weeklyHours: number) => Promise<ActionResult>;
+  onResolve?: ResolveTask;
 }) {
   const f = roadmap.forecast;
   const late = f?.ok === true && (f.lateDaysMax ?? 0) > 0;
@@ -123,6 +127,7 @@ export function RoadmapCard({ roadmap, deadline, members, me, onSetAvailability 
   return (
     <div className="roadmap">
       <div className="roadmap-top">
+        {roadmap.clockLabel && <span className="chip chip-plain">{roadmap.clockLabel}</span>}
         <span className="plan-version">{roadmap.planVersion === null ? "계획 없음" : `계획 v${roadmap.planVersion}`}</span>
         {roadmap.lastChange && <span className="muted small">마지막 변경 v{roadmap.lastChange.version}: {roadmap.lastChange.reason}</span>}
       </div>
@@ -159,7 +164,7 @@ export function RoadmapCard({ roadmap, deadline, members, me, onSetAvailability 
       <section aria-label="작업 목록">
         <h3 className="section-label">작업</h3>
         <ul className="task-list">
-          {roadmap.tasks.map(t => <TaskRow key={t.id} task={t} />)}
+          {roadmap.tasks.map(t => <TaskRow key={t.id} task={t} onResolve={onResolve} />)}
         </ul>
         <ScheduleBars roadmap={roadmap} />
       </section>

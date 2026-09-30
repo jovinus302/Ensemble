@@ -130,7 +130,7 @@ it('rejects a stale result without calling the model', async () => {
     ] }),
   ]);
   const outcome = await dispatcher.onResultSubmitted('T3', 'r1');
-  expect(outcome).toMatchObject({ kind: 'revision', review: { missing: [expect.stringContaining('Stale result r1')] } });
+  expect(outcome).toMatchObject({ kind: 'revision', review: { missing: ['결과가 작업 명세가 바뀌기 전에 만들어졌습니다. 바뀐 명세에 맞춰 결과를 다시 제출해 주세요.'] } });
   expect(llm.requests).toHaveLength(0);
 });
 
@@ -141,7 +141,7 @@ it('rejects a result submitted before a plan update was confirmed, without calli
     submit('T3', 'r1', ['flow-v2.md'], 'designer'),
   ]);
   const outcome = await dispatcher.onResultSubmitted('T3', 'r1');
-  expect(outcome).toMatchObject({ kind: 'revision', review: { missing: [expect.stringContaining('not yet acknowledged')] } });
+  expect(outcome).toMatchObject({ kind: 'revision', review: { missing: [expect.stringContaining('전달한 변경을 아직 확인(acknowledge_update)하지 않은 채 제출한 결과입니다')] } });
   expect(llm.requests).toHaveLength(0);
   expect(connector.starts).toHaveLength(0);
 });
@@ -237,7 +237,7 @@ it('keeps the citation record when a technical citation failure survives the one
   const { store, dispatcher } = await fixture([emptyQuote, emptyQuote]);
   await store.append([submit('T3', 'r1', ['flow-v2.md'], 'designer')]);
   const outcome = await dispatcher.onResultSubmitted('T3', 'r1');
-  expect(outcome).toMatchObject({ kind: 'error', message: expect.stringContaining('사람이 결과를 확인해 주세요'),
+  expect(outcome).toMatchObject({ kind: 'error', message: expect.stringContaining("결정권자가 결과를 보고 '이대로 확인'할 수 있어요"),
     citationFailures: expect.arrayContaining([expect.objectContaining({ condition: 'D1의 문제 ①을 다룬다', reason: expect.stringContaining('인용문이 비어 있음') })]) });
   expect(outcome.kind === 'error' && outcome.message).not.toContain('보완');
   expect(await types(store, 'revision_requested')).toHaveLength(0);

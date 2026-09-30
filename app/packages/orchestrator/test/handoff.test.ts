@@ -40,9 +40,9 @@ it('checks structure in code first: missing file, stale result and unconfirmed u
   expect(await judge(llm, state(), { 'flow.md': null })).toMatchObject({ ok: true, llmCalls: 0, review: { verdict: 'insufficient', missing: [expect.stringContaining('flow.md')] } });
   const stale = state([ev('plan_committed', { version: 2, basedOn: 1, reason: 'r', approvedBy: 'lead', sourceMessageIds: [], tasks: [
     { id: 'T3', title: '흐름 초안 v2', assignee: 'designer', dependsOn: [], handoffConditions: [] }] })]);
-  expect(await judge(llm, stale)).toMatchObject({ ok: true, review: { verdict: 'insufficient', missing: [expect.stringContaining('Stale result')] } });
+  expect(await judge(llm, stale)).toMatchObject({ ok: true, review: { verdict: 'insufficient', missing: [expect.stringContaining('작업 명세가 바뀌기 전에')] } });
   const pending = state([ev('update_sent', { updateId: 'u1', taskId: 'T3', fromVersion: 1, toVersion: 1 }, 'agent')]);
-  expect(await judge(llm, pending)).toMatchObject({ ok: true, review: { verdict: 'insufficient', missing: [expect.stringContaining('not yet acknowledged')] } });
+  expect(await judge(llm, pending)).toMatchObject({ ok: true, review: { verdict: 'insufficient', missing: [expect.stringContaining('변경을 아직 확인(acknowledge_update)')] } });
   expect(llm.requests).toHaveLength(0);
 });
 
@@ -101,7 +101,7 @@ it('normalizes markdown and whitespace; a citation still not in the file is re-j
     { index: 2, met: true, file: 'flow.md', quote: '**화면 목록** 세 개' },
   ], decisionConflicts: [] }), call({ conditions: [{ index: 2, met: true, file: 'flow.md', quote: '화면 목록 세 개' }], decisionConflicts: [] })]);
   const outcome = await judge(llm, state(), { 'flow.md': '# 안내\n- **가입**\n 흐름을 확인한다.\n화면 목록이 없다.' });
-  expect(outcome).toMatchObject({ ok: false, llmCalls: 2, error: expect.stringContaining('결과 내용의 문제가 아니라'), citationFailures: [
+  expect(outcome).toMatchObject({ ok: false, llmCalls: 2, error: expect.stringContaining('결과 내용이 아니라 검토 과정의 문제예요'), citationFailures: [
     { file: 'flow.md', quote: '**화면 목록** 세 개', reason: '기술적 검증 실패(재판단): 정규화 후에도 인용문이 결과 파일에 없음' },
     { file: 'flow.md', quote: '화면 목록 세 개', reason: '재판단 후에도 기술적 검증 실패: 정규화 후에도 인용문이 결과 파일에 없음' }] });
   // Loosening quotation marks, spacing and clipped endings never turns a changed claim into evidence.
@@ -169,7 +169,7 @@ it('sends a persistent technical failure to a person without asking for more con
     call({ conditions: [unverifiable], decisionConflicts: [] }),
   ]);
   const outcome = await judgeTwo(llm);
-  expect(outcome).toMatchObject({ ok: false, llmCalls: 2, error: expect.stringContaining('결과 내용의 문제가 아니라'), citationFailures: [
+  expect(outcome).toMatchObject({ ok: false, llmCalls: 2, error: expect.stringContaining('결과 내용이 아니라 검토 과정의 문제예요'), citationFailures: [
     expect.objectContaining({ reason: expect.stringContaining('기술적 검증 실패(재판단)') }),
     expect.objectContaining({ reason: expect.stringContaining('재판단 후에도 기술적 검증 실패') })] });
   expect(!outcome.ok && outcome.error).not.toMatch(/보완|적어 주세요/);
@@ -294,4 +294,61 @@ it('names a conflicting decision by a short name in the revision item (run-3 led
     decisions: [{ decisionId: 'refund-policy', summary, sourceMessageIds: [], approvedBy: 'lead', changeKinds: [] }] });
   expect(outcome.ok && outcome.review.missing).toEqual(['확정 결정(PT 예약 서비스 대안 조사에 서…)과 어긋납니다: 서비스별 환불·취소 정책이 없습니다.']);
   expect(outcome.ok && outcome.review.evidence).toContain(`어긋난 확정 결정 refund-policy: ${summary}`);
+});
+
+// M11 T2: people's scope cuts are judged, not written into the conditions.
+const scopeState = (exclusions: string[], conditions: string[], limits: string[] = []) => project([
+  ev('member_joined', { memberId: 'agent', kind: 'agent', displayName: '프로토타입 Agent' }),
+  ev('plan_committed', { version: 1, basedOn: null, reason: 'r', approvedBy: 'lead', sourceMessageIds: [], tasks: [
+    { id: 'T3', title: '예약 프로토타입', baseTitle: '예약 프로토타입', exclusions, limits, assignee: 'agent', dependsOn: [], handoffConditions: conditions }] }),
+  ev('result_submitted', { ...result, artifactIds: ['proto.html'] }, 'agent'),
+]);
+const proto = { 'proto.html': '<h1>예약</h1>\n가입 → 시간 선택 → 예약 확인\n<p>실제 결제나 개인정보 수집이 아닌 시연용입니다.</p>' };
+const judgeScope = (llm: FakeLlm, s: ReturnType<typeof scopeState>) => judgeHandoff({ state: s, result: { ...result, artifactIds: ['proto.html'] }, resultContent: proto, decisions: [], llm, model: 'fake-pm' });
+const FLOW = '가입·시간 선택·예약 확인·결제 화면으로 이동 가능';
+
+it('T2: the judge gets the exclusions and the rule; the excluded part of "가입·시간 선택·예약 확인·결제 화면으로 이동 가능" is waived, the rest required', async () => {
+  // The result has sign-up, time choice and confirmation but no payment screen: that suffices under exclusions ["결제"].
+  const llm = new FakeLlm([call({ conditions: [{ index: 1, met: true, file: 'proto.html', quote: '가입 → 시간 선택 → 예약 확인' }], decisionConflicts: [] })]);
+  const outcome = await judgeScope(llm, scopeState(['결제'], [FLOW]));
+  expect(outcome).toMatchObject({ ok: true, review: { verdict: 'sufficient', met: [FLOW] } });
+  const request = llm.requests[0]!;
+  expect(request.messages[0]!.content).toContain(`## 인계 조건\n1. ${FLOW}\n## 제외 범위 (요구하지 않음)\n- 결제`);
+  expect(request.system).toContain('제외 범위(또는 한정 범위 밖)를 요구하는 조건이나 그 부분은 요구하지 않은 것으로 본다');
+  expect(request.system).toContain('조건의 나머지 부분은 그대로 판단한다');
+  expect(request.system).toContain('금지 제약은 범위 제외와 관계없이 그대로 적용한다');
+  // Without the rest (no confirmation screen), the condition is still missing: only the payment part was waived.
+  const partial = new FakeLlm([call({ conditions: [{ index: 1, met: false, missing: '예약 확인 화면으로 이동하는 흐름이 없습니다.' }], decisionConflicts: [] })]);
+  expect(await judgeScope(partial, scopeState(['결제'], [FLOW]))).toMatchObject({ ok: true, review: { verdict: 'insufficient', missing: ['조건 1(가입·시간 선택·예약 확인·결제…): 예약 확인 화면으로 이동하는 흐름이 없습니다.'] } });
+  // No cut: no scope section and no scope rules.
+  const plain = new FakeLlm([call({ conditions: [{ index: 1, met: true, file: 'proto.html', quote: '가입 → 시간 선택 → 예약 확인' }], decisionConflicts: [] })]);
+  await judgeScope(plain, scopeState([], [FLOW]));
+  expect(plain.requests[0]!.messages[0]!.content).not.toContain('## 제외 범위');
+  expect(plain.requests[0]!.system).not.toContain('범위 제외·한정 규칙');
+});
+
+it('T2: a condition only about the excluded scope is waived without a quote; a prohibition never is', async () => {
+  const PAY = '모의 결제 화면에는 결제 버튼과 확인 메시지가 포함';
+  const BAN = '실제 결제나 실제 개인정보 수집이 아님 문구';
+  const llm = new FakeLlm([
+    call({ conditions: [{ index: 1, met: true, excluded: true }, { index: 2, met: true, excluded: true }], decisionConflicts: [] }),
+    call({ conditions: [{ index: 2, met: true, file: 'proto.html', quote: '실제 결제나 개인정보 수집이 아닌 시연용입니다.' }], decisionConflicts: [] }),
+  ]);
+  const outcome = await judgeScope(llm, scopeState(['결제 화면과 모의 결제 버튼'], [PAY, BAN], ['가입·시간 선택·예약 확인까지']));
+  // The payment condition is waived; the prohibition had to be shown in the result (re-judged once, then cited).
+  expect(outcome).toMatchObject({ ok: true, llmCalls: 2, review: { verdict: 'sufficient', met: [PAY, BAN],
+    evidence: [`조건 1은 제외·한정 범위만 요구해 요구하지 않음: ${PAY}`, expect.stringContaining('proto.html')] } });
+  expect(llm.requests[0]!.messages[0]!.content).toContain('## 한정 범위 (여기까지만 요구)\n- 가입·시간 선택·예약 확인까지');
+  expect(llm.requests[1]!.messages[0]!.content).toContain('금지 제약이라 범위 제외로 면제할 수 없음');
+  // Without any cut, "excluded" is not a way around a condition.
+  const noCut = new FakeLlm([call({ conditions: [{ index: 1, met: true, excluded: true }], decisionConflicts: [] }), call({ conditions: [{ index: 1, met: false, missing: '결제 버튼이 없습니다.' }], decisionConflicts: [] })]);
+  expect(await judgeScope(noCut, scopeState([], [PAY]))).toMatchObject({ ok: true, review: { verdict: 'insufficient' } });
+});
+
+it('U2: a short condition name never leaves a bracket open (QA4 Z7)', async () => {
+  const { conditionLabel } = await import('../src/handoff.ts');
+  const label = conditionLabel(0, '5명의 가상 보호자 각각의 배경(직업, 반려견 나이, 산책 시간)과 불편');
+  expect(label).toBe('조건 1(5명의 가상 보호자 각각의 배경…)');
+  expect(label.split('(').length).toBe(label.split(')').length);
+  expect(conditionLabel(1, '(필수) 화면 목록과 화면별 주요 UI 요소가 모두 문서에 있다')).toBe('조건 2((필수) 화면 목록과 화면별 주요…)');
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseReports, taskInstructions, updateInstructions, validateAck, validateResult } from "../src/protocol.ts";
+import { continueInstructions, parseReports, taskInstructions, updateInstructions, validateAck, validateResult } from "../src/protocol.ts";
 import type { AcknowledgeUpdate, ResultReport } from "../src/protocol.ts";
 
 const fence = (body: string, lang = "ensemble-report") => ["```" + lang, body, "```"].join("\n");
@@ -130,5 +130,38 @@ describe("validateResult", () => {
   it("rejects an empty file list and a wrong task", () => {
     const result = validateResult({ ...report, taskId: "T2", files: [] }, expected);
     expect(result).toEqual({ ok: false, reasons: ["taskId 불일치: T2 (기대: T1)", "files가 비어 있음"] });
+  });
+});
+
+describe("scope cuts (M11 T2)", () => {
+  const task = {
+    taskId: "prototype", planVersion: 3,
+    goalSummary: { text: "요가 예약 프로토타입", sourceId: "goal" },
+    taskTitle: { text: "예약 프로토타입 (결제 제외, 가입·시간 선택·예약 확인까지)", sourceId: "plan-3" },
+    handoffConditions: [{ text: "가입·시간 선택·예약 확인·결제 화면으로 이동 가능", sourceId: "plan-3:h0" }, { text: "실제 개인정보 저장 금지", sourceId: "plan-3:h1" }],
+    exclusions: [{ text: "결제 화면과 모의 결제 버튼", sourceId: "plan-3:x0" }],
+    limits: [{ text: "가입·시간 선택·예약 확인까지", sourceId: "plan-3:l0" }],
+    decisions: [], inputs: [], openQuestions: [],
+  };
+  const update = { updateId: "revision:r1:reopen", fromVersion: 3, toVersion: 3, keep: [], change: ["사용자 요청: 캘린더에 추가 버튼"], drop: [], reason: "확인된 결과에 사용자가 보완을 요청했습니다" };
+
+  it("lists the exclusions and limits apart from the unchanged conditions, and keeps prohibitions", () => {
+    const text = taskInstructions(task);
+    expect(text).toContain("## 3. 인계 조건\n- 가입·시간 선택·예약 확인·결제 화면으로 이동 가능 [출처: plan-3:h0]\n- 실제 개인정보 저장 금지 [출처: plan-3:h1]\n## 범위 제외·한정 (사람이 정한 범위)");
+    expect(text).toContain("제외 범위 — 만들지 않습니다:\n- 결제 화면과 모의 결제 버튼 [출처: plan-3:x0]");
+    expect(text).toContain("한정 범위 — 여기까지만 만듭니다:\n- 가입·시간 선택·예약 확인까지 [출처: plan-3:l0]");
+    expect(text).toContain("금지 제약은 범위와 관계없이 그대로 지킵니다");
+    expect(taskInstructions({ ...task, exclusions: [], limits: [] })).not.toContain("범위 제외·한정");
+  });
+
+  it("repeats the scope cut in a follow-up turn on a thread that already has the task", () => {
+    const text = continueInstructions({ taskId: "prototype", planVersion: 3, update, task }, false);
+    expect(text).not.toContain("# 작업 지시");
+    expect(text).toContain("- 사용자 요청: 캘린더에 추가 버튼");
+    expect(text).toContain("제외 범위 — 만들지 않습니다:\n- 결제 화면과 모의 결제 버튼");
+    expect(text.indexOf("범위 제외·한정")).toBeLessThan(text.indexOf("## 이어서 할 일"));
+    // With the full task the section appears once, inside the instructions.
+    const full = continueInstructions({ taskId: "prototype", planVersion: 3, update, task }, true);
+    expect(full.split("## 범위 제외·한정").length).toBe(2);
   });
 });
