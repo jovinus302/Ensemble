@@ -6,7 +6,7 @@ import { sceneEvents } from '../src/index.ts';
 function runtime() {
   const store = new MemoryLedgerStore();
   const app: WebRuntime = Object.assign(Object.create(WebRuntime.prototype), {
-    store, meta: { projectId: 'retained-project', mode: 'scenario', scene: 1, step: 0, script: { step: 0, anchors: {} } },
+    store, pendingResolutions: new Set(), resolutionErrors: new Map(), meta: { projectId: 'retained-project', mode: 'scenario', scene: 1, step: 0, script: { step: 0, anchors: {} } },
     pm: { stop: vi.fn(), postMessage: vi.fn(), decidePlan: vi.fn() },
     save: vi.fn(), changed: vi.fn(), persistAttachments: vi.fn(), createPm: vi.fn(),
   });
@@ -44,11 +44,11 @@ it('persists a missing-role stop and refuses subsequent playback', async () => {
     { ...ctx, actor: { kind: 'system', id: 'test' }, type: 'plan_proposed', payload: { proposalId: 'draft', forMemberId: 'owner', version: 1, tasks: [{ id: 'arbitrary', assignee: 'owner', dependsOn: [], title: 'interview', handoffConditions: ['interview'] }], estimates: [], reason: 'model draft' } },
   ]);
   app.meta.script!.step = 3;
-  await expect(app.scenarioNext()).rejects.toThrow('designer');
+  await expect(app.scenarioNext()).rejects.toThrow('디자이너');
   const stops = (await store.read()).filter(e => e.type === 'scenario_stopped');
   expect(stops).toHaveLength(1);
-  expect(stops[0]?.payload).toMatchObject({ step: 3, reason: expect.stringContaining('designer') });
-  await expect(app.scenarioNext()).rejects.toThrow('designer');
+  expect(stops[0]?.payload).toMatchObject({ step: 3, reason: expect.stringContaining('디자이너') });
+  await expect(app.scenarioNext()).rejects.toThrow('디자이너');
   expect((await store.read()).filter(e => e.type === 'scenario_stopped')).toHaveLength(1);
   expect(app.pm.decidePlan).not.toHaveBeenCalled();
 });

@@ -4,6 +4,18 @@ import { buildViewModel, projectTitle, refreshTodo, stripTaskKeys } from "../lib
 import { buildMockViewModel } from "../lib/mock-view-model";
 
 const NOW = new Date("2026-10-01T00:00:00Z");
+it('keeps payment exclusion and booking limit separate from untouched conditions and labels the demo clock', () => {
+  const l = approved();
+  const scoped = tasks.map(t => ({ ...t, exclusions: ['결제 화면과 모의 결제 버튼'], limits: ['가입·시간 선택·예약 확인까지'] }));
+  l.emit('plan_committed', { version: 2, basedOn: 1, tasks: scoped, reason: '결제 빼자', approvedBy: 'owner', sourceMessageIds: [] });
+  const vm = buildViewModel(l.events, { me: 'owner', mode: 'scenario', busy: false, now: NOW });
+  expect(vm.roadmap.tasks[0]).toMatchObject({ exclusions: scoped[0]!.exclusions, limits: scoped[0]!.limits, handoffConditions: tasks[0]!.handoffConditions });
+  expect(vm.roadmap.clockLabel).toBe('시연 시계');
+  const pending = started();
+  pending.emit('plan_proposed', { proposalId: 'scoped-plan', version: 2, tasks: scoped, estimates, reason: '결제 빼자', forMemberId: 'owner' });
+  const card = buildViewModel(pending.events, { me: 'owner', mode: 'scenario', busy: false, now: NOW }).cards.find(c => c.id === 'scoped-plan');
+  expect(card?.kind === 'plan_approval' && card.tasks[0]).toMatchObject({ exclusions: scoped[0]!.exclusions, limits: scoped[0]!.limits, handoffConditions: tasks[0]!.handoffConditions });
+});
 const PROPOSAL = "8f1c2d3e-1111-4222-8333-944455556666";
 
 function ledger() {
@@ -201,7 +213,8 @@ describe("문구 보정 함수", () => {
     expect(refreshTodo(text, "checked", false)).toBe("제목\n확인할 곳: 없음");
     expect(refreshTodo(text, "checked", true)).toBe("제목\n할 일: PM이 인계 조건을 확인했습니다.\n확인할 곳: 없음");
     expect(refreshTodo(text, "revising", true)).toBe(text);
-    expect(refreshTodo("할 일: PM이 인계 조건을 확인하는 중입니다. 확인하지 못한 점: 가격", "checked", false)).toBe("할 일: 확인하지 못한 점: 가격");
+    // U5: 확인하지 못한 점은 "할 일"과 다른 줄이라, 낡은 할 일을 지워도 빈 "할 일:" 접두어가 남지 않는다.
+    expect(refreshTodo("할 일: PM이 인계 조건을 확인하는 중입니다.\n확인하지 못한 점: 가격", "checked", false)).toBe("확인하지 못한 점: 가격");
   });
 
   it("stripTaskKeys: 형식이 다르면 건드리지 않는다", () => {

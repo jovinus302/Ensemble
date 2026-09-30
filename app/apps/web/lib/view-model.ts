@@ -19,6 +19,7 @@ export interface VmMessage {
   local?: "sending";
 }
 export interface VmPlanTask {
+  exclusions?: string[]; limits?: string[];
   id: string; title: string; assigneeName: string; dependsOn: string[];
   /** 추정 작업 시간(최소~최대). */
   hours?: { min: number; max: number };
@@ -31,6 +32,8 @@ export type VmCard =
   | { kind: "plan_approval"; id: string; planVersion: number; forMemberId: string; tasks: VmPlanTask[]; reason: string; finish?: { min: string; max: string } }
   | { kind: "authority"; id: string; forMemberId: string; text: string; changeKinds: string[] };
 export interface VmRoadmapTask {
+  exclusions?: string[]; limits?: string[];
+  resolution?: { taskId: string; actions: ('accept' | 'retry' | 'recheck')[] };
   stopped?: boolean;
   id: string; title: string; assigneeName: string; status: string; startDay?: number; endDayMin?: number; endDayMax?: number;
   hours?: { min: number; max: number }; handoffConditions?: string[];
@@ -39,6 +42,7 @@ export type VmForecast = (
   | { ok: true; finishMin: string; finishMax: string; deadline?: string; lateDaysMax?: number; shortage: { memberName: string; hours: number }[] }
   | { ok: false; reasons: string[] }) & { uncertainty?: { stoppedTaskIds: string[]; warning: string } };
 export interface VmRoadmap {
+  clockLabel?: string;
   planVersion: number | null; tasks: VmRoadmapTask[];
   blocked: { taskId: string; reason: string; unblockByName?: string }[];
   forecast: VmForecast | null; lastChange?: { version: number; reason: string };
@@ -60,7 +64,7 @@ export interface VmActivity {
   kind: "pm_thinking" | "scenario_waiting" | "agent_working" | "idle";
   label: string;                    // 한국어, 예: "PM이 판단 중"
   since: string;                    // ISO
-  stalled?: { reason: string; canRetry: boolean; canSkip: boolean };
+  stalled?: { reason: string; canRetry: boolean; canSkip: boolean; tasks?: { taskId: string; title: string; actions: ('accept' | 'retry' | 'recheck')[] }[] };
 }
 
 export interface ViewModel {

@@ -128,7 +128,7 @@ export function App() {
             </button>
             <h2 className="roadmap-heading">📌 로드맵</h2>
             <div className="roadmap-body">
-              <RoadmapCard roadmap={vm.roadmap} deadline={vm.project.deadline} members={vm.members} me={vm.me} onSetAvailability={actions.setAvailability} />
+              <RoadmapCard roadmap={vm.roadmap} deadline={vm.project.deadline} members={vm.members} me={vm.me} onSetAvailability={actions.setAvailability} onResolve={actions.resolveTask} />
             </div>
           </aside>
 
@@ -170,7 +170,7 @@ export function App() {
               </div>
             )}
 
-            <ActivityLine activity={vm.activity} busy={vm.busy} onRetry={actions.scenarioRetry} onSkip={actions.scenarioSkip} />
+            <ActivityLine activity={vm.activity} busy={vm.busy} onRetry={actions.scenarioRetry} onSkip={actions.scenarioSkip} onResolve={actions.resolveTask} />
             <Composer meName={meMember?.displayName ?? vm.me} onSend={actions.sendMessage} />
           </main>
         </div>

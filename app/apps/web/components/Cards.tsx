@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { VmCard } from "../lib/view-model";
 import { formatDateRange, formatHourRange } from "./format";
+import { ScopeLists } from './TaskResolution';
 
 const CHANGE_KIND: Record<string, string> = {
   scope_reduce: "범위 축소", reorder: "순서 변경", reassign_agent: "Agent 담당 변경",
@@ -41,6 +42,7 @@ export function DecisionCard({ card, onDecide }: { card: VmCard; onDecide: (card
                   <span>예상 완료 <span className="num">{t.expectedEnd ? formatDateRange(t.expectedEnd.min, t.expectedEnd.max) : "계산 전"}</span></span>
                   {t.dependsOn.length > 0 && <span>선행 {t.dependsOn.map(d => card.tasks.find(x => x.id === d)?.title ?? d).join(", ")}</span>}
                 </div>
+                <ScopeLists exclusions={t.exclusions} limits={t.limits} />
                 {t.handoffConditions && t.handoffConditions.length > 0 && (
                   <div className="handoff small">
                     <span className="muted">넘기기 전 확인할 조건</span>

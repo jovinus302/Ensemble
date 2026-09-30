@@ -21,6 +21,15 @@ it.each([false, true])('answers a scope clarification only when the PM newly ask
   expect(progress.step).toBe(2);
 });
 const task = (id: string, assignee = 'designer', dependsOn: string[] = []): TaskSpec => ({ id, assignee, dependsOn, title: id, handoffConditions: ['done'] });
+it('C4 reports the submitted user task in Korean instead of No active task for assignee owner', async () => {
+  const store = await ledger([task('interview', 'owner')]);
+  await store.append([
+    { ...ctx, type: 'member_joined', payload: { memberId: 'owner', kind: 'human', displayName: '사용자' } },
+    { ...ctx, type: 'result_submitted', payload: { taskId: 'interview', resultId: 'r', planVersion: 1, summary: '인터뷰 자료', artifactIds: [] } },
+  ]);
+  const state = project(await store.read());
+  expect(() => resolveTarget(state, { assignee: 'owner' })).toThrow('사용자 작업이 진행 가능한 상태가 아닙니다(현재: 확인 중)');
+});
 async function ledger(tasks: TaskSpec[] = [task('later', 'designer', ['earlier']), task('earlier'), task('other', 'owner')]) {
   const store = new MemoryLedgerStore();
   await store.append([{ ...ctx, type: 'plan_committed', payload: { version: 1, basedOn: null, tasks, reason: 'test', approvedBy: 'owner', sourceMessageIds: [] } }]);
@@ -29,7 +38,7 @@ async function ledger(tasks: TaskSpec[] = [task('later', 'designer', ['earlier']
 it('resolves by assignee and dependency order, distinguishes active/next, and rejects absent roles', async () => {
   const store = await ledger();
   expect(resolveTarget(project(await store.read()), { assignee: 'designer', pick: 'next' })).toBe('earlier');
-  expect(() => resolveTarget(project([]), { assignee: 'missing' })).toThrow('missing');
+  expect(() => resolveTarget(project([]), { assignee: 'missing' })).toThrow('작업 없음');
   await store.append(['later', 'earlier'].map(taskId => ({ ...ctx, type: 'task_started', payload: { taskId } })));
   expect(resolveTarget(project(await store.read()), { assignee: 'designer' })).toBe('earlier');
   expect(resolveTarget(project(await store.read()), { assignee: 'owner', pick: 'next' })).toBe('other');
@@ -84,10 +93,10 @@ it('records the failed step once and prevents later human inputs', async () => {
   const host = { read: () => store.read(), recordStop, pm: { postMessage } } as unknown as ScriptHost;
   const progress: ScriptProgress = { step: 0, anchors: {} };
   const steps = [{ as: 'owner', text: 'never sent', waitFor: { kind: 'planApprovalPending' as const, timeoutMs: 0 } }];
-  await expect(advanceScript(host, steps, progress)).rejects.toThrow('Step 0');
+  await expect(advanceScript(host, steps, progress)).rejects.toThrow('대본 1단계');
   expect(recordStop).toHaveBeenCalledOnce();
-  expect(progress.stopped).toContain('planApprovalPending');
-  await expect(advanceScript(host, steps, progress)).rejects.toThrow('Step 0');
+  expect(progress.stopped).toContain('대본 진행 조건');
+  await expect(advanceScript(host, steps, progress)).rejects.toThrow('대본 1단계');
   expect(postMessage).not.toHaveBeenCalled();
   expect(recordStop).toHaveBeenCalledOnce();
 });
@@ -130,5 +139,5 @@ it('resolves reserved and revising active tasks and leaves finished tasks out', 
     { ...ctx, type: 'task_checked', payload: { taskId: 'a', resultId: 'r', reason: 'done' } },
   ]);
   expect(resolveTarget(project(await store.read()), { assignee: 'designer', pick: 'next' })).toBe('b');
-  expect(() => resolveTarget(project([]), { assignee: 'designer' })).toThrow('No active task');
+  expect(() => resolveTarget(project([]), { assignee: 'designer' })).toThrow('작업 없음');
 });

@@ -16,6 +16,29 @@ async function eventually(check: () => Promise<boolean>) {
   for (let i = 0; i < 300; i++) { if (await check()) return; await new Promise(r => setTimeout(r, 10)); }
   throw new Error('observable state did not arrive');
 }
+it('T1 API accepts a blocked result only for the decider and removes recovery controls after checking it', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'ensemble-resolve-web-'));
+  const app = new WebRuntime({ dataDir: dir, store: new MemoryLedgerStore() });
+  globalRuntime.ensembleRuntime = app;
+  try {
+    await app.state();
+    const ctx = { projectId: app.meta.projectId, targetProductId: 'test', actor: { kind: 'human' as const, id: 'owner' } };
+    await app.store.append([
+      { ...ctx, type: 'plan_committed', payload: { version: 1, basedOn: null, tasks: [{ id: 'flow', title: '흐름 설계', assignee: 'designer', dependsOn: [], handoffConditions: ['예약 확인'] }], approvedBy: 'owner', reason: '확인', sourceMessageIds: [] } },
+      { ...ctx, type: 'result_submitted', payload: { taskId: 'flow', resultId: 'r1', planVersion: 1, summary: '초안', artifactIds: [] } },
+      { ...ctx, type: 'task_blocked', payload: { taskId: 'flow', reason: '보완을 2회 요청했지만 인계 조건을 채우지 못했습니다', unblockBy: 'owner' } },
+    ]);
+    expect((await app.state('owner')).activity.stalled?.tasks?.[0]?.actions).toEqual(['accept', 'retry']);
+    expect((await app.state('designer')).activity.stalled?.tasks?.[0]?.actions).toEqual(['retry']);
+    expect((await post('tasks/flow/resolve', { me: 'designer', action: 'accept' })).status).toBe(409);
+    expect((await post('tasks/flow/resolve', { me: 'owner', action: 'recheck' })).status).toBe(409);
+    expect((await post('tasks/flow/resolve', { me: 'owner', action: 'accept', note: '이대로 확인해 주세요' })).status).toBe(202);
+    await eventually(async () => (await app.state()).roadmap.tasks[0]?.status === 'checked');
+    expect((await app.state()).activity.stalled).toBeUndefined();
+    expect((await app.state()).roadmap.tasks[0]?.resolution).toBeUndefined();
+    expect((await post('tasks/flow/resolve', { me: 'owner', action: 'accept' })).status).toBe(409);
+  } finally { await app.stop(); delete globalRuntime.ensembleRuntime; await rm(dir, { recursive: true, force: true }); }
+});
 it.each([false, true])('plays all three scenes through actual API handlers (default connector: %s), preserving history', async defaultConnector => {
   const f = await setup(false);
   await f.pm.stop();

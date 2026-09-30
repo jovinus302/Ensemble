@@ -2,6 +2,7 @@ import { project, type AnyEvent } from '@ensemble/core';
 import type { LlmProvider } from '@ensemble/llm';
 import type { ScriptedStep } from './index.ts';
 import { resolveTarget, type ScriptHost, type ScriptProgress } from './script.ts';
+import { ScenarioError } from './errors.ts';
 
 type Material = { name: string; mimeType: string; content: string };
 /** This allowlist is the entire model input: no ledger or PM reasoning. */
@@ -46,13 +47,17 @@ export async function respondToRevision(host: ScriptHost, step: ScriptedStep, pr
     events = await host.read() as AnyEvent[];
     const task = project(events).tasks.get(taskId)!;
     if (task.status === 'checked') return;
+    if (task.status === 'blocked') {
+      const request = events.findLast(e => e.type === 'revision_requested' && e.payload.taskId === taskId);
+      throw new ScenarioError(`보완 ${progress.revisions?.[taskId] ?? 0}회 후 미충족: ${task.spec.title}\n${task.blocked?.reason ?? '작업이 멈췄습니다'}\n${request?.type === 'revision_requested' ? request.payload.missing.join('\n') : ''}`);
+    }
     if (task.status !== 'revising') throw new Error(`보완 판단이 없습니다: ${task.spec.title} (${task.status})`);
     const revision = events.findLast(e => e.type === 'revision_requested' && e.payload.taskId === taskId);
     if (revision?.type !== 'revision_requested') throw new Error('보완 요청을 찾지 못했습니다');
     const speech = events.find(e => e.type === 'pm_spoke' && e.payload.considerationId === `handoff-notice:${revision.payload.resultId}`);
     if (speech?.type !== 'pm_spoke') throw new Error('채널에 게시된 PM 보완 요청을 찾지 못했습니다');
     const count = progress.revisions?.[taskId] ?? 0;
-    if (count >= 2) throw new Error(`보완 2회 후 미충족: ${task.spec.title}\n${speech.payload.text}`);
+    if (count >= 2) throw new ScenarioError(`보완 2회 후 미충족: ${task.spec.title}\n${speech.payload.text}`);
     if (!host.generateRevision) throw new Error('보완 자료 생성기가 없습니다');
     const submission = events.findLast(e => e.type === 'result_submitted' && e.payload.taskId === taskId);
     const ids = submission?.type === 'result_submitted' ? submission.payload.artifactIds : [];

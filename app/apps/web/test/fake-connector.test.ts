@@ -6,6 +6,24 @@ import type { SessionEvent, TaskInstructionsInput } from '@ensemble/agents';
 import { FakeConnector, prototypeHtml } from '../lib/fake-connector';
 
 const input: TaskInstructionsInput = { taskId: 'prototype', planVersion: 1, goalSummary: { text: '시연', sourceId: 'goal' }, taskTitle: { text: '가입과 결제', sourceId: 'plan' }, handoffConditions: [{ text: '가입과 결제', sourceId: 'plan' }], decisions: [], inputs: [], openQuestions: [] };
+it.each([{ exclusions: ['결제 화면과 모의 결제 버튼'], limits: [] }, { exclusions: [], limits: ['가입·시간 선택·예약 확인까지'] }])('uses scope lists without rewriting conditions: %j', async scope => {
+  const root = await mkdtemp(path.join(tmpdir(), 'fake-scope-'));
+  const connector = new FakeConnector(root, undefined, undefined, 5, async () => ({ title: '시연', handoffConditions: ['가입과 시간 선택과 결제', '실제 개인정보 저장 금지'], ...scope }));
+  const events: SessionEvent[] = [];
+  connector.onEvent(e => events.push(e));
+  try {
+    const session = await connector.startSession('prototype-agent', 'p');
+    await connector.startTask('prototype-agent', input);
+    await new Promise(r => setTimeout(r, 40));
+    const report = events.find(e => e.type === 'report' && e.report.type === 'result_report');
+    if (report?.type !== 'report' || report.report.type !== 'result_report') throw new Error('missing report');
+    const html = await readFile(path.join(session.workspace, report.report.files[0]!.path), 'utf8');
+    expect(html).not.toContain('data-screen="payment"');
+    expect(html).not.toContain('>모의 결제</button>');
+    expect(html).toContain('시간 선택');
+    expect(html).toContain('실제 개인정보 저장 금지');
+  } finally { await connector.stop(); await rm(root, { recursive: true, force: true }); }
+});
 it('addresses each condition without claiming a real access date or dropping mixed payment conditions', () => {
   const conditions = ['개인정보·외부 API 없음 체크리스트', '결제 제외, 가입 오류·재입력 및 예약 확인 유지', '실제 접속 날짜와 최신 가격 확인'];
   const html = prototypeHtml({ ...input, handoffConditions: conditions.map(text => ({ text, sourceId: 'v2' })) }, true);

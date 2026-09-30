@@ -55,10 +55,11 @@ try {
   }
   const prototypeStatus = prototypeTask()?.status;
   if (prototypeStatus !== 'checked') throw new Error(`prototype must be checked, received ${prototypeStatus}`);
+  if (state.roadmap.tasks.length !== 4 || state.roadmap.tasks.some((task: { status: string }) => task.status !== 'checked')) throw new Error('all four scenario tasks must be checked');
   const clarificationUsed = state.messages.some((message: { authorId: string; text: string }) => message.authorId === 'owner' && message.text === continuousScenario.steps.at(-1)!.text);
-  writeFileSync(path.join(output, 'http-result.json'), JSON.stringify({ success: true, skipped: 0, changedPrototype: prototype.name, prototypeStatus, clarificationUsed, state }, null, 2));
+  writeFileSync(path.join(output, 'http-result.json'), JSON.stringify({ success: true, skipped: 0, checkedTasks: 4, planFailures: 0, stalls: 0, changedPrototype: prototype.name, prototypeStatus, clarificationUsed, state }, null, 2));
 } catch (error) {
   const state = await request('state').catch(() => null);
-  writeFileSync(path.join(output, 'http-result.json'), JSON.stringify({ success: false, error: String(error), observations, state }, null, 2));
+  writeFileSync(path.join(output, 'http-result.json'), JSON.stringify({ success: false, error: String(error), planFailures: /계획 초안/.test(state?.activity?.stalled?.reason ?? '') ? 1 : 0, stalls: state?.activity?.stalled ? 1 : 0, checkedTasks: state?.roadmap?.tasks?.filter((task: { status: string }) => task.status === 'checked').length ?? 0, observations, state }, null, 2));
   throw error;
 }
