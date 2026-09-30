@@ -4,7 +4,8 @@ export interface SessionInfo { threadId: string; workspace: string }
 export type SendUpdateResult = { sent: true } | { sent: false; reason: string };
 interface TurnContext { agentId: string; taskId: string; threadId: string; turnId: string }
 export type SessionEvent =
-  | (TurnContext & { type: 'turn'; status: 'started' | 'completed' | 'interrupted' | 'failed' })
+  /** `reason` explains a failed turn: the runtime's own error or a lost session. */
+  | (TurnContext & { type: 'turn'; status: 'started' | 'completed' | 'interrupted' | 'failed'; reason?: string })
   | (TurnContext & { type: 'reply'; itemId: string; text: string })
   | (TurnContext & { type: 'report'; itemId: string; index: number; report: Report })
   | (TurnContext & { type: 'parse_error'; itemId: string; index: number; error: ParseError });

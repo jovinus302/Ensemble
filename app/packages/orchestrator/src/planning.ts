@@ -6,28 +6,40 @@ import type { Dispatcher } from './dispatch.ts';
 import type { PmPost } from './pm.ts';
 
 export type PlanningMember = EventPayloads['member_joined'] & { weeklyHours?: number };
-export interface PlanInput { goal: string; deadline?: string; members: PlanningMember[]; roleTemplate: Record<string, string>; }
+export interface PlanInput { goal: string; deadline?: string; members: PlanningMember[]; decider: string; }
 export interface PlanDraft { tasks: TaskSpec[]; estimates: EventPayloads['plan_proposed']['estimates']; reason: string }
 const nonempty = (v: unknown): v is string => typeof v === 'string' && !!v.trim();
 /** Final drafting failure: `reason` is shown to people, `detail` is for server logs only. */
 export class PlanDraftingError extends Error {
   constructor(readonly reason: string, readonly detail: string) { super(`Plan drafting failed after two attempts: ${detail}`); this.name = 'PlanDraftingError'; }
 }
+class MissingTemplateRoleError extends PlanDraftingError {
+  constructor(reason: string) { super(reason, 'Missing MVP template role'); }
+}
 /** One rejected attempt whose cause is known: `message` goes back to the model, `reason` to people. */
 class AttemptFailure extends Error {
   constructor(message: string, readonly reason: string, options?: ErrorOptions) { super(message, options); }
 }
 const INVALID_DRAFT_REASON = '모델이 만든 초안이 계획 규칙(담당자, 의존 관계, 예상 시간)을 지키지 못했습니다';
-// A full draft carries ids, titles, conditions and estimates for every task; 2048 tokens cut off 14 Korean tasks.
+// Preserve the M5 output budget and truncation retry for Korean titles and conditions.
 const DRAFT_MAX_TOKENS = 8192;
 
-/** SOUND / COMMITTED CHANGE: bounded model draft, code validates identities and DAG;
+/** SOUND / COMMITTED CHANGE: code owns the four-role template and validates identities and DAG;
  * only the human decider commits it. Fake-provider tests observe retries and zero early starts.
  * Roles are explicit capabilities supplied by the caller, never inferred from task title words.
  */
 export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: string }): Promise<PlanDraft> {
   if (!nonempty(input.goal) || !input.members.length) throw new Error('Goal and members are required');
-  const roles = [...new Set(input.members.map(m => m.role).filter(nonempty))];
+  const template = [
+    { id: 'research', assignee: 'research-agent', kind: 'agent', purpose: '경쟁사와 유사 사례 조사', dependsOn: [] as string[] },
+    { id: 'interview', assignee: input.decider, kind: 'human', purpose: '고객 인터뷰', dependsOn: [] as string[] },
+    { id: 'flow', assignee: 'designer', kind: 'human', purpose: '조사와 인터뷰를 바탕으로 사용 흐름 설계', dependsOn: ['research', 'interview'] },
+    { id: 'prototype', assignee: 'prototype-agent', kind: 'agent', purpose: '사용 흐름 기반 프로토타입 구현', dependsOn: ['flow'] },
+  ];
+  const missing = template.filter(t => !input.members.some(m => m.memberId === t.assignee && m.kind === t.kind && (m.kind !== 'agent' || nonempty(m.role))));
+  if (missing.length || input.decider === 'designer') throw new MissingTemplateRoleError(
+    `역할 템플릿에 필요한 팀원이 부족합니다: ${missing.length ? missing.map(t => `${t.purpose} 담당(${t.assignee})`).join(', ') : '결정권자와 별도의 디자이너'}`);
+  const taskIds = template.map(t => t.id);
   let failure = '', reason = INVALID_DRAFT_REASON, detail = '';
   const complete = async (request: Parameters<LlmProvider['complete']>[0]) => {
     let response;
@@ -37,47 +49,38 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
   };
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      // Obtain the draft's task inventory first so the dependency enum contains exactly
-      // its IDs, rather than an arbitrary finite pool or references invented by the model.
-      const facts = { goal: input.goal, deadline: input.deadline, members: input.members, roleTemplate: input.roleTemplate, ...(failure ? { validationError: failure } : {}) };
-      const inventory = await complete({ model: input.model, forceTool: 'outline_plan',
-        system: 'List the tasks needed for this goal, using only the supplied team capabilities and availability.',
-        tools: [{ name: 'outline_plan', description: 'Draft task inventory', inputSchema: { type: 'object', additionalProperties: false, required: ['tasks'], properties: { tasks: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } } } } }],
-        messages: [{ role: 'user', content: JSON.stringify(facts) }] });
-      const outline = inventory.toolCalls.length === 1 && inventory.toolCalls[0]?.name === 'outline_plan' ? inventory.toolCalls[0].input.tasks : undefined;
-      if (!Array.isArray(outline) || !outline.length || !outline.every(nonempty)) throw new Error('Invalid task inventory');
-      const taskIds = outline.map((_, i) => `task-${i + 1}`);
-  const tool: ToolSpec = { name: 'propose_plan', description: 'Draft the first plan for human approval', inputSchema: {
-    type: 'object', additionalProperties: false, required: ['tasks', 'reason'], properties: {
-      reason: { type: 'string', minLength: 1 }, tasks: { type: 'array', minItems: taskIds.length, maxItems: taskIds.length, items: {
-        type: 'object', additionalProperties: false, required: ['id', 'title', 'assignee', 'role', 'dependsOn', 'handoffConditions', 'hours'], properties: {
-          id: { enum: taskIds }, title: { type: 'string', minLength: 1 }, assignee: { enum: input.members.map(m => m.memberId) },
-          role: { enum: [...roles, 'human'] }, dependsOn: { type: 'array', uniqueItems: true, items: { enum: taskIds } },
-          handoffConditions: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'string', minLength: 1 } },
-          hours: { type: 'object', additionalProperties: false, required: ['min', 'max'], properties: { min: { type: 'number', minimum: 0 }, max: { type: 'number', minimum: 0 } } },
+      const facts = { goal: input.goal, deadline: input.deadline, members: input.members, template, ...(failure ? { validationError: failure } : {}) };
+      const tool: ToolSpec = { name: 'propose_plan', description: 'Draft the first plan for human approval', inputSchema: {
+        type: 'object', additionalProperties: false, required: ['tasks'], properties: {
+          tasks: { type: 'array', minItems: taskIds.length, maxItems: taskIds.length, items: {
+            type: 'object', additionalProperties: false, required: ['templateKey', 'title', 'handoffConditions', 'hours'], properties: {
+              templateKey: { enum: taskIds }, title: { type: 'string', minLength: 1 },
+              handoffConditions: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'string', minLength: 1 } },
+              hours: { type: 'object', additionalProperties: false, required: ['min', 'max'], properties: { min: { type: 'number', minimum: 0 }, max: { type: 'number', minimum: 0 } } },
+            },
+          } },
         },
-      } },
-    },
-  } };
+      } };
       const response = await complete({ model: input.model, forceTool: tool.name, tools: [tool], maxTokens: DRAFT_MAX_TOKENS,
-        system: 'Draft a feasible plan using only the supplied goal, team roles and availability. Select unique task IDs from the enum; dependencies must reference tasks included in this draft. Assign agents only work within their declared role. Each task needs 1–3 concrete handoff conditions and an hour range. Do not invent members or capabilities.',
-        messages: [{ role: 'user', content: JSON.stringify({ ...facts, taskInventory: outline.map((title, i) => ({ id: taskIds[i], title })) }) }] });
+        system: 'Fill each of the four supplied MVP role-template tasks exactly once. Task identities, assignees and dependencies are fixed by code. Supply only templateKey, a goal-specific title, 1–3 concrete handoff conditions and an hour range. Keep work within the supplied role purpose and availability. If selecting a customer problem requires a decision, express it as a flow handoff condition, never as another task. Do not invent members or capabilities.',
+        messages: [{ role: 'user', content: JSON.stringify(facts) }] });
       const call = response.toolCalls.length === 1 ? response.toolCalls[0] : undefined;
       const value = call?.input;
-      if (call?.name !== tool.name || !value || !nonempty(value.reason) || !Array.isArray(value.tasks) || !value.tasks.length || value.tasks.length > taskIds.length) throw new Error('Invalid plan draft');
+      if (call?.name !== tool.name || !value || !Array.isArray(value.tasks) || value.tasks.length !== taskIds.length || Object.keys(value).some(k => k !== 'tasks')) throw new Error('Invalid plan draft');
       const tasks: TaskSpec[] = [];
       const estimates: PlanDraft['estimates'] = [];
       for (const raw of value.tasks) {
         const t = raw as Record<string, unknown>;
-        if (!t || !taskIds.includes(String(t.id)) || !nonempty(t.title)) throw new Error('Invalid task identity');
-        const member = input.members.find(m => m.memberId === t.assignee);
-        if (!member || (member.kind === 'agent' && (!member.role || t.role !== member.role))) throw new Error('Unknown assignee or incompatible agent role');
-        if (!Array.isArray(t.dependsOn) || !t.dependsOn.every(nonempty) || new Set(t.dependsOn).size !== t.dependsOn.length) throw new Error('Invalid dependencies');
+        if (!t || !taskIds.includes(String(t.templateKey)) || !nonempty(t.title)) throw new Error('Invalid template key or title');
+        if (Object.keys(t).some(k => !['templateKey', 'title', 'handoffConditions', 'hours'].includes(k))) throw new Error('Fields outside the role template are forbidden');
+        const slot = template.find(slot => slot.id === t.templateKey)!;
+        const member = input.members.find(m => m.memberId === slot.assignee);
+        if (!member || member.kind !== slot.kind || (member.kind === 'agent' && !nonempty(member.role))) throw new Error('Unknown assignee or incompatible agent role');
         if (!Array.isArray(t.handoffConditions) || t.handoffConditions.length < 1 || t.handoffConditions.length > 3 || !t.handoffConditions.every(nonempty)) throw new Error('Invalid handoff conditions');
         const h = t.hours as { min: number; max: number } | undefined;
         if (!h || !Number.isFinite(h.min) || !Number.isFinite(h.max) || h.min < 0 || h.max < h.min) throw new Error('Invalid estimate');
-        tasks.push({ id: String(t.id), title: t.title, assignee: member.memberId, dependsOn: t.dependsOn, handoffConditions: t.handoffConditions });
-        estimates.push({ taskId: String(t.id), hours: { min: h.min, max: h.max } });
+        tasks.push({ id: slot.id, title: t.title, assignee: member.memberId, dependsOn: [...slot.dependsOn], handoffConditions: t.handoffConditions });
+        estimates.push({ taskId: slot.id, hours: { min: h.min, max: h.max } });
       }
       const byId = new Map(tasks.map(t => [t.id, t]));
       if (byId.size !== tasks.length || taskIds.some(id => !byId.has(id))) throw new Error('Duplicate or missing task ID');
@@ -90,7 +93,7 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
         visiting.add(id); task.dependsOn.forEach(visit); visiting.delete(id); visited.add(id);
       };
       tasks.forEach(t => visit(t.id));
-      return { tasks, estimates, reason: value.reason };
+      return { tasks: taskIds.map(id => byId.get(id)!), estimates, reason: 'MVP 역할 템플릿: 조사와 인터뷰 → 사용 흐름 설계 → 프로토타입' };
     } catch (error) {
       failure = error instanceof Error ? error.message : 'Invalid draft';
       reason = error instanceof AttemptFailure ? error.reason : INVALID_DRAFT_REASON;
@@ -125,11 +128,11 @@ export async function startFreeProject(options: { store: LedgerStore; llm: LlmPr
   });
   let draft: PlanDraft;
   try {
-    draft = await proposePlan({ goal, deadline, members, roleTemplate: Object.fromEntries(members.filter(m => m.role).map(m => [m.memberId, m.role!])), llm: options.llm, model: options.model });
+    draft = await proposePlan({ goal, deadline, members, decider: state.goal.decider, llm: options.llm, model: options.model });
   } catch (error) {
     if (!(error instanceof PlanDraftingError)) throw error;
     await record([goalSet, ...planningNotice(options.context, `plan-failed:${randomUUID()}`, state.goal.decider,
-      `계획 초안을 만들지 못했습니다: ${error.reason}. 목표를 조금 더 구체적으로 적어 '자유형식'에서 다시 시작해 주세요.`, state.openTopics)]);
+      error instanceof MissingTemplateRoleError ? `${error.reason}.` : `계획 초안을 만들지 못했습니다: ${error.reason}. 목표를 조금 더 구체적으로 적어 '자유형식'에서 다시 시작해 주세요.`, state.openTopics)]);
     return { failure: error };
   }
   const proposal = { ...draft, proposalId: randomUUID(), version: 1, forMemberId: state.goal.decider };

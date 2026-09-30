@@ -10,7 +10,7 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
   const messages: VmMessage[] = typed.flatMap(e => {
     if (e.type !== 'message_recorded' && e.type !== 'pm_spoke' && e.type !== 'reply_recorded') return [];
     const authorId = e.type === 'message_recorded' ? e.payload.authorId : e.type === 'reply_recorded' ? e.payload.memberId : 'pm';
-    const ids = e.type === 'message_recorded' ? e.payload.attachmentIds : [];
+    const ids = e.type === 'message_recorded' ? e.payload.attachmentIds : e.type === 'reply_recorded' ? e.payload.attachmentIds ?? [] : [];
     const considered = e.type === 'pm_spoke' ? considerations.get(e.payload.considerationId) : undefined;
     return [{ id: e.type === 'reply_recorded' ? e.id : e.payload.messageId, authorId, text: e.payload.text, at: e.at,
       kind: authorId === 'pm' ? 'pm' as const : state.members.get(authorId)?.kind ?? 'system' as const,

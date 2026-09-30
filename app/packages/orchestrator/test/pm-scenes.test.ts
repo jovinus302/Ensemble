@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { expect, it } from 'vitest';
 import { MemoryLedgerStore } from '@ensemble/store';
 import { project, type AnyEvent } from '@ensemble/core';
@@ -11,7 +14,8 @@ class FakeConnector implements SessionConnector {
   handlers = new Set<(e: SessionEvent) => void>();
   starts: TaskInstructionsInput[] = [];
   updates: UpdateInstructionsInput[] = [];
-  async startSession(agentId: string) { return { threadId: `thread:${agentId}`, workspace: '/fake' }; }
+  workspace = '/fake';
+  async startSession(agentId: string) { return { threadId: `thread:${agentId}`, workspace: this.workspace }; }
   async startTask(_agent: string, input: TaskInstructionsInput) { this.starts.push(input); return `turn:${input.taskId}`; }
   async sendUpdate(_agent: string, input: UpdateInstructionsInput) { this.updates.push(input); return { sent: true as const }; }
   onEvent(handler: (e: SessionEvent) => void) { this.handlers.add(handler); return () => { this.handlers.delete(handler); }; }
@@ -91,7 +95,11 @@ it('scene 3: silence, forecast answer, then summary/v2/targeted notifications an
 });
 
 it('routes question → person answer → acknowledged update → result handoff through SessionRunner', async () => {
-  const f = await setup(3, [() => ({ kind: 'answer', taskId: 'prototype', questionId: 'question:prototype:1' }), request => ({ conditions: [{ index: 1, met: true, file: 'output.md', quote: '가입' }, { index: 2, met: true, file: 'output.md', quote: '결제' }], decisionConflicts: [] })]);
+  const f = await setup(3, [() => ({ kind: 'answer', taskId: 'prototype', questionId: 'question:prototype:1' }), request => { const file = /### 파일: ([^\n]+)/.exec(request.messages[0]!.content)![1]!; return { conditions: [{ index: 1, met: true, file, quote: '가입' }, { index: 2, met: true, file, quote: '결제' }], decisionConflicts: [] }; }]);
+  // Reported files are read from the agent's workspace and recorded as attachments.
+  f.connector.workspace = await mkdtemp(path.join(tmpdir(), 'ensemble-pm-scenes-'));
+  await writeFile(path.join(f.connector.workspace, 'output.md'), '가입 결제');
+  await f.pm.sessions.startSession('prototype-agent');
   await f.pm.sessions.startTask('prototype-agent', buildTaskContext(project(await f.store.read()), 'prototype', await f.store.read()));
   const base = { agentId: 'prototype-agent', taskId: 'prototype', threadId: 'thread', turnId: 'turn:prototype', type: 'report' as const, itemId: 'question', index: 0 };
   f.connector.emit({ ...base, report: { type: 'question', taskId: 'prototype', question: '가입 버튼 색은 파란색인가요?' } });
@@ -114,4 +122,5 @@ it('routes question → person answer → acknowledged update → result handoff
   await f.pm.flush();
   expect((await f.store.read()).filter(e => e.type === 'task_checked' && (e.payload as { taskId: string }).taskId === 'prototype')).toHaveLength(1);
   await f.pm.stop();
+  await rm(f.connector.workspace, { recursive: true, force: true });
 });

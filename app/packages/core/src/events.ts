@@ -26,7 +26,8 @@ export interface EventPayloads {
   /** The acknowledgement failed validation; the update stays unconfirmed. */
   update_rejected: { updateId: Id; taskId: Id; reasons: string[] };
   /** An agent reply posted to the channel. */
-  reply_recorded: { memberId: Id; taskId?: Id; text: string; turnId?: Id };
+  reply_recorded: { memberId: Id; taskId?: Id; text: string; turnId?: Id; attachmentIds?: Id[] };
+  agent_report_recorded: { memberId: Id; taskId: Id; text: string; turnId: Id };
   message_recorded: { messageId: Id; authorId: Id; text: string; threadId?: Id; attachmentIds: Id[] };
   attachment_recorded: { attachmentId: Id; name: string; mimeType: string; uri: string; taskId?: Id };
   /** The PM's handoff judgement and the evidence behind it. */

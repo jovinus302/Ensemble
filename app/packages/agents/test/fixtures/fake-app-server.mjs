@@ -1,3 +1,5 @@
+import { writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { createInterface } from 'node:readline';
 
 // Wire fixtures follow the local codex-cli 0.154.0 schema. test/* is fixture-only.
@@ -29,6 +31,7 @@ function threadResponse(thread) {
 }
 function finish(thread, turn, status = 'completed') {
   if (turn.status !== 'inProgress') return;
+  if (status === 'failed') turn.error = { message: 'fake model failure' };
   const item = { type: 'agentMessage', id: `item-${turn.id}`, text: 'fake answer', phase: 'final_answer' };
   turn.items.push(item);
   turn.status = status;
@@ -78,7 +81,8 @@ createInterface({ input: process.stdin, crlfDelay: Infinity }).on('line', async 
       if (!initialized) { error(id, -32000, 'Not initialized'); break; }
       const thread = { id: `thread-${++nextThread}`, cwd: params.cwd ?? process.cwd(), turns: [],
         cliVersion: '0.154.0', createdAt: 0, updatedAt: 0, ephemeral: false, modelProvider: 'fake',
-        preview: '', projectId: null, sessionId: 'fake-session', source: 'appServer', status: { type: 'idle' } };
+        preview: '', projectId: null, sessionId: 'fake-session', source: 'appServer', status: { type: 'idle' },
+        developerInstructions: params.developerInstructions };
       threads.set(thread.id, thread);
       result(id, threadResponse(thread)); break;
     }
@@ -101,6 +105,19 @@ createInterface({ input: process.stdin, crlfDelay: Infinity }).on('line', async 
         const taskId = /"taskId":\s*"([^"]+)"/.exec(text)?.[1] ?? 'task';
         protocolTasks.set(turn.id, { taskId });
         reportItem(thread, turn, `progress-${turn.id}`, 'Working on the first section.');
+        // Result modes: the agent writes its file into the thread's workspace and reports it at once.
+        const version = Number(/"planVersion":\s*(\d+)/.exec(text)?.[1] ?? 1);
+        const results = { result: `alternatives-${taskId}.md`, linked: 'link/secret.md', big: 'big.md', missing: 'missing.md' };
+        if (protocolMode in results) {
+          if (protocolMode === 'result') writeFileSync(path.join(thread.cwd, results.result), `# 대안 비교 (${taskId})\n| 대안 | 특징 |\n|---|---|\n| A | 가입 흐름 |\n`);
+          if (protocolMode === 'big') writeFileSync(path.join(thread.cwd, 'big.md'), 'x'.repeat(3 * 1024 * 1024));
+          reportItem(thread, turn, `result-${turn.id}`, fence({ type: 'result_report', taskId, planVersion: version,
+            summary: '대안 2개를 표로 정리했습니다', files: [{ path: results[protocolMode], description: '대안 비교표' }] }));
+          finish(thread, turn);
+        }
+        if (protocolMode === 'fail') finish(thread, turn, 'failed');
+        if (protocolMode === 'instructions') reportItem(thread, turn, `dev-${turn.id}`, `developer: ${thread.developerInstructions ?? ''}`);
+        if (protocolMode === 'crash') setTimeout(() => process.exit(3), 20);
         if (protocolMode === 'errors') {
           reportItem(thread, turn, `bad-${turn.id}`, '```ensemble-report\nnot json\n```');
           reportItem(thread, turn, `question-${turn.id}`, fence({ type: 'question', taskId, question: 'Which color?', options: ['blue', 'green'] }));

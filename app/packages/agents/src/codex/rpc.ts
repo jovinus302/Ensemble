@@ -54,6 +54,7 @@ export class JsonRpcClient extends EventEmitter {
   private fail(error: Error): void {
     if (this.failure) return;
     this.failure = error;
+    this.emit('failure', error);
     for (const request of this.pending.values()) request.reject(error);
     this.pending.clear();
     this.child.kill();

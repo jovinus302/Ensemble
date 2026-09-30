@@ -7,7 +7,7 @@ import { Coordinator, type CoordinationResult } from './coordination.ts';
 import { Dispatcher, type ResultOutcome } from './dispatch.ts';
 import { taskQuestions } from './context.ts';
 import type { ResultContent, SubmittedResult } from './handoff.ts';
-import { SessionRunner } from './session-runner.ts';
+import { SessionRunner, type BlockedTurn } from './session-runner.ts';
 import { startFreeProject, decidePlan } from './planning.ts';
 import { decideAuthority } from './authority-flow.ts';
 
@@ -19,6 +19,8 @@ export interface ProjectManagerOptions extends EventContext {
   model: string;
   clock?: () => Date;
   readResult?: (result: SubmittedResult) => Promise<ResultContent>;
+  /** Agent turns running longer than this are interrupted and their task blocked. */
+  turnTimeoutMs?: number;
 }
 export type PmPost = CoordinationResult['posts'][number];
 
@@ -38,7 +40,8 @@ export class ProjectManager {
 
   constructor(private options: ProjectManagerOptions) {
     this.context = { projectId: options.projectId, targetProductId: options.targetProductId };
-    this.sessions = new SessionRunner(options.connector, options.store, this.context);
+    this.sessions = new SessionRunner(options.connector, options.store, this.context, { turnTimeoutMs: options.turnTimeoutMs,
+      onBlocked: blocked => { void this.enqueue(() => this.blockedNotice(blocked)).then(posts => { this.background.push(...posts); }).catch(error => this.failures.push(error)); } });
     this.dispatcher = new Dispatcher({ store: options.store, llm: options.llm, model: options.model, context: this.context,
       connector: { startTask: async (agentId, input) => {
         await this.sessions.startSession(agentId);
@@ -156,6 +159,20 @@ export class ProjectManager {
       ...posts.map((post, i) => ({ ...this.context, actor: { kind: 'system' as const, id: 'pm' }, type: 'pm_spoke', idempotencyKey: `${considerationId}:${i}`, payload: { considerationId, messageId: `${considerationId}:${i}`, ...post } })),
     ]);
     return posts;
+  }
+
+  /** One PM line per stopped turn; the task stays blocked until a person decides what to do. */
+  private async blockedNotice({ agentId, taskId, turnId, reason }: BlockedTurn): Promise<PmPost[]> {
+    const state = project(await this.read());
+    const considerationId = `blocked-notice:${turnId}`;
+    const decider = state.goal?.decider;
+    const name = (id: string) => state.members.get(id)?.displayName ?? id;
+    const post: PmPost = { kind: 'fact', text: `${decider ? `@${name(decider)} ` : ''}${name(agentId)}의 ${taskId} "${state.tasks.get(taskId)?.spec.title ?? taskId}" 작업이 멈췄습니다: ${reason}. 자동으로 다시 시작하지 않으니 확인 후 다시 맡겨 주세요.` };
+    await this.options.store.append([
+      { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId: `turn-blocked:${turnId}`, whoseAction: decider ?? null, alreadyKnows: 'no', evidence: [`turn-blocked:${turnId}`], decision: 'speak', reason: 'Agent 작업이 멈춰 사람이 다음 행동을 정해야 한다', openTopics: state.openTopics } },
+      { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_spoke', idempotencyKey: `${considerationId}:0`, payload: { considerationId, messageId: `${considerationId}:0`, ...post } },
+    ]);
+    return [post];
   }
 
   onSessionEvent(event: SessionEvent): Promise<PmPost[]> {
