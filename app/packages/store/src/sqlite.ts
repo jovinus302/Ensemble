@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS ledger (
   actor_kind TEXT NOT NULL,
   actor_id TEXT NOT NULL,
   at TEXT NOT NULL,
-  idempotency_key TEXT UNIQUE,
+  idempotency_key TEXT,
   payload TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ledger_project_id ON ledger (project_id);
@@ -59,6 +59,31 @@ export class SqliteLedgerStore implements LedgerStore {
     this.db.exec("PRAGMA busy_timeout = 5000;");
     if (path !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec(SCHEMA);
+    this.migrateIdempotency();
+  }
+
+  /** Preserve every event and sequence while replacing SQLite's non-droppable legacy UNIQUE autoindex. */
+  private migrateIdempotency(): void {
+    this.inTransaction(() => {
+      const indexes = this.db.prepare("SELECT name FROM pragma_index_list('ledger') WHERE \"unique\" = 1").all() as { name: string }[];
+      const legacy = indexes.some(index => {
+        const columns = this.db.prepare('SELECT name FROM pragma_index_info(?)').all(index.name) as { name: string }[];
+        return columns.length === 1 && columns[0]!.name === 'idempotency_key';
+      });
+      if (legacy) {
+        // A single transaction makes a crash/failure leave either the original or the complete new table.
+        this.db.exec(`CREATE TABLE ledger_project_scoped (
+          seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, type TEXT NOT NULL,
+          project_id TEXT NOT NULL, target_product_id TEXT NOT NULL, actor_kind TEXT NOT NULL,
+          actor_id TEXT NOT NULL, at TEXT NOT NULL, idempotency_key TEXT, payload TEXT NOT NULL
+        );
+        INSERT INTO ledger_project_scoped SELECT * FROM ledger;
+        DROP TABLE ledger;
+        ALTER TABLE ledger_project_scoped RENAME TO ledger;`);
+      }
+      this.db.exec(`CREATE INDEX IF NOT EXISTS ledger_project_id ON ledger (project_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS ledger_project_idempotency ON ledger (project_id, idempotency_key);`);
+    });
   }
 
   async append(events: NewLedgerEvent[]): Promise<LedgerEvent[]> {
@@ -93,7 +118,7 @@ export class SqliteLedgerStore implements LedgerStore {
   }
 
   private appendSync(events: NewLedgerEvent[]): LedgerEvent[] {
-    const byKey = this.db.prepare("SELECT * FROM ledger WHERE idempotency_key = ?");
+    const byKey = this.db.prepare("SELECT * FROM ledger WHERE project_id = ? AND idempotency_key = ?");
     const insert = this.db.prepare(
       `INSERT INTO ledger (id, type, project_id, target_product_id, actor_kind, actor_id, at, idempotency_key, payload)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
@@ -101,7 +126,7 @@ export class SqliteLedgerStore implements LedgerStore {
     return events.map((input) => {
       // Rows inserted earlier in this batch are visible here, so in-batch duplicates dedupe too.
       if (input.idempotencyKey !== undefined) {
-        const existing = byKey.get(input.idempotencyKey) as Row | undefined;
+        const existing = byKey.get(input.projectId, input.idempotencyKey) as Row | undefined;
         if (existing) return toEvent(existing);
       }
       const row = insert.get(

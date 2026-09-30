@@ -15,3 +15,14 @@ it.each(['empty', 'truncated'])('rejects %s model material instead of attaching 
   const llm: LlmProvider = { complete: async () => ({ text: kind === 'empty' ? ' ' : 'partial', stopReason: kind === 'truncated' ? 'max_tokens' : 'end_turn', toolCalls: [], model: 'fake', responseId: 'r', usage: { inputTokens: 0, outputTokens: 0 } }) };
   await expect(createRevisionGenerator(llm, 'fake')(input)).rejects.toThrow('비었거나 잘렸습니다');
 });
+it('retries a truncated revision once with a shorter-output instruction and a 12000 token limit', async () => {
+  const complete = vi.fn<LlmProvider['complete']>();
+  const result = { toolCalls: [], model: 'fake', responseId: 'r', usage: { inputTokens: 0, outputTokens: 0 } };
+  complete.mockResolvedValueOnce({ ...result, text: '잘린 내용', stopReason: 'max_tokens' });
+  complete.mockResolvedValueOnce({ ...result, text: '완결된 보완 자료', stopReason: 'end_turn' });
+  expect(await createRevisionGenerator({ complete }, 'fake')(input)).toBe('완결된 보완 자료');
+  expect(complete).toHaveBeenCalledTimes(2);
+  expect(complete.mock.calls[0]![0].maxTokens).toBe(12000);
+  expect(complete.mock.calls[1]![0].system).toContain('더 짧게');
+  expect(complete.mock.calls[1]![0].messages).toEqual(complete.mock.calls[0]![0].messages);
+});

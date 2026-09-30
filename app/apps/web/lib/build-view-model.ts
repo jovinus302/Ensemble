@@ -106,6 +106,7 @@ function labeler(typed: readonly AnyEvent[], state: ProjectState, name: (id: str
     if (prefix === 'reject') { const v = version(rest); return v ? `계획 v${v} 거절` : '계획 거절'; }
     if (prefix === 'plan-failed') return '계획 초안 작성 실패';
     if (prefix === 'turn-blocked') return 'Agent 작업 멈춤';
+    if (prefix === 'question') return 'Agent 질문';
     const id = prefix === 'result' ? rest : raw;
     const m = messages.get(id) ?? messageEvents.get(id);
     if (m) return `메시지 · ${quote(m)}`;
@@ -157,6 +158,7 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
     const ids = e.type === 'message_recorded' ? e.payload.attachmentIds : e.type === 'reply_recorded' ? e.payload.attachmentIds ?? [] : [];
     const considered = e.type === 'pm_spoke' ? considerations.get(e.payload.considerationId) : undefined;
     let text = e.payload.text;
+    if (e.type === 'reply_recorded') text = text.replace(/^Agent question \([^)]*\):\s*/, '질문: ').replace(/\sOptions:\s*/g, '\n선택지: ');
     if (e.type !== 'message_recorded') text = stripTaskKeys(text, taskIds);
     if (e.type === 'reply_recorded' && e.payload.taskId) text = refreshTodo(text, state.tasks.get(e.payload.taskId)?.status, latestSummary.get(e.payload.taskId) === e.id);
     const cardId = e.type === 'pm_spoke' && proposalIds.has(e.payload.considerationId) ? e.payload.considerationId : undefined;
@@ -164,7 +166,7 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
       kind: authorId === 'pm' ? 'pm' as const : state.members.get(authorId)?.kind ?? 'system' as const,
       ...(e.type === 'message_recorded' && e.payload.threadId ? { threadId: e.payload.threadId } : {}),
       attachments: ids.flatMap(id => { const a = attachments.get(id); return a ? [{ id, name: a.name, url: `/api/attachments/${encodeURIComponent(id)}` }] : []; }),
-      ...(e.type === 'pm_spoke' ? { pm: { kind: e.payload.kind, reason: REASONS[considered?.reason ?? ''] ?? considered?.reason ?? '', evidence: [...new Set((considered?.evidence ?? []).map(label))] } } : {}),
+      ...(e.type === 'pm_spoke' ? { pm: { kind: e.payload.kind === 'ask' && /^(?:start:|handoff-notice:|turn-blocked:)/.test(e.payload.considerationId) ? 'nudge' : e.payload.kind, reason: REASONS[considered?.reason ?? ''] ?? considered?.reason ?? '', evidence: [...new Set((considered?.evidence ?? []).map(label))] } } : {}),
     }];
   });
 

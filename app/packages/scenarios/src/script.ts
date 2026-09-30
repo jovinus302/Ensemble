@@ -124,6 +124,14 @@ export async function advanceScript(host: ScriptHost, steps: readonly ScriptedSt
         if (proposal) await host.pm.decidePlan(proposal.proposalId, step.as, true);
       } else if (step.action === 'availability') {
         await host.pm.setAvailability(step.as, step.weeklyHours!);
+      } else if (step.action === 'clarifyScopeIfAsked') {
+        // A literal owner reply to the PM's visible clarification, never a repaired PM decision.
+        const after = progress.anchors[progress.step - 1] ?? state.lastSeq;
+        const question = (events as AnyEvent[]).findLast(e => e.seq > after && e.type === 'pm_spoke' && /적용할 작업.*범위/.test(e.payload.text) && /알려|확인/.test(e.payload.text));
+        if (question) {
+          if (state.goal?.decider !== step.as) throw new Error('범위 재확인은 결정권자가 답해야 합니다');
+          await host.pm.postMessage(step.as, step.text);
+        }
       } else if (step.action === 'answerIfAsked') {
         // A literal human choice, conditional on a new PM question. Never invent PM dialogue.
         const after = progress.anchors[progress.step - 1] ?? state.lastSeq;

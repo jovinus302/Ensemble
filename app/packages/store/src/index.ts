@@ -18,8 +18,8 @@ export type TxFn<T> = (events: readonly LedgerEvent[]) => { append: NewLedgerEve
 
 export interface LedgerStore {
   /**
-   * Appends events atomically. An event whose idempotencyKey already exists (in the store or
-   * earlier in the same batch) is skipped and the existing event is returned in its place.
+   * Appends events atomically. An event whose idempotencyKey already exists in the same project
+   * (in the store or earlier in the batch) is skipped and that project's existing event is returned.
    */
   append(events: NewLedgerEvent[]): Promise<LedgerEvent[]>;
   read(filter?: LedgerFilter): Promise<LedgerEvent[]>;

@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { SqliteLedgerStore, type LedgerStore } from '@ensemble/store';
 import { AnthropicProvider, loadEnv, modelFor, type LlmProvider } from '@ensemble/llm';
-import { CodexSessionConnector, codexSettingsFromEnv, type SessionConnector, type SessionEvent } from '@ensemble/agents';
+import { CodexSessionConnector, codexSettingsFromEnv, type SessionConnector } from '@ensemble/agents';
 import { ProjectManager, type FreeStartResult } from '@ensemble/orchestrator';
 import { project, type AnyEvent, type LedgerEvent } from '@ensemble/core';
 import { continuousScenario, advanceScript, createRevisionGenerator, sceneEvents, SCENE_NOW, type ScriptProgress, type Condition, type RevisionGenerator } from '@ensemble/scenarios';
-import { buildViewModel } from './build-view-model';
+import { FakeConnector } from './fake-connector';
+import { buildViewModel, projectTitle } from './build-view-model';
 
 /** Cuts at a word boundary so the title (with "…") stays within `max` characters; a single long word is cut at `max`. */
 export function shortTitle(text: string, max = 40) {
@@ -18,7 +19,7 @@ export function shortTitle(text: string, max = 40) {
   return (space > 0 ? title.slice(0, space) : title.slice(0, max - 1)) + '…';
 }
 
-interface Metadata { projectId: string; mode: 'free' | 'scenario'; scene: 1 | 2 | 3; step: number; script?: ScriptProgress; archivedProjectIds?: string[] }
+interface Metadata { projectId: string; mode: 'free' | 'scenario'; scene: 1 | 2 | 3; step: number; script?: ScriptProgress; archivedProjectIds?: string[]; archives?: { id: string; archivedAt: string; mode: 'free' | 'scenario' }[] }
 export interface Upload { name: string; mimeType: string; contentBase64: string }
 export class RuntimeError extends Error {
   constructor(readonly code: string, message: string, readonly status = 409) { super(message); }
@@ -26,16 +27,6 @@ export class RuntimeError extends Error {
 export interface Activity {
   kind: 'pm_thinking' | 'scenario_waiting' | 'agent_working' | 'idle'; label: string; since: string;
   stalled?: { reason: string; canRetry: boolean; canSkip: boolean };
-}
-
-/** Fake transport intentionally produces no fabricated work or PM answers. */
-class FakeConnector implements SessionConnector {
-  private listeners = new Set<(e: SessionEvent) => void>();
-  async startSession(agentId: string, projectId: string) { return { threadId: `fake-${projectId}-${agentId}`, workspace: '/fake' }; }
-  async startTask() { return `fake-${randomUUID()}`; }
-  async sendUpdate() { return { sent: true as const }; }
-  onEvent(handler: (e: SessionEvent) => void) { this.listeners.add(handler); return () => { this.listeners.delete(handler); }; }
-  async stop() { this.listeners.clear(); }
 }
 
 /** One Codex thread per agent, each in its own folder outside the repository, with a turn time limit. */
@@ -100,18 +91,33 @@ export class WebRuntime {
     this.ready = this.initialize();
   }
   changed() { for (const listener of this.listeners) listener(); }
-  private save() { writeFileSync(`${this.metaFile}.tmp`, JSON.stringify(this.meta)); renameSync(`${this.metaFile}.tmp`, this.metaFile); }
+  private async save() {
+    const temporary = `${this.metaFile}.${randomUUID()}.tmp`;
+    writeFileSync(temporary, JSON.stringify(this.meta));
+    for (let attempt = 0; ; attempt++) {
+      try { await rename(temporary, this.metaFile); return; }
+      catch (error) {
+        // Windows scanners can briefly hold an existing destination open; keep the atomic replacement.
+        if (process.platform !== 'win32' || attempt >= 3 || !['EPERM', 'EACCES', 'EBUSY'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+        await new Promise(resolve => setTimeout(resolve, 20 * 2 ** attempt));
+      }
+    }
+  }
   private context() { return { projectId: this.meta.projectId, targetProductId: 'ensemble-demo' }; }
   private async initialize() {
     if (!(await this.store.read({ projectId: this.meta.projectId })).length) await this.seed('owner', false);
-    this.createPm(); this.save();
+    this.createPm();
+    try { await this.pm.deliverPendingChanges(); }
+    catch { console.info('[ensemble] 재시작 후 대기 중인 변경 전달을 마치지 못했습니다. 작업 상태를 확인하세요.'); }
+    await this.save();
   }
   private createPm() {
     const runtime = process.env.ENSEMBLE_AGENT_RUNTIME ?? 'fake';
     if (!['fake', 'codex'].includes(runtime)) throw new Error('ENSEMBLE_AGENT_RUNTIME must be fake or codex');
     // Agent results arrive as attachments recorded from the agent's workspace; the PM reads them from the ledger.
     this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: this.options.llm ?? new AnthropicProvider(), model: modelFor('pm'),
-      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' ? codexAgents() : { connector: new FakeConnector() }),
+      // The demo's third scene observes a change during construction; its simulated build ends after that change.
+      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' ? codexAgents() : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'), this.options.generateRevision ?? createRevisionGenerator(this.options.llm ?? new AnthropicProvider(), modelFor('pm')), (agentId, version) => this.meta.mode !== 'scenario' || agentId !== 'prototype-agent' || version > 1) }),
       clock: () => this.meta.mode === 'scenario' ? SCENE_NOW : new Date(),
     });
   }
@@ -148,20 +154,50 @@ export class WebRuntime {
     return { ...view, project: { ...view.project, id: this.meta.projectId, title: shortTitle(goal.split(/[.!?。]/)[0]!), synthetic: this.meta.mode === 'scenario' }, activity: this.activity(events) };
   }
 
+  async archives() {
+    await this.ready;
+    return Promise.all([...(this.meta.archivedProjectIds ?? [])].reverse().map(async id => {
+      const events = await this.store.read({ projectId: id });
+      const saved = this.meta.archives?.find(a => a.id === id);
+      return { id, title: projectTitle(project(events).goal?.text).title ?? '새 프로젝트', archivedAt: saved?.archivedAt ?? null };
+    }));
+  }
+  async archivedState(id: string, me = 'owner') {
+    await this.ready;
+    if (!this.meta.archivedProjectIds?.includes(id)) throw new RuntimeError('archive_not_found', '보관된 프로젝트를 찾지 못했습니다.', 404);
+    const events = await this.store.read({ projectId: id });
+    const saved = this.meta.archives?.find(a => a.id === id);
+    const state = project(events);
+    const mode = saved?.mode ?? (state.goal?.text.startsWith('시연용') ? 'scenario' : 'free');
+    const view = buildViewModel(events, { me, mode, busy: false, now: mode === 'scenario' ? SCENE_NOW : new Date(saved?.archivedAt ?? events.at(-1)?.at ?? Date.now()) });
+    return { ...view, project: { ...view.project, id, title: projectTitle(state.goal?.text).title ?? '새 프로젝트' }, readOnly: true, cards: [], members: view.members.map(m => ({ ...m, busy: false })) };
+  }
+
   private activity(events: readonly LedgerEvent[]): Activity {
     const state = project(events), now = Date.now();
     const working = this.busy || this.pendingMessages > 0 || (this.pm as ProjectManager & { isProcessing?: boolean }).isProcessing || (!!this.scenarioFlight && !this.waiting);
     if (this.waiting) {
-      if (this.waiting.seq !== state.lastSeq || working || state.activeTurn.size > 0) {
+      if (working) {
         this.waiting.seq = state.lastSeq; this.waiting.quietSince = now; this.waiting.stalled = false;
-      } else this.waiting.stalled = now - this.waiting.quietSince >= 60_000;
+      } else this.waiting.stalled = !state.activeTurn.size && now - this.waiting.quietSince >= 60_000;
     }
     const kind: Activity['kind'] = working ? 'pm_thinking' : this.waiting || this.meta.script?.stopped ? 'scenario_waiting' : state.activeTurn.size ? 'agent_working' : 'idle';
     if (this.activityKind !== kind) { this.activityKind = kind; this.activitySince = new Date(now).toISOString(); }
+    const typed = events as readonly AnyEvent[];
+    const starts = [...state.activeTurn.values()].flatMap(taskId => {
+      const start = typed.findLast(e => e.type === 'task_started' && e.payload.taskId === taskId);
+      if (!start) return [];
+      const progress = typed.findLast(e => e.seq >= start.seq && ['task_started', 'turn_observed', 'reply_recorded', 'result_submitted', 'update_acknowledged', 'agent_report_recorded'].includes(e.type) && e.actor.kind === 'agent' && 'taskId' in e.payload && e.payload.taskId === taskId);
+      return [{ start: Date.parse(start.at), progress: Date.parse(progress?.at ?? start.at) }];
+    });
+    const limit = process.env.ENSEMBLE_AGENT_RUNTIME === 'codex' ? codexSettingsFromEnv().turnTimeoutMs : 120_000;
+    const agentStalled = starts.some(t => now - t.progress >= limit);
+    const since = this.waiting ? new Date(this.waiting.since).toISOString() : starts.length ? new Date(Math.min(...starts.map(t => t.start))).toISOString() : this.activitySince;
     const condition = this.waiting?.condition;
     const who = condition?.kind === 'taskOf' ? state.members.get(condition.assignee)?.displayName ?? '담당자' : undefined;
-    const label = kind === 'pm_thinking' ? 'PM이 판단 중' : kind === 'agent_working' ? 'Agent가 작업 중' : kind === 'scenario_waiting' ? `대본: ${who ? `${who} 작업 상태` : '다음 단계 조건'}를 기다리는 중` : '입력을 기다리는 중';
-    let reason = `대본이 ${who ? `${who} 작업 상태` : '다음 단계 조건'}를 기다리지만 60초 동안 진행 중인 판단이나 작업이 없어 멈췄습니다.`;
+    const target = who ? `${who} 작업 상태를` : '다음 단계 조건을';
+    const label = kind === 'pm_thinking' ? 'PM이 판단 중' : kind === 'agent_working' ? 'Agent가 작업 중' : kind === 'scenario_waiting' ? `대본: ${target} 기다리는 중` : '입력을 기다리는 중';
+    let reason = `대본이 ${target} 기다리지만 60초 동안 진행 중인 판단이나 작업이 없어 멈췄습니다.`;
     if (condition?.kind === 'taskOf') {
       const task = [...state.tasks.values()].find(t => t.spec.assignee === condition.assignee);
       const dependency = task?.spec.dependsOn.map(id => state.tasks.get(id)).find(t => t?.status === 'revising' || t?.blocked);
@@ -170,8 +206,8 @@ export class WebRuntime {
       else if (task?.status === 'checked') reason = `대본이 ${who} 작업 상태를 기다리는데 작업은 이미 완료되었습니다.`;
       else if (!task) reason = `대본에 필요한 ${who} 담당 작업이 현재 계획에 없습니다.`;
     }
-    return { kind, label, since: this.activitySince ?? new Date(now).toISOString(), ...(this.waiting?.stalled || this.meta.script?.stopped ? { stalled: {
-      reason: this.meta.script?.stopped ? '대본 진행 중 문제가 생겼습니다. 현재 작업 상태를 확인한 뒤 재시도하거나 이 단계를 건너뛰세요.' : reason, canRetry: true, canSkip: true,
+    return { kind, label, since: since ?? new Date(now).toISOString(), ...(agentStalled || this.waiting?.stalled || this.meta.script?.stopped ? { stalled: {
+      reason: agentStalled ? `Agent 작업에서 ${Math.round(limit / 60000)}분 동안 진행 보고가 없습니다. 작업 상태를 확인한 뒤 대본을 재시도하거나 건너뛰세요.` : this.meta.script?.stopped ? '대본 진행 중 문제가 생겼습니다. 현재 작업 상태를 확인한 뒤 재시도하거나 이 단계를 건너뛰세요.' : reason, canRetry: this.meta.mode === 'scenario', canSkip: this.meta.mode === 'scenario',
     } } : {}) };
   }
 
@@ -189,6 +225,7 @@ export class WebRuntime {
     }
     await this.intake;
     await this.pm.stop();
+    (this.meta.archives ??= []).push({ id: this.meta.projectId, archivedAt: new Date().toISOString(), mode: this.meta.mode });
     return [...(this.meta.archivedProjectIds ?? []), ...(events.length ? [this.meta.projectId] : [])];
   }
   async startFree(goal: string, deadline: string | undefined, me: string, confirmReplace = false) {
@@ -197,10 +234,10 @@ export class WebRuntime {
       const previous = project(await this.store.read({ projectId: this.meta.projectId }));
       if (previous.members.get(me)?.kind !== 'human') throw new Error('Unknown human member');
       const archivedProjectIds = await this.replace(confirmReplace);
-      this.meta = { projectId: randomUUID(), mode: 'free', scene: 1, step: 0, archivedProjectIds };
+      this.meta = { projectId: randomUUID(), mode: 'free', scene: 1, step: 0, archivedProjectIds, archives: this.meta.archives };
       await this.seed(me, false);
       for (const [memberId, weeklyHours] of previous.availability) if ([me, me === 'owner' ? 'designer' : 'owner'].includes(memberId)) await this.store.append([{ ...this.context(), actor: { kind: 'human', id: memberId }, type: 'availability_updated', payload: { memberId, weeklyHours } }]);
-      this.createPm(); this.save();
+      this.createPm(); await this.save();
       this.replacing = false;
       logDraftFailure(await this.pm.startFreeProject(goal, deadline));
     } finally { this.replacing = false; }
@@ -210,8 +247,8 @@ export class WebRuntime {
     this.replacing = true;
     try {
       const archivedProjectIds = await this.replace(confirmReplace);
-      this.meta = { projectId: randomUUID(), mode: 'scenario', scene: 1, step: 0, script: { step: 0, anchors: {} }, archivedProjectIds };
-      await this.seed('owner', true); this.createPm(); this.save();
+      this.meta = { projectId: randomUUID(), mode: 'scenario', scene: 1, step: 0, script: { step: 0, anchors: {} }, archivedProjectIds, archives: this.meta.archives };
+      await this.seed('owner', true); this.createPm(); await this.save();
     } finally { this.replacing = false; }
   }
   async launchScenario() {
@@ -219,7 +256,7 @@ export class WebRuntime {
     if (this.replacing) throw new RuntimeError('project_switching', '프로젝트를 전환 중입니다. 잠시 후 다시 시도해 주세요.');
     if (this.meta.mode !== 'scenario' || !this.meta.script) throw new RuntimeError('scenario_missing', '먼저 시나리오를 시작해 주세요.');
     if (this.meta.script.stopped) throw new RuntimeError('scenario_stopped', '대본이 멈췄습니다. 재시도하거나 이 단계를 건너뛰세요.');
-    void this.scenarioNext().catch(error => console.error('[ensemble] scenario stopped', error));
+    void this.scenarioNext().catch(() => console.info('[ensemble] 대본 진행 중단: 상태에서 이유를 확인하세요.'));
     return { accepted: true as const };
   }
   async scenarioNext() {
@@ -253,7 +290,7 @@ export class WebRuntime {
     } finally {
       this.meta.step = this.meta.script.step;
       this.meta.scene = continuousScenario.steps[this.meta.step]?.scene ?? 3;
-      this.save(); this.changed(); await this.persistAttachments();
+      await this.save(); this.changed(); await this.persistAttachments();
     }
   }
   async scenarioRecover(skip: boolean) {
@@ -270,8 +307,8 @@ export class WebRuntime {
       delete this.meta.script.stopped;
       this.meta.step = this.meta.script.step;
       this.meta.scene = continuousScenario.steps[this.meta.step]?.scene ?? 3;
-      this.waiting = undefined; this.save(); this.changed();
-      if (!skip) void this.scenarioNext().catch(error => console.error('[ensemble] scenario retry failed', error));
+      this.waiting = undefined; await this.save(); this.changed();
+      if (!skip) void this.scenarioNext().catch(() => console.info('[ensemble] 대본 재시도 중단: 상태에서 이유를 확인하세요.'));
     } finally { this.recovering = false; }
   }
   async message(authorId: string, text: string, attachments: Upload[] = []) {

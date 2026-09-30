@@ -24,6 +24,8 @@ function errorResponse(error: unknown) {
 export async function GET(request: Request, context: Context) {
   try {
     const parts = (await context.params).path, route = parts.join('/'), app = getRuntime();
+    if (route === 'archives') return json(await app.archives());
+    if (parts[0] === 'archives' && parts.length === 2) return json(await app.archivedState(parts[1]!, new URL(request.url).searchParams.get('me') ?? 'owner'));
     if (route === 'state') return json(await app.state(new URL(request.url).searchParams.get('me') ?? 'owner'));
     if (route === 'events') {
       let cleanup = () => {};

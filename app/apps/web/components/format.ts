@@ -1,13 +1,14 @@
+import { formatKstDate } from '@ensemble/core';
 // 서버 렌더와 브라우저 렌더가 같은 글자를 내도록 시간대를 서울로 고정한다.
-const dateFmt = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric" });
 const timeFmt = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false });
-const partsFmt = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" });
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function formatDate(iso: string | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : dateFmt.format(d);
+  if (Number.isNaN(d.getTime())) return iso;
+  const [month, day] = formatKstDate(d).split('/');
+  return `${month}월 ${day}일`;
 }
 
 export function formatTime(iso: string): string {
@@ -19,8 +20,7 @@ export function formatTime(iso: string): string {
 export function formatShortDate(iso: string | Date): string {
   const d = typeof iso === "string" ? new Date(iso) : iso;
   if (Number.isNaN(d.getTime())) return "";
-  const parts = partsFmt.formatToParts(d);
-  return `${parts.find(p => p.type === "month")?.value}/${parts.find(p => p.type === "day")?.value}`;
+  return formatKstDate(d);
 }
 
 /** 일정 막대의 n일째를 날짜로. */

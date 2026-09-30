@@ -163,6 +163,14 @@ button:disabled { opacity: .45; cursor: default; }
 
 /* ---------- 전체 골격 ---------- */
 .app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+.active-project { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.active-project[hidden] { display: none; }
+.controls-toggle { display: none; }
+.archives { overflow: auto; padding: 16px; }
+.archive-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.archive-header h1 { font-size: 20px; }
+.archive-list { list-style: none; padding: 0; }
+.archive-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
 .topbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--ens-space-3) var(--ens-space-4);
   padding: var(--ens-space-3) var(--ens-space-4); background: var(--ens-surface-container-low);
@@ -437,4 +445,14 @@ button:disabled { opacity: .45; cursor: default; }
 @media (prefers-reduced-motion: reduce) {
   .shimmer { animation: none; }
   * { transition: none !important; }
+}
+
+@media (max-width: 599px) {
+  .topbar { flex-wrap: nowrap; gap: 8px; }
+  .brand { font-size: 16px; }
+  .project { flex: 1 1 0; }
+  .project .chip, .project .badge { display: none; }
+  .controls-toggle { display: block; flex-shrink: 0; }
+  .topbar-controls { display: none; }
+  .topbar-controls.expanded { display: flex; position: absolute; left: 0; right: 0; top: 100%; padding: 12px; background: var(--ens-surface); border-bottom: 1px solid var(--ens-outline-variant); }
 }

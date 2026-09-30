@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from "vitest";
 import type { LedgerEvent, NewLedgerEvent } from "@ensemble/core";
 import { MemoryLedgerStore, SqliteLedgerStore, type LedgerStore } from "../src/index.ts";
@@ -85,6 +86,17 @@ describe.each(implementations)("LedgerStore contract (%s)", (_name, make) => {
     expect(await store.read()).toHaveLength(1);
   });
 
+  it('isolates the same reservation key across projects while deduplicating within each project', async () => {
+    const store = make();
+    const key = 'start:prototype:v1';
+    const events = await store.append([ev({ projectId: 'old', idempotencyKey: key }), ev({ projectId: 'new', idempotencyKey: key }), ev({ projectId: 'old', idempotencyKey: key })]);
+    expect(events[0]!.id).not.toBe(events[1]!.id);
+    expect(events[2]).toEqual(events[0]);
+    expect((await store.read({ projectId: 'new' }))[0]).toEqual(events[1]);
+    expect((await store.append([ev({ projectId: 'new', idempotencyKey: key })]))[0]).toEqual(events[1]);
+    expect(await store.read()).toHaveLength(2);
+  });
+
   it("stores a duplicate key within one batch once", async () => {
     const store = make();
     const out = await store.append([
@@ -145,6 +157,25 @@ describe.each(implementations)("LedgerStore contract (%s)", (_name, make) => {
 });
 
 describe("SqliteLedgerStore on a shared file", () => {
+  it('migrates a legacy globally-unique database without changing historical events, and safely reopens', async () => {
+    const file = tempDb();
+    const old = new DatabaseSync(file);
+    old.exec(`CREATE TABLE ledger (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, type TEXT NOT NULL,
+      project_id TEXT NOT NULL, target_product_id TEXT NOT NULL, actor_kind TEXT NOT NULL, actor_id TEXT NOT NULL,
+      at TEXT NOT NULL, idempotency_key TEXT UNIQUE, payload TEXT NOT NULL);
+      INSERT INTO ledger VALUES (7, 'historical-event', 'claim_recorded', 'old', 'tp1', 'human', 'designer', '2026-01-01T00:00:00Z', 'start:prototype:v1', '{"kept":true}');`);
+    old.close();
+    const migrated = new SqliteLedgerStore(file);
+    const historical = await migrated.read();
+    expect(historical).toEqual([{ seq: 7, id: 'historical-event', type: 'claim_recorded', projectId: 'old', targetProductId: 'tp1', actor: { kind: 'human', id: 'designer' }, at: '2026-01-01T00:00:00Z', idempotencyKey: 'start:prototype:v1', payload: { kept: true } }]);
+    expect((await migrated.append([ev({ projectId: 'old', idempotencyKey: 'start:prototype:v1' })]))[0]).toEqual(historical[0]);
+    const added = await migrated.append([ev({ projectId: 'new', idempotencyKey: 'start:prototype:v1' })]);
+    expect(added[0]!.seq).toBe(8);
+    const all = await migrated.read(); migrated.close();
+    const reopened = track(new SqliteLedgerStore(file));
+    expect(await reopened.read()).toEqual(all);
+    expect(await reopened.append([ev({ projectId: 'new', idempotencyKey: 'start:prototype:v1' })])).toEqual(added);
+  });
   it("a second instance sees the first instance's key and does not duplicate it", async () => {
     const path = tempDb();
     const one = track(new SqliteLedgerStore(path));

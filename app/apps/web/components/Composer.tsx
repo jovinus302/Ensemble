@@ -54,7 +54,7 @@ export function Composer({ meName, onSend }: { meName: string; onSend: (text: st
         />
         <textarea
           className="composer-input" rows={1} value={text}
-          placeholder={`${meName}(으)로 메시지 보내기 — Enter 전송, Shift+Enter 줄바꿈`}
+          placeholder={`${meName} 이름으로 보내기 — Enter 전송, Shift+Enter 줄바꿈`}
           aria-label="메시지 입력"
           onChange={e => setText(e.target.value)} onKeyDown={onKeyDown}
         />
