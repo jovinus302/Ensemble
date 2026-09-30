@@ -1,8 +1,9 @@
 import { expect, it, vi } from 'vitest';
 import { MemoryLedgerStore } from '@ensemble/store';
-import { project } from '@ensemble/core';
+import { project, planStarts, forecastFromState } from '@ensemble/core';
 import type { AnyEvent, EventPayloads, EventType, TaskSpec, PlanOp } from '@ensemble/core';
 import type { LlmProvider, LlmRequest, LlmResponse } from '@ensemble/llm';
+import type { UpdateInstructionsInput } from '@ensemble/agents';
 import { Coordinator } from '../src/coordination.ts';
 import type { CoordinationInterpretation, CoordinationJudgement } from '../src/coordination.ts';
 
@@ -23,7 +24,7 @@ function fake(responses: (object | null | ((r: LlmRequest) => object | null))[])
   } };
   return { llm, calls };
 }
-async function fixture(responses: Parameters<typeof fake>[0], tasks = initialTasks, messageText = 'ㅇㅋ 결제는 빼자', authorId = 'owner') {
+async function fixture(responses: Parameters<typeof fake>[0], tasks = initialTasks, messageText = 'ㅇㅋ 결제는 빼자', authorId = 'owner', startPrototype = true) {
   const store = new MemoryLedgerStore();
   const add = async <K extends EventType>(type: K, payload: EventPayloads[K], pm = false) => store.append([{ projectId: ctx.projectId, targetProductId: ctx.targetProductId, actor: { kind: pm ? 'pm' : 'human', id: 'owner' }, type, payload }]);
   for (const memberId of ['owner', 'designer', 'outside', 'agent']) await add('member_joined', { memberId, kind: memberId === 'agent' ? 'agent' : 'human', displayName: memberId });
@@ -31,14 +32,14 @@ async function fixture(responses: Parameters<typeof fake>[0], tasks = initialTas
   await add('plan_committed', { version: 1, basedOn: null, tasks, reason: '초기 합의', approvedBy: 'owner', sourceMessageIds: [] });
   for (const spec of tasks) await add('estimate_updated', { taskId: spec.id, hours: { min: 10, max: 10 }, source: 'human' });
   for (const memberId of ['designer', 'outside']) await add('availability_updated', { memberId, weeklyHours: 10 });
-  if (tasks.some(t => t.id === 'prototype')) {
+  if (startPrototype && tasks.some(t => t.id === 'prototype')) {
     await add('task_start_reserved', { taskId: 'prototype', specVersion: 1, trigger: 'initial' });
     await add('task_started', { taskId: 'prototype', turnId: 'turn-1' });
   }
   const message = (messageId = 'm1', authorId = 'owner', text = 'ㅇㅋ 결제는 빼자') => add('message_recorded', { messageId, authorId, text, attachmentIds: [] });
   await message('m1', authorId, messageText);
   const { llm, calls } = fake(responses);
-  const connector = { sendUpdate: vi.fn(async () => ({ sent: true as boolean, reason: 'finished' })) };
+  const connector = { sendUpdate: vi.fn(async (_agentId: string, _input: UpdateInstructionsInput) => ({ sent: true as boolean, reason: 'finished' })) };
   const coordinator = new Coordinator(store, llm, connector, ctx);
   const read = async () => await store.read() as AnyEvent[];
   return { store, add, message, calls, connector, coordinator, read };
@@ -100,11 +101,12 @@ it('does not repeat an answer supported by the same evidence', async () => {
   expect(r.events[0]?.payload).toMatchObject({ decision: 'silent', alreadyKnows: 'yes', reason: expect.stringContaining('이미 전달한 근거') });
 });
 
-it.each([[null, null], [interpret(), null, null], [{ conclusion: true }, { conclusion: true }]])('retries invalid or empty responses once, then records inability without inventing speech: %j', async (...responses) => {
+it.each([[null, null], [interpret(), null, null], [{ conclusion: true }, { conclusion: true }]])('retries once, then asks the decider to clarify rather than inventing a change: %j', async (...responses) => {
   const f = await fixture(responses);
   const r = await f.coordinator.onMessage('m1');
-  expect(r.posts).toEqual([]);
-  expect(r.events[0]?.payload).toMatchObject({ decision: 'silent', reason: '판단 불가' });
+  expect(r.posts[0]?.text).toContain('변경할 범위를 다시 알려주시겠어요');
+  expect(r.events[0]?.payload).toMatchObject({ decision: 'speak', reason: '결정권자의 변경 발언을 검증하지 못해 재확인한다' });
+  expect(project(await f.read()).plan?.version).toBe(1);
   expect(f.calls.length).toBe(responses.length);
 });
 
@@ -124,15 +126,17 @@ it('cannot relabel a human commitment as a delegated reorder', async () => {
   expect(project(await f.read()).availability.get('designer')).toBe(10);
 });
 
-it('rejects a stale snapshot when a plan is committed during model judgement', async () => {
+it('retries a changing snapshot twice, then explains the failure without stale writes or delivery', async () => {
   const f = await fixture([interpret({ ops: exclusions() }), judge()]);
+  let judgements = 0;
   const llm: LlmProvider = { async complete(request) {
-    if (request.forceTool === 'judge_coordination') await f.add('plan_committed', { version: 2, basedOn: 1, tasks: initialTasks, approvedBy: 'owner', reason: 'concurrent', sourceMessageIds: [] });
+    if (request.forceTool === 'judge_coordination') { judgements++; await f.add('plan_committed', { version: judgements + 1, basedOn: judgements, tasks: initialTasks, approvedBy: 'owner', reason: 'concurrent', sourceMessageIds: [] }); }
     return { text: '', model: 'fake', responseId: 'r', usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [{ name: request.forceTool!, input: (request.forceTool === 'interpret_coordination' ? interpret({ ops: exclusions() }) : judge()) as unknown as Record<string, unknown> }] };
   } };
   const r = await new Coordinator(f.store, llm, f.connector, ctx).onMessage('m1');
-  expect(r.posts).toEqual([]);
-  expect(r.events[0]?.payload).toMatchObject({ decision: 'silent', reason: '기록이 변경되어 재판단 필요' });
+  expect(r.posts[0]?.text).toContain('기록이 계속 바뀌어');
+  expect(r.events[0]?.payload).toMatchObject({ decision: 'speak', reason: '최신 기록 재판단 두 번 후에도 경합이 계속됨' });
+  expect(judgements).toBe(3);
   expect(project(await f.read()).plan?.reason).toBe('concurrent');
   expect(f.connector.sendUpdate).not.toHaveBeenCalled();
 });
@@ -174,13 +178,13 @@ it('records next-turn context for a changed agent that is not running', async ()
 it('rejects free-form rewrites and unknown task operations', async () => {
   const f = await fixture([{ ...interpret(), tasks: reduced }, interpret({ ops: [{ type: 'handoff_early', taskId: 'missing', sourceMessageIds: ['m1'] }] })]);
   const r = await f.coordinator.onMessage('m1');
-  expect(r.posts).toEqual([]);
-  expect(r.events[0]?.payload).toMatchObject({ reason: '판단 불가' });
+  expect(r.posts[0]?.text).toContain('변경할 범위를 다시 알려주시겠어요');
+  expect(r.events[0]?.payload).toMatchObject({ reason: '결정권자의 변경 발언을 검증하지 못해 재확인한다' });
   expect(project(await f.read()).plan?.version).toBe(1);
 });
 
 it('rejects fabricated evidence after one retry', async () => {
-  const f = await fixture([interpret(), judge({ evidence: ['invented'] }), judge({ evidence: ['invented'] })]);
+  const f = await fixture([interpret(), judge({ evidence: ['invented'] }), judge({ evidence: ['invented'] })], initialTasks, '오늘 회의 기록입니다');
   const r = await f.coordinator.onMessage('m1');
   expect(r.posts).toEqual([]);
   expect(r.events[0]?.payload).toMatchObject({ reason: '판단 불가' });
@@ -241,12 +245,26 @@ it('applies consented availability separately from a scope approval request', as
   expect(r.posts.every(p => !p.text.includes('가용 시간'))).toBe(true);
 });
 
-it('does not apply a plan operation when both judgement attempts cite invalid evidence', async () => {
+it('applies a validated explicit decider exclusion with code-owned summary when both judgements fail', async () => {
   const f = await fixture([interpret({ ops: exclusions() }), judge({ evidence: ['impact.deltaDays'] }), judge({ evidence: ['bad'] })]);
   const r = await f.coordinator.onMessage('m1');
-  expect(r.posts).toEqual([]);
-  expect(project(await f.read()).plan?.version).toBe(1);
-  expect(f.connector.sendUpdate).not.toHaveBeenCalled();
+  expect(r.posts[0]?.text).toContain('정리하면:');
+  expect(project(await f.read()).plan?.version).toBe(2);
+  expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
+  expect(r.posts[0]?.text).not.toContain('impact.deltaDays');
+});
+
+it('does not use the explicit-exclusion fallback for an unauthorized person or other operation', async () => {
+  for (const [ops, author, text] of [
+    [exclusions(), 'designer', '결제 빼자'],
+    [[{ type: 'set_deadline', date: '2026-10-20', sourceMessageIds: ['m1'] }], 'owner', '기한을 바꾸자'],
+  ] as [PlanOp[], string, string][]) {
+    const f = await fixture([interpret({ ops }), null, null], initialTasks, text, author);
+    await f.coordinator.onMessage('m1');
+    expect(project(await f.read()).plan?.version).toBe(1);
+    expect(project(await f.read()).goal?.deadline).toBe('2026-10-05T00:00:00Z');
+    expect(f.connector.sendUpdate).not.toHaveBeenCalled();
+  }
 });
 
 it('applies the decider’s deadline and goal messages without an unnecessary second approval', async () => {
@@ -415,4 +433,223 @@ it('records a declarative self-capacity update silently when the decider is in t
   await f.message('m2', 'designer', '이번 주 휴가라 4시간밖에 안 돼요');
   expect((await f.coordinator.onMessage('m2')).posts).toEqual([]);
   expect(project(await f.read()).availabilityOverrides.get('designer')?.get('2026-09-28')).toBe(4);
+});
+
+it('answers a direct schedule question from calculated facts after two rejected judgements', async () => {
+  const f = await fixture([
+    interpret({ conversation: { questionMessageId: 'm1', directedToPm: true, waitingOnMemberIds: [] } }),
+    judge({ evidence: ['invented'] }), judge({ text: '999시간 밀립니다.' }),
+  ], initialTasks, 'PM, 프로토타입이 얼마나 밀리나요?');
+  const r = await f.coordinator.onMessage('m1');
+  expect(f.calls).toHaveLength(3);
+  expect(r.posts[0]?.text).toContain('예상 종료는 10/5~10/5(서울 시간)');
+  expect(r.posts[0]?.text).not.toContain('999');
+  expect(r.events[0]?.payload).toMatchObject({ decision: 'speak', evidence: ['forecast:current'] });
+  expect(project(await f.read()).plan?.version).toBe(1);
+});
+
+it('recovers a direct schedule question when interpretation itself fails', async () => {
+  const f = await fixture([null, null], initialTasks, '그럼 프로토타입이 밀리나?');
+  const r = await f.coordinator.onMessage('m1');
+  expect(f.calls).toHaveLength(2);
+  expect(r.posts[0]?.text).toContain('현재 기록 기준 예상 종료');
+});
+
+it('explains missing forecast inputs rather than inventing a date after judgement failure', async () => {
+  const f = await fixture([
+    interpret({ conversation: { questionMessageId: 'm1', directedToPm: true, waitingOnMemberIds: [] } }), null, null,
+  ], initialTasks, 'PM, 일정은요?');
+  await f.add('plan_committed', { version: 2, basedOn: 1, tasks: [...initialTasks, task('new', 'outside')], approvedBy: 'owner', reason: 'new', sourceMessageIds: [] });
+  const r = await f.coordinator.onMessage('m1');
+  expect(r.posts[0]?.text).toContain('작업 예상 시간 미입력');
+  expect(r.posts[0]?.text).toContain('종료일을 계산할 수 없습니다');
+});
+
+it('keeps Agent answer delivery even when its already-posted facts suppress channel speech', async () => {
+  const f = await fixture([interpret(), judge(), interpret({ agentAnswers: [{ questionId: 'question:prototype:1', sourceMessageIds: ['m2'] }] }), judge()]);
+  await f.coordinator.onMessage('m1');
+  await f.add('pm_spoke', { considerationId: 'q', messageId: 'question:prototype:1', text: '가입 흐름만 만들까요?', kind: 'ask' });
+  await f.message('m2', 'owner', '네, 가입 흐름만 만드세요');
+  const r = await f.coordinator.onMessage('m2');
+  expect(r.posts).toEqual([]);
+  expect(r.agentAnswers).toEqual([{ taskId: 'prototype', questionId: 'question:prototype:1', text: '네, 가입 흐름만 만드세요' }]);
+  expect(r.events[0]?.payload).toMatchObject({ decision: 'silent', alreadyKnows: 'yes' });
+  expect((await f.coordinator.onMessage('m2')).agentAnswers).toBeUndefined();
+});
+
+it('rejects answer routing to an already-answered question', async () => {
+  const answer = interpret({ agentAnswers: [{ questionId: 'question:prototype:1', sourceMessageIds: ['m1'] }] });
+  const f = await fixture([answer, answer]);
+  await f.add('pm_spoke', { considerationId: 'q', messageId: 'question:prototype:1', text: '가입 흐름만 만들까요?', kind: 'ask' });
+  await f.add('change_notified', { changeId: 'answer:question:prototype:1', planVersion: 1, recipientId: 'agent', via: 'next_turn', text: '이미 답함' });
+  expect((await f.coordinator.onMessage('m1')).agentAnswers).toBeUndefined();
+});
+
+it('reinterprets current ledger after a race and applies the human availability once', async () => {
+  const f = await fixture([], initialTasks, '이번 주 4시간만 가능해요', 'designer');
+  let judgements = 0;
+  const snapshots: number[] = [];
+  const llm: LlmProvider = { async complete(request) {
+    const facts = JSON.parse(request.messages[0]!.content).facts;
+    if (request.forceTool === 'interpret_coordination') snapshots.push(facts.estimates.find(([id]: [string]) => id === 'prototype')[1].hours?.max ?? facts.estimates.find(([id]: [string]) => id === 'prototype')[1].max);
+    if (request.forceTool === 'judge_coordination' && judgements++ === 0) await f.add('estimate_updated', { taskId: 'prototype', hours: { min: 20, max: 20 }, source: 'human' });
+    const input = request.forceTool === 'interpret_coordination' ? interpret({ ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 4, period: 'this_week', sourceMessageIds: ['m1'] } as any] }) : judge({ decision: 'silent', text: '' });
+    return { text: '', model: 'fake', responseId: 'r', usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [{ name: request.forceTool!, input: input as unknown as Record<string, unknown> }] };
+  } };
+  const r = await new Coordinator(f.store, llm, f.connector, ctx).onMessage('m1');
+  expect(judgements).toBe(2);
+  expect(snapshots).toEqual([10, 20]);
+  expect(project(await f.read()).availabilityOverrides.get('designer')?.get('2026-09-28')).toBe(4);
+  expect(r.events.filter(e => e.type === 'availability_updated')).toHaveLength(1);
+  expect((await f.read()).filter(e => e.type === 'pm_considered' && e.payload.triggerId === 'm1')).toHaveLength(1);
+});
+
+it('offers a planning start when a human enters a goal before any committed plan', async () => {
+  const store = new MemoryLedgerStore();
+  const { clock: _clock, ...context } = ctx;
+  await store.append([
+    { ...context, actor: { kind: 'system', id: 'pm' }, type: 'member_joined', payload: { memberId: 'owner', kind: 'human', displayName: '사용자' } },
+    { ...context, actor: { kind: 'human', id: 'owner' }, type: 'message_recorded', payload: { messageId: 'goal', authorId: 'owner', text: '2주 안에 고객 반응을 확인하고 싶어요', attachmentIds: [] } },
+  ]);
+  const r = await new Coordinator(store, fake([null, null]).llm, { sendUpdate: vi.fn() }, ctx).onMessage('goal');
+  expect(r.posts[0]?.text).toContain('계획');
+  expect(r.posts[0]?.text).toContain('자유형식');
+  expect(r.events.some(e => e.type === 'plan_committed')).toBe(false);
+});
+
+it.each([false, true])('preserves accepted flow and routes scope reduction to unfinished dependents (both named: %s)', async both => {
+  const tasks = initialTasks.map(t => t.id === 'prototype' ? { ...t, dependsOn: ['design'] } : t);
+  const ops: PlanOp[] = [{ type: 'exclude_scope', taskId: 'design', item: '결제', sourceMessageIds: ['m1'] }, ...(both ? [{ type: 'exclude_scope' as const, taskId: 'prototype', item: '결제', sourceMessageIds: ['m1'] }] : [])];
+  const f = await fixture([interpret({ ops }), judge()], tasks, '결제 빼자', 'owner', false);
+  await f.add('result_submitted', { taskId: 'design', resultId: 'flow-result', planVersion: 1, summary: '완성', artifactIds: [] });
+  await f.add('task_checked', { taskId: 'design', resultId: 'flow-result', reason: '충족' });
+  await f.add('task_start_reserved', { taskId: 'prototype', specVersion: 1, trigger: 'flow-result' });
+  await f.add('task_started', { taskId: 'prototype', turnId: 'turn-1' });
+  const before = project(await f.read());
+  const r = await f.coordinator.onMessage('m1');
+  const state = project(await f.read());
+  expect(state.tasks.get('design')).toMatchObject({ status: 'checked', checkedResultId: 'flow-result', specVersion: 1, spec: before.tasks.get('design')!.spec });
+  expect(state.tasks.get('prototype')).toMatchObject({ status: 'running', spec: { handoffConditions: ['초안', '제외: 결제'] } });
+  expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
+  expect(r.events.filter(e => e.type === 'plan_committed')).toHaveLength(1);
+  expect(planStarts(state, 'test', ctx).some(e => (e.payload as { taskId?: string }).taskId === 'design')).toBe(false);
+  expect(forecastFromState(state, ctx.clock())).toEqual(forecastFromState(before, ctx.clock()));
+});
+
+it('ignores early-handoff on accepted work including a blocked accepted task', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'handoff_early', taskId: 'design', sourceMessageIds: ['m1'] }] }), judge({ decision: 'silent', text: '' })]);
+  await f.add('result_submitted', { taskId: 'design', resultId: 'flow-result', planVersion: 1, summary: '완성', artifactIds: [] });
+  await f.add('task_checked', { taskId: 'design', resultId: 'flow-result', reason: '충족' });
+  await f.add('task_blocked', { taskId: 'design', reason: '외부 확인 대기' });
+  const r = await f.coordinator.onMessage('m1');
+  expect(r.events.some(e => e.type === 'plan_committed')).toBe(false);
+  expect(project(await f.read()).tasks.get('design')).toMatchObject({ checkedResultId: 'flow-result', blocked: { prevStatus: 'checked' } });
+});
+
+it('notifies the rework assignee and an already-running dependent when an accepted spec genuinely changes', async () => {
+  const tasks = initialTasks.map(t => t.id === 'prototype' ? { ...t, dependsOn: ['design'] } : t);
+  const f = await fixture([interpret({ ops: [{ type: 'reassign', taskId: 'design', assignee: 'outside', sourceMessageIds: ['m1'] }] }), judge()], tasks, '흐름 설계는 제가 다시 맡겠습니다', 'outside', false);
+  await f.add('result_submitted', { taskId: 'design', resultId: 'flow-result', planVersion: 1, summary: '완성', artifactIds: [] });
+  await f.add('task_checked', { taskId: 'design', resultId: 'flow-result', reason: '충족' });
+  await f.add('task_start_reserved', { taskId: 'prototype', specVersion: 1, trigger: 'flow-result' });
+  await f.add('task_started', { taskId: 'prototype', turnId: 'turn-1' });
+  const r = await f.coordinator.onMessage('m1');
+  const state = project(await f.read());
+  expect(state.tasks.get('design')).toMatchObject({ status: 'ready', specVersion: 2, spec: { assignee: 'outside' } });
+  expect(state.tasks.get('design')?.checkedResultId).toBeUndefined();
+  expect(f.connector.sendUpdate).toHaveBeenCalledWith('agent', expect.objectContaining({ change: [expect.stringContaining('명세가 바뀌어 다시 확인이 필요')] }));
+  expect(r.posts.some(p => p.text.includes('outside') && p.text.includes('다시 확인이 필요'))).toBe(true);
+});
+
+// Captured from real-provider replays of the HTTP attempt4 ledger at seq 281.
+// Both arrays are invalid: that project had no decision_recorded events at all.
+it.each([['task:flow', 'task:prototype'], ['847fd924-16d1-426c-b815-9af7cd377e9e']])('corrects observed non-decision conflicts %j and applies short decider assent downstream', async (...conflicts: string[]) => {
+  const tasks = initialTasks.map(t => t.id === 'prototype' ? { ...t, dependsOn: ['design'] } : t);
+  const accepted = interpret({
+    category: 'scope_change', summary: '디자이너의 결제 제외 제안을 오너가 승인했다.',
+    ops: [
+      { type: 'exclude_scope', taskId: 'design', item: '결제', sourceMessageIds: ['m1', 'approval'] },
+      { type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['m1', 'approval'] },
+    ],
+  });
+  const f = await fixture([{ ...accepted, conflicts }, request => {
+    const input = JSON.parse(request.messages[0]!.content);
+    expect(input.validationError).toContain('conflicts');
+    expect(input.validationError).toContain('기존 결정이 없으므로 conflicts는 반드시 []');
+    expect((request.tools![0]!.inputSchema.properties as any).conflicts).toMatchObject({ maxItems: 0 });
+    return accepted;
+  }, judge()], tasks, '초안으로 먼저 가주세요. 결제 쪽은 아직 애매해서 빼면 좋겠어요.', 'designer', false);
+  await f.add('result_submitted', { taskId: 'design', resultId: 'flow-result', planVersion: 1, summary: '완성', artifactIds: [] });
+  await f.add('task_checked', { taskId: 'design', resultId: 'flow-result', reason: '충족' });
+  await f.add('task_start_reserved', { taskId: 'prototype', specVersion: 1, trigger: 'flow-result' });
+  await f.add('task_started', { taskId: 'prototype', turnId: 'turn-1' });
+  await f.message('approval', 'owner', 'ㅇㅋ 결제는 이번엔 빼자');
+  const r = await f.coordinator.onMessage('approval');
+  const state = project(await f.read());
+  expect(f.calls).toHaveLength(3);
+  expect(r.posts[0]?.text).toContain('정리하면:');
+  expect(state.plan?.version).toBe(2);
+  expect(state.tasks.get('design')).toMatchObject({ status: 'checked', specVersion: 1, checkedResultId: 'flow-result' });
+  expect(state.tasks.get('prototype')?.spec.handoffConditions).toEqual(['초안', '제외: 결제']);
+  expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
+});
+
+it('applies normal short assent using both the proposal and the decider message without retry', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['m1', 'approval'] }] }), judge()], initialTasks, '결제 쪽은 아직 애매해서 빼면 좋겠어요.', 'designer');
+  await f.message('approval', 'owner', 'ㅇㅋ 결제는 이번엔 빼자');
+  const r = await f.coordinator.onMessage('approval');
+  expect(f.calls).toHaveLength(2);
+  expect(r.posts[0]?.text).toContain('정리하면:');
+  expect(project(await f.read()).plan?.version).toBe(2);
+  expect(r.events.find(e => e.type === 'decision_recorded')?.payload).toMatchObject({ sourceMessageIds: ['m1', 'approval'] });
+  expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
+});
+
+it('accepts a valid recorded conflict ID and exposes only decision IDs in the schema', async () => {
+  const f = await fixture([request => {
+    expect((request.tools![0]!.inputSchema.properties as any).conflicts.items.enum).toEqual(['existing-decision']);
+    return interpret({ ops: exclusions(), conflicts: ['existing-decision'] });
+  }, judge()]);
+  await f.add('decision_recorded', { decisionId: 'existing-decision', summary: '결제 포함', sourceMessageIds: [], approvedBy: 'owner', changeKinds: ['scope_add'] });
+  expect((await f.coordinator.onMessage('m1')).posts[0]?.kind).toBe('summary');
+  expect(project(await f.read()).plan?.version).toBe(2);
+});
+
+it('never turns a repeatedly invented conflict ID into an approved change', async () => {
+  const invalid = interpret({ ops: exclusions(), conflicts: ['task:prototype'] });
+  const f = await fixture([invalid, invalid]);
+  const r = await f.coordinator.onMessage('m1');
+  expect(r.posts[0]?.text).toContain('다시 알려주시겠어요');
+  expect(project(await f.read()).plan?.version).toBe(1);
+  expect(f.connector.sendUpdate).not.toHaveBeenCalled();
+});
+
+it('does not infer a choice from ambiguous assent to several proposals', async () => {
+  const f = await fixture([interpret({ ops: [], summary: '어느 범위 제안인지 모호하다' }), judge({ decision: 'silent', text: '', openTopics: ['결제 제외와 가입 제외 중 무엇인지 확인 필요'] })], initialTasks, '결제를 뺄까요, 가입을 뺄까요?', 'designer');
+  await f.message('assent', 'owner', '그걸로 하자');
+  await f.coordinator.onMessage('assent');
+  expect(project(await f.read()).plan?.version).toBe(1);
+  expect(f.connector.sendUpdate).not.toHaveBeenCalled();
+});
+
+it('keeps one update_sent when the runner records its own steer, and counts it once toward the automation limit', async () => {
+  const steer = async (recordsItself: boolean) => {
+    const f = await fixture([interpret({ ops: exclusions(['m1', 'designer-agrees']) }), judge()]);
+    await f.message('designer-agrees', 'designer', '초안으로 먼저 가세요');
+    // Like SessionRunner.sendUpdate: the steer itself writes update_sent as the PM's action.
+    f.connector.sendUpdate.mockImplementation(async (agentId: string, input: UpdateInstructionsInput) => {
+      if (recordsItself) await f.store.append([{ projectId: ctx.projectId, targetProductId: ctx.targetProductId, actor: { kind: 'pm', id: 'pm' }, type: 'update_sent',
+        payload: { updateId: input.updateId, taskId: 'prototype', fromVersion: input.fromVersion, toVersion: input.toVersion, turnId: 'turn-1' }, idempotencyKey: `update:${input.updateId}:sent` }]);
+      return { sent: true, reason: agentId };
+    });
+    await f.coordinator.onMessage('designer-agrees');
+    const events = await f.read();
+    return { sent: events.filter(e => e.type === 'update_sent').length, actions: project(events).automation.actionsSinceResume, via: events.find(e => e.type === 'change_notified' && e.payload.recipientId === 'agent')?.payload };
+  };
+  const runner = await steer(true);
+  const plain = await steer(false);
+  expect(runner.sent).toBe(1);
+  expect(plain.sent).toBe(1);
+  expect(runner.actions).toBe(plain.actions);
+  expect(runner.via).toMatchObject({ via: 'steer' });
 });

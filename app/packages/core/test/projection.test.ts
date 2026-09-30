@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { project, isStaleResult } from "../src/index.ts";
+import { project, isStaleResult, planStarts } from "../src/index.ts";
 import type { EventPayloads, EventType, LedgerEvent, TaskSpec } from "../src/index.ts";
 it("replays deterministically, preserves unchanged specs, resets changed checks, and cancels removed work", () => {
   const events: LedgerEvent[] = [];
@@ -35,4 +35,28 @@ it("replays deterministically, preserves unchanged specs, resets changed checks,
   expect(project(events).tasks.get("T")?.status).toBe("cancelled");
   const unknown: LedgerEvent = { ...events[0]!, seq: 99, type: "message_recorded", payload: { text: "Hello" } };
   expect(project([...events, unknown])).toEqual({ ...project(events), lastSeq: 99 });
+});
+
+it('keeps a continuation turn occupied until it ends without reserving the task again', () => {
+  const events: LedgerEvent[] = [];
+  const context = { projectId: 'p', targetProductId: 'p' };
+  const emit = <K extends EventType>(type: K, payload: EventPayloads[K]) => events.push({ ...context, id: `${events.length}`, seq: events.length + 1, at: 'fixed', actor: { kind: 'system', id: 'pm' }, type, payload });
+  for (const memberId of ['agent', 'other']) emit('member_joined', { memberId, kind: 'agent', displayName: memberId });
+  const tasks = ['a', 'b'].map(id => ({ id, title: id, assignee: 'agent', dependsOn: [], handoffConditions: [] }));
+  emit('plan_committed', { version: 1, basedOn: null, tasks, reason: 'initial', approvedBy: 'owner', sourceMessageIds: [] });
+  emit('task_start_reserved', { taskId: 'a', specVersion: 1, trigger: 'initial' });
+  emit('task_started', { taskId: 'a', turnId: 'original' });
+  emit('turn_observed', { agentId: 'agent', taskId: 'a', turnId: 'original', status: 'completed' });
+  expect(project(events).activeTurn.size).toBe(0);
+  emit('turn_observed', { agentId: 'other', taskId: 'a', turnId: 'wrong-owner', status: 'started' });
+  emit('turn_observed', { agentId: 'agent', taskId: 'b', turnId: 'not-running', status: 'started' });
+  expect(project(events).activeTurn.size).toBe(0);
+  emit('turn_observed', { agentId: 'agent', taskId: 'a', turnId: 'continuation', status: 'started' });
+  const running = project(events);
+  expect(running.activeTurn.get('agent')).toBe('a');
+  expect(planStarts(running, 'while-continuing', context)).toEqual([]);
+  expect(running.reservedStartKeys).toEqual(new Set(['start:a:v1']));
+  emit('turn_observed', { agentId: 'agent', taskId: 'a', turnId: 'continuation', status: 'completed' });
+  expect(project(events).activeTurn.size).toBe(0);
+  expect(planStarts(project(events), 'after-continuing', context).map(e => (e.payload as { taskId: string }).taskId)).toEqual(['b']);
 });
