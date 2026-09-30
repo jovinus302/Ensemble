@@ -2,6 +2,10 @@ import { expect, it } from 'vitest';
 import { project } from '@ensemble/core';
 import { channelText, particle, hasGroundedNumbers, numericFacts } from '../src/channel-text.ts';
 
+it('removes attachment UUIDs from human-facing PM records', () => {
+  expect(channelText('첨부 854ad043-a359-49fd-aa16-ee113a5b523c와 result:fake-854ad043-a359-49fd-aa16-ee113a5b523c:1 확인', project([]))).not.toMatch(/result:|854ad043|a359/);
+});
+
 it('uses Korean names and particles, hides references, and preserves decimals within two sentences', () => {
   const state = project([]);
   state.plan = { version: 1, reason: '', approvedBy: 'owner', tasks: [{ id: 'interview', title: '고객 인터뷰', assignee: 'owner', dependsOn: [], handoffConditions: [] }] };

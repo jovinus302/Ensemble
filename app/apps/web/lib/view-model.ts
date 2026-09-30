@@ -31,12 +31,13 @@ export type VmCard =
   | { kind: "plan_approval"; id: string; planVersion: number; forMemberId: string; tasks: VmPlanTask[]; reason: string; finish?: { min: string; max: string } }
   | { kind: "authority"; id: string; forMemberId: string; text: string; changeKinds: string[] };
 export interface VmRoadmapTask {
+  stopped?: boolean;
   id: string; title: string; assigneeName: string; status: string; startDay?: number; endDayMin?: number; endDayMax?: number;
   hours?: { min: number; max: number }; handoffConditions?: string[];
 }
-export type VmForecast =
+export type VmForecast = (
   | { ok: true; finishMin: string; finishMax: string; deadline?: string; lateDaysMax?: number; shortage: { memberName: string; hours: number }[] }
-  | { ok: false; reasons: string[] };
+  | { ok: false; reasons: string[] }) & { uncertainty?: { stoppedTaskIds: string[]; warning: string } };
 export interface VmRoadmap {
   planVersion: number | null; tasks: VmRoadmapTask[];
   blocked: { taskId: string; reason: string; unblockByName?: string }[];

@@ -26,7 +26,7 @@ function ScheduleBars({ roadmap }: { roadmap: VmRoadmap }) {
         const tone = statusInfo(t.status).tone;
         return (
           <div key={t.id} className="bar-row">
-            <span className="bar-label" title={t.title}>{t.title}</span>
+            <span className="bar-label" title={t.title}>{t.title}{t.stopped && ' · 멈춤'}</span>
             <span className="bar-days num">{spanLabel(roadmap.origin, start, min, max)}</span>
             <div className="bar-track">
               <span className={`bar bar-${tone}`} style={{ left: pct(start), width: pct(Math.max(min - start, 0)) }} />
@@ -100,6 +100,7 @@ function TaskRow({ task }: { task: VmRoadmapTask }) {
         <span className="task-title">{task.title}</span>
         <span className="muted small">{task.assigneeName}</span>
         <StatusChip status={task.status} />
+        {task.stopped && <span className="chip chip-failed">멈춤</span>}
       </div>
       {(task.hours || conditions.length > 0) && (
         <details className="task-details small">
@@ -127,12 +128,13 @@ export function RoadmapCard({ roadmap, deadline, members, me, onSetAvailability 
       </div>
 
       <section className={`forecast${late ? " forecast-late" : ""}`} aria-label="예상 종료">
+        {f?.uncertainty && <p className="late-note" role="alert">⚠ {f.uncertainty.warning} ({f.uncertainty.stoppedTaskIds.map(titleOf).join(', ')})</p>}
         {f === null ? (
           <p className="muted">아직 예측할 계획이 없어요.</p>
         ) : f.ok ? (
           <>
             <div className="forecast-line">
-              <span className="muted small">예상 종료</span>
+              <span className="muted small">{f.uncertainty ? '멈춤 해소 후 예상 종료' : '예상 종료'}</span>
               <strong className="num">{formatDate(f.finishMin)}{formatDate(f.finishMax) !== formatDate(f.finishMin) && ` – ${formatDate(f.finishMax)}`}</strong>
             </div>
             <div className="forecast-line">

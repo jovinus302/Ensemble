@@ -117,8 +117,10 @@ export class WebRuntime {
     // Agent results arrive as attachments recorded from the agent's workspace; the PM reads them from the ledger.
     this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: this.options.llm ?? new AnthropicProvider(), model: modelFor('pm'),
       // The demo's third scene observes a change during construction; its simulated build ends after that change.
-      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' ? codexAgents() : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'), this.options.generateRevision ?? createRevisionGenerator(this.options.llm ?? new AnthropicProvider(), modelFor('pm')), (agentId, version) => this.meta.mode !== 'scenario' || agentId !== 'prototype-agent' || version > 1) }),
-      clock: () => this.meta.mode === 'scenario' ? SCENE_NOW : new Date(),
+      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' ? codexAgents() : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'), this.options.generateRevision ?? createRevisionGenerator(this.options.llm ?? new AnthropicProvider(), modelFor('pm')), (agentId, version) => this.meta.mode !== 'scenario' || agentId !== 'prototype-agent' || version > 1, 2000,
+        async taskId => project(await this.store.read({ projectId: this.meta.projectId })).tasks.get(taskId)?.spec) }),
+      // Live scenario inputs and PM/agent replies share the store's wall clock.
+      clock: () => new Date(),
     });
   }
   private async seed(decider: string, scenario: boolean) {
@@ -188,10 +190,11 @@ export class WebRuntime {
       const start = typed.findLast(e => e.type === 'task_started' && e.payload.taskId === taskId);
       if (!start) return [];
       const progress = typed.findLast(e => e.seq >= start.seq && ['task_started', 'turn_observed', 'reply_recorded', 'result_submitted', 'update_acknowledged', 'agent_report_recorded'].includes(e.type) && e.actor.kind === 'agent' && 'taskId' in e.payload && e.payload.taskId === taskId);
-      return [{ start: Date.parse(start.at), progress: Date.parse(progress?.at ?? start.at) }];
+      return [{ taskId, start: Date.parse(start.at), progress: Date.parse(progress?.at ?? start.at) }];
     });
     const limit = process.env.ENSEMBLE_AGENT_RUNTIME === 'codex' ? codexSettingsFromEnv().turnTimeoutMs : 120_000;
-    const agentStalled = starts.some(t => now - t.progress >= limit);
+    const agentStalled = starts.find(t => now - t.progress >= limit);
+    const blocked = [...state.tasks.values()].find(t => t.status === 'blocked' && t.blocked);
     const since = this.waiting ? new Date(this.waiting.since).toISOString() : starts.length ? new Date(Math.min(...starts.map(t => t.start))).toISOString() : this.activitySince;
     const condition = this.waiting?.condition;
     const who = condition?.kind === 'taskOf' ? state.members.get(condition.assignee)?.displayName ?? '담당자' : undefined;
@@ -206,8 +209,8 @@ export class WebRuntime {
       else if (task?.status === 'checked') reason = `대본이 ${who} 작업 상태를 기다리는데 작업은 이미 완료되었습니다.`;
       else if (!task) reason = `대본에 필요한 ${who} 담당 작업이 현재 계획에 없습니다.`;
     }
-    return { kind, label, since: since ?? new Date(now).toISOString(), ...(agentStalled || this.waiting?.stalled || this.meta.script?.stopped ? { stalled: {
-      reason: agentStalled ? `Agent 작업에서 ${Math.round(limit / 60000)}분 동안 진행 보고가 없습니다. 작업 상태를 확인한 뒤 대본을 재시도하거나 건너뛰세요.` : this.meta.script?.stopped ? '대본 진행 중 문제가 생겼습니다. 현재 작업 상태를 확인한 뒤 재시도하거나 이 단계를 건너뛰세요.' : reason, canRetry: this.meta.mode === 'scenario', canSkip: this.meta.mode === 'scenario',
+    return { kind, label, since: since ?? new Date(now).toISOString(), ...(agentStalled || blocked || this.waiting?.stalled || this.meta.script?.stopped ? { stalled: {
+      reason: `${agentStalled ? `${state.tasks.get(agentStalled.taskId)?.spec.title ?? agentStalled.taskId}: ${Math.round(limit / 60000)}분 동안 진행 보고 없음` : blocked ? `${blocked.spec.title}: ${blocked.blocked!.reason.replace(/\s+/g, ' ')}` : this.meta.script?.stopped ? this.meta.script.stopped.replace(/^Step \d+:\s*/, '').split('\n')[0] : reason} · 작업과 첨부를 직접 확인하세요.`, canRetry: this.meta.mode === 'scenario', canSkip: this.meta.mode === 'scenario',
     } } : {}) };
   }
 

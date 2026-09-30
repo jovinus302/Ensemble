@@ -293,9 +293,77 @@ export function startNotice(state: ProjectState, taskId: Id): string | undefined
   if (!task) return undefined;
   const mention = `@${state.members.get(task.spec.assignee)?.displayName ?? task.spec.assignee}`;
   const title = task.spec.title;
-  if (task.status === 'reserved') return `${mention} ${title} 작업이 예약되었습니다. 지금 시작해 주세요.`;
+  // One meaning per sentence: a reserved start is about to begin; a ready one merely can.
+  if (task.status === 'reserved') return `${mention} ${title}${particle(title)} 곧 시작합니다.`;
   if (task.status === 'ready') return `${mention} ${title}${particle(title)} 시작할 수 있습니다.`;
   return undefined;
+}
+
+/** Revision requests an agent task may get before it stops for a person instead of looping. */
+export const MAX_AGENT_REVISIONS = 2;
+export const revisionChangeId = (resultId: Id) => `revision:${resultId}`;
+
+/** Revision requests for a task since its current start was reserved (a new plan version starts over). */
+export function revisionCount(events: readonly LedgerEvent[], taskId: Id): number {
+  const started = typed(events).findLast((e) => e.type === 'task_start_reserved' && e.payload.taskId === taskId)?.seq ?? 0;
+  return typed(events).filter((e) => e.type === 'revision_requested' && e.payload.taskId === taskId && e.seq > started).length;
+}
+
+/**
+ * The update that carries a PM revision request to the agent whose result it concerns: what is
+ * missing (at most three items, internal IDs replaced by file names) and which files to fix.
+ * Deterministic, so a retry or a restart rebuilds the same update under the same ID.
+ */
+export function revisionUpdate(events: readonly LedgerEvent[], planVersion: number, taskId: Id, resultId: Id): UpdateInstructionsInput | undefined {
+  const request = typed(events).findLast((e) => e.type === 'revision_requested' && e.payload.taskId === taskId && e.payload.resultId === resultId);
+  const result = results(events).get(resultId);
+  if (request?.type !== 'revision_requested' || !result) return undefined;
+  const names = new Map<Id, string>();
+  for (const event of typed(events)) if (event.type === 'attachment_recorded') names.set(event.payload.attachmentId, event.payload.name);
+  const files = [...new Set(result.artifactIds.map((id) => names.get(id) ?? id))];
+  const missing = request.payload.missing.slice(0, 3).map((item) => humanizeRefs(item, events));
+  return { updateId: revisionChangeId(resultId), fromVersion: planVersion, toVersion: planVersion, keep: [], drop: [],
+    change: [...missing.map((item) => `보완할 점: ${item}`), ...(files.length ? [`수정할 파일: ${files.join(', ')}`] : [])],
+    reason: 'PM이 인계 조건을 검토했고 아래 보완이 필요합니다. 결과 파일을 고친 뒤 result_report로 다시 제출하세요' };
+}
+
+// Review verdict labels some agents carry over from their own instructions; people never need them.
+const GLOSS: Record<string, string> = { 'COMMITTED CHANGE': '확정된 변경', 'PROPOSITION CHANGE': '요구 변경', 'INTENT GAP': '의도 차이',
+  SOUND: '문제없음', REVISE: '수정 필요', PASS: '통과', FAIL: '실패', EXPERIMENT: '실험' };
+const LABELS = [
+  '[`*]*\\b(COMMITTED CHANGE|PROPOSITION CHANGE|INTENT GAP)\\b[`*]*',
+  // Single words only when marked up as a label, so ordinary English (e.g. "tests PASS") stays.
+  '`+(SOUND|REVISE|PASS|FAIL|EXPERIMENT)`+', '\\*\\*(SOUND|REVISE|PASS|FAIL|EXPERIMENT)\\*\\*',
+];
+const LABEL = new RegExp(`(?:${LABELS.join('|')})(을|를|이|가|은|는|으로|로|와|과)?`, 'g');
+const withParticle = (word: string, josa: string | undefined) => {
+  if (!josa) return word;
+  if (josa === '을' || josa === '를') return word + particle(word);
+  if (josa === '이' || josa === '가') return word + particle(word, '이/가');
+  if (josa === '으로' || josa === '로') return word + particle(word, '으로/로');
+  const batchim = particle(word, '이/가') === '이';
+  return word + (josa === '은' || josa === '는' ? (batchim ? '은' : '는') : (batchim ? '과' : '와'));
+};
+
+/**
+ * An agent's progress text as people read it: a sentence that only reports a review verdict label
+ * (e.g. "사전 검토는 `SOUND`입니다") is dropped; a label inside a sentence that says something else is
+ * replaced by a plain Korean word with its particle fixed.
+ */
+export function plainAgentText(text: string): string {
+  LABEL.lastIndex = 0;
+  if (!LABEL.test(text)) return text;
+  const lines = text.split('\n').map((line) => {
+    const sentences = line.split(/(?<=[.!?。])\s+/);
+    const kept = sentences.flatMap((sentence) => {
+      LABEL.lastIndex = 0;
+      if (!LABEL.test(sentence)) return [sentence];
+      if (/검토|판정|판단/.test(sentence)) return [];
+      return [sentence.replace(LABEL, (_all, a?: string, b?: string, c?: string, josa?: string) => withParticle(GLOSS[(a ?? b ?? c)!]!, josa))];
+    });
+    return kept.length || !line.trim() ? kept.join(' ') : null;
+  });
+  return lines.filter((line): line is string => line !== null).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** A short template summary for people: what got done, what you need to do, where to look. */
@@ -315,7 +383,7 @@ export function summarizeForHuman(state: ProjectState, taskId: Id, report: Resul
   if (report.limitations?.length) todo.push(`확인하지 못한 점: ${report.limitations.join('; ')}`);
   return [
     `[${task.spec.title}] ${name(task.spec.assignee)} 결과`,
-    `무엇이 됐나: ${channelText(report.summary, state)}`,
+    `무엇이 됐나: ${channelText(plainAgentText(report.summary), state)}`,
     `할 일: ${todo.length ? todo.join(' ') : '없음'}`,
     `확인할 곳: ${report.files.length ? report.files.map((file) => file.path).join(', ') : '없음'}`,
   ].join('\n');

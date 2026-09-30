@@ -2,6 +2,20 @@ import { expect, it } from "vitest";
 import { forecastFromState, project } from "../src/index.ts";
 import type { EventPayloads, EventType, LedgerEvent } from "../src/index.ts";
 
+it.each(['blocked', 'revising'] as const)('marks stopped %s work as uncertain and clears after resume', status => {
+  const state = project([]);
+  const spec = { id: 'research', title: '조사', assignee: 'agent', dependsOn: [], handoffConditions: [] };
+  state.plan = { version: 1, tasks: [spec], reason: '', approvedBy: 'owner' };
+  state.members.set('agent', { memberId: 'agent', kind: 'agent', displayName: '조사 Agent' });
+  state.estimates.set('research', { min: 1, max: 2, source: 'pm' });
+  state.tasks.set('research', { spec, specVersion: 1, status, results: [], updates: [] });
+  const now = new Date('2026-10-01');
+  expect(forecastFromState(state, now)).toMatchObject({ uncertainty: { stoppedTaskIds: ['research'], warning: '멈춘 작업 1개 — 날짜 불확실' } });
+  state.tasks.get('research')!.status = 'running';
+  state.activeTurn.set('agent', 'research');
+  expect(forecastFromState(state, now)).not.toHaveProperty('uncertainty');
+});
+
 it("reflects availability changes, checked work, agents, cancellation, and the goal deadline", () => {
   const events: LedgerEvent[] = [];
   const emit = <K extends EventType>(type: K, payload: EventPayloads[K]) => events.push({ type, payload, id: `${events.length}`, seq: events.length + 1, at: "2026-09-28T00:00:00Z", projectId: "p", targetProductId: "product", actor: { kind: "human", id: "user" } });

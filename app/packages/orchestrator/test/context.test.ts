@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { project, type LedgerEvent } from '@ensemble/core';
 import type { ResultReport } from '@ensemble/agents';
-import { buildTaskContext, CONVERSATION_CHAR_LIMIT, fileOwnerFor, humanizeRefs, relevantDecisions, summarizeForHuman, taskInputFiles } from '../src/context.ts';
+import { buildTaskContext, CONVERSATION_CHAR_LIMIT, fileOwnerFor, humanizeRefs, plainAgentText, relevantDecisions, revisionCount, revisionUpdate, startNotice, summarizeForHuman, taskInputFiles } from '../src/context.ts';
 
 const ctx = { projectId: 'context-tests', targetProductId: 'product' };
 function ledger(extra: { type: string; payload: unknown; kind?: 'human' | 'agent' | 'pm' }[] = []): LedgerEvent[] {
@@ -63,7 +63,9 @@ it('summarizes an agent result for people: what got done, what to do, where to l
     { type: 'task_checked', payload: { taskId: 'T4', resultId: 'r4', reason: 'ok' }, kind: 'pm' },
   ]);
   const reserved = [...checked, { ...checked.at(-1)!, id: 'e-res', seq: checked.length + 1, type: 'task_start_reserved', payload: { taskId: 'T5', specVersion: 1, trigger: 'r4' } }] as LedgerEvent[];
-  expect(summarizeForHuman(project(reserved), 'T4', report)).toContain('할 일: @리드 사용성 테스트 작업이 예약되었습니다. 지금 시작해 주세요.');
+  expect(summarizeForHuman(project(reserved), 'T4', report)).toContain('할 일: @리드 사용성 테스트를 곧 시작합니다.');
+  // QA3 N9: "예약되었습니다. 지금 시작해 주세요." said two things at once.
+  expect(startNotice(project(reserved), 'T5')).toBe('@리드 사용성 테스트를 곧 시작합니다.');
   expect(summarizeForHuman(project(checked), 'T4', report)).toBe([
     '[프로토타입] 프로토타입 Agent 결과',
     '무엇이 됐나: 클릭 가능한 3개 화면',
@@ -136,4 +138,32 @@ it('addresses a file question to its uploader and replaces internal IDs with fil
   expect(fileOwnerFor(state, events, 'prototype', '색상은 무엇으로 할까요?')).toBeUndefined();
   expect(humanizeRefs(question, events)).toBe('작업 폴더가 비어 있어 흐름 설계 결과 파일("flow.md")을 확인할 수 없습니다');
   expect(humanizeRefs('question:prototype:1 에 답해 주세요 (9f0e1d2c-1111-4222-8333-444455556666)', events)).toBe('질문 에 답해 주세요');
+});
+
+// QA3 N9 (L2): the agent progress messages recorded in the Opus run (ledger seq 38, 126, 138).
+it('drops review-verdict sentences from agent progress text and glosses labels inside other sentences', () => {
+  expect(plainAgentText('바디코디·스튜디오메이트·Mindbody·ClassPass 4개 비교와, 예약 후 외부 결제를 거치는 국내 센터 사례를 확보했습니다. 문서 작성 전 검토 결과는 `SOUND`입니다. 공식 가이드의 절차와 가격 조건을 근거로 정리하겠습니다.'))
+    .toBe('바디코디·스튜디오메이트·Mindbody·ClassPass 4개 비교와, 예약 후 외부 결제를 거치는 국내 센터 사례를 확보했습니다. 공식 가이드의 절차와 가격 조건을 근거로 정리하겠습니다.');
+  expect(plainAgentText('HTML은 가입 → 시간 선택 → 예약 확인 → 모의 결제 순서의 4화면으로 구성하겠습니다.\n\n확정 요구사항을 그대로 구현하는 `COMMITTED CHANGE`이며, 사전 검토는 `SOUND`입니다. 더미 이름과 예약 정보는 메모리에만 둡니다.'))
+    .toBe('HTML은 가입 → 시간 선택 → 예약 확인 → 모의 결제 순서의 4화면으로 구성하겠습니다.\n\n더미 이름과 예약 정보는 메모리에만 둡니다.');
+  expect(plainAgentText('기존 4화면 파일은 폐기하고, 3화면으로 한정한 새 파일을 만들겠습니다. 사용자 지시에 따른 `PROPOSITION CHANGE`를 반영해 예약 확정 시 같은 화면에서 완료를 안내하겠습니다.\n'))
+    .toBe('기존 4화면 파일은 폐기하고, 3화면으로 한정한 새 파일을 만들겠습니다. 사용자 지시에 따른 요구 변경을 반영해 예약 확정 시 같은 화면에서 완료를 안내하겠습니다.');
+  // Plain English words are left alone; only labels marked up as labels go.
+  expect(plainAgentText('npm test: 12 PASS, 0 FAIL')).toBe('npm test: 12 PASS, 0 FAIL');
+  expect(plainAgentText('문서 검토: **PASS** / COMMITTED CHANGE(조사 문서).')).toBe('');
+});
+
+it('builds the revision update for an agent from the recorded request: at most three gaps and the file to fix', () => {
+  const missing = ['인계 조건 "a"가 충족되지 않았습니다. A를 추가해 주세요.', '인계 조건 "b"의 근거를 결과에서 확인하지 못했습니다. 이 조건을 다루는 내용을 report-md-0123456789ab에 분명히 적어 주세요.', 'c', 'd'];
+  const events = ledger([
+    { type: 'task_start_reserved', payload: { taskId: 'T4', specVersion: 1, trigger: 'x' }, kind: 'pm' },
+    { type: 'attachment_recorded', payload: { attachmentId: 'report-md-0123456789ab', name: 'report.md', mimeType: 'text/markdown', uri: 'data:text/markdown;base64,', taskId: 'T4' }, kind: 'agent' },
+    { type: 'result_submitted', payload: { taskId: 'T4', resultId: 'r9', planVersion: 1, summary: 's', artifactIds: ['report-md-0123456789ab'] }, kind: 'agent' },
+    { type: 'revision_requested', payload: { taskId: 'T4', resultId: 'r9', missing }, kind: 'pm' },
+  ]);
+  expect(revisionUpdate(events, 1, 'T4', 'r9')).toEqual({ updateId: 'revision:r9', fromVersion: 1, toVersion: 1, keep: [], drop: [],
+    change: ['보완할 점: 인계 조건 "a"가 충족되지 않았습니다. A를 추가해 주세요.', '보완할 점: 인계 조건 "b"의 근거를 결과에서 확인하지 못했습니다. 이 조건을 다루는 내용을 "report.md"에 분명히 적어 주세요.', '보완할 점: c', '수정할 파일: report.md'],
+    reason: expect.stringContaining('result_report로 다시 제출') });
+  expect(revisionUpdate(events, 1, 'T4', 'other')).toBeUndefined();
+  expect(revisionCount(events, 'T4')).toBe(1);
 });

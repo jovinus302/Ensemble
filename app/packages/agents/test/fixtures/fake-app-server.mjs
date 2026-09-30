@@ -115,7 +115,28 @@ createInterface({ input: process.stdin, crlfDelay: Infinity }).on('line', async 
             summary: '대안 2개를 표로 정리했습니다', files: [{ path: results[protocolMode], description: '대안 비교표' }] }));
           finish(thread, turn);
         }
-        if (protocolMode === 'inputs' || protocolMode === 'question') writeFileSync(path.join(thread.cwd, `instructions-${turn.id}.txt`), text);
+        if (protocolMode === 'inputs' || protocolMode === 'question' || protocolMode === 'revision') writeFileSync(path.join(thread.cwd, `instructions-${turn.id}.txt`), text);
+        // Revision mode: the first turn submits a draft; a follow-up turn acknowledges the PM's
+        // revision request, rewrites the named file with what was asked for, and resubmits it.
+        if (protocolMode === 'revision') {
+          const file = `report-${taskId}.md`;
+          const updateId = /변경 ID: (\S+)/.exec(text)?.[1];
+          const section = heading => (text.split(`## ${heading}\n`)[1] ?? '').split('\n##')[0].split('\n').filter(line => line.startsWith('- ') && line !== '- 없음').map(line => line.slice(2));
+          if (!updateId) {
+            reportItem(thread, turn, `note-${turn.id}`, '문서 작성 전 검토 결과는 `SOUND`입니다. 사용자 지시에 따른 `PROPOSITION CHANGE`를 반영해 초안을 쓰겠습니다.');
+            writeFileSync(path.join(thread.cwd, file), `# 대안 조사 (${taskId})\n초안: 대안 A만 정리했습니다.\n`);
+          } else {
+            const expected = Number(/planVersion은 (\d+)/.exec(text)?.[1] ?? version);
+            reportItem(thread, turn, `ack-${turn.id}`, fence({ type: 'acknowledge_update', updateId, planVersion: expected, applied: section('변경'), dropped: section('폐기') }));
+            let previous = '';
+            try { previous = readFileSync(path.join(thread.cwd, file), 'utf8'); } catch { /* A new workspace after a restart. */ }
+            writeFileSync(path.join(thread.cwd, file), `${previous}\n## 보완 (${updateId})\n| 대안 | 특징 |\n|---|---|\n| A | 가입 흐름 |\n| B | 예약 흐름 |\n`);
+          }
+          const expected = Number(/planVersion은 (\d+)/.exec(text)?.[1] ?? version);
+          reportItem(thread, turn, `result-${turn.id}`, fence({ type: 'result_report', taskId, planVersion: expected,
+            summary: updateId ? '보완한 조사 보고서' : '조사 초안', files: [{ path: file, description: '조사 보고서' }] }));
+          finish(thread, turn);
+        }
         // Inputs mode: the agent reads every handed-over file named in its instructions and builds on it.
         if (protocolMode === 'inputs') {
           const inputs = [...text.matchAll(/결과 파일: (inputs\/[^\n]+?) \(원래 이름/g)].map(match => match[1]);

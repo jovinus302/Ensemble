@@ -23,6 +23,10 @@ class AttemptFailure extends Error {
 const INVALID_DRAFT_REASON = '모델이 만든 초안이 계획 규칙(담당자, 의존 관계, 예상 시간)을 지키지 못했습니다';
 // Preserve the M5 output budget and truncation retry for Korean titles and conditions.
 const DRAFT_MAX_TOKENS = 8192;
+/** Delivery is performed by the system; acceptance must be observable in artifact content. */
+export const unobservableHandoffCondition = (condition: string): boolean =>
+  /(?:전달|공유|업로드|알림|통보|전송)(?:했다|했음|했는|함|하기|할\s*것|한다|하여|하고|되어|된|완료|\s*$)/.test(condition)
+  || /(?:디자이너|담당자|팀원|채널|슬랙).{0,35}(?:전달|공유|업로드|통보|전송)/.test(condition);
 
 /** SOUND / COMMITTED CHANGE: code owns the four-role template and validates identities and DAG;
  * only the human decider commits it. Fake-provider tests observe retries and zero early starts.
@@ -62,7 +66,7 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
         },
       } };
       const response = await complete({ model: input.model, forceTool: tool.name, tools: [tool], maxTokens: DRAFT_MAX_TOKENS,
-        system: 'Fill each of the four supplied MVP role-template tasks exactly once. Task identities, assignees and dependencies are fixed by code. Supply only templateKey, a goal-specific title, 1–3 concrete handoff conditions and an hour range. Keep work within the supplied role purpose and availability. If selecting a customer problem requires a decision, express it as a flow handoff condition, never as another task. Do not invent members or capabilities.',
+        system: 'Fill each of the four supplied MVP role-template tasks exactly once. Task identities, assignees and dependencies are fixed by code. Supply only templateKey, a goal-specific title, 1–3 concrete handoff conditions and an hour range. Keep work within the supplied role purpose and availability. If selecting a customer problem requires a decision, express it as a flow handoff condition, never as another task. Do not invent members or capabilities. Handoff conditions must be verifiable solely from artifact contents. Never require delivery, sharing, upload, notification, or evidence that someone received a document (전달, 공유, 업로드, 알림): those are system responsibilities. State required content, not communication actions.',
         messages: [{ role: 'user', content: JSON.stringify(facts) }] });
       const call = response.toolCalls.length === 1 ? response.toolCalls[0] : undefined;
       const value = call?.input;
@@ -77,9 +81,15 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
         const member = input.members.find(m => m.memberId === slot.assignee);
         if (!member || member.kind !== slot.kind || (member.kind === 'agent' && !nonempty(member.role))) throw new Error('Unknown assignee or incompatible agent role');
         if (!Array.isArray(t.handoffConditions) || t.handoffConditions.length < 1 || t.handoffConditions.length > 3 || !t.handoffConditions.every(nonempty)) throw new Error('Invalid handoff conditions');
+        if (t.handoffConditions.some(unobservableHandoffCondition)) {
+          if (attempt === 0) throw new Error('Handoff conditions must be verifiable in artifact contents; remove delivery/sharing/upload/notification requirements and regenerate');
+          const observable = t.handoffConditions.filter(c => !unobservableHandoffCondition(c));
+          if (!observable.length) throw new AttemptFailure('No observable handoff condition remains', '모델이 만든 인계 조건에 결과물 내용으로 확인 가능한 요구가 없습니다');
+          t.handoffConditions = observable;
+        }
         const h = t.hours as { min: number; max: number } | undefined;
         if (!h || !Number.isFinite(h.min) || !Number.isFinite(h.max) || h.min < 0 || h.max < h.min) throw new Error('Invalid estimate');
-        tasks.push({ id: slot.id, title: t.title, assignee: member.memberId, dependsOn: [...slot.dependsOn], handoffConditions: t.handoffConditions });
+        tasks.push({ id: slot.id, title: t.title, assignee: member.memberId, dependsOn: [...slot.dependsOn], handoffConditions: t.handoffConditions as string[] });
         estimates.push({ taskId: slot.id, hours: { min: h.min, max: h.max } });
       }
       const byId = new Map(tasks.map(t => [t.id, t]));

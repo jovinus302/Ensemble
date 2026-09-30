@@ -10,7 +10,7 @@ import type { LedgerStore } from '@ensemble/store';
 import type { LlmProvider } from '@ensemble/llm';
 import type { SendUpdateResult, TaskInstructionsInput, UpdateInstructionsInput } from '@ensemble/agents';
 import { handoffEvents, judgeHandoff, reviewKey, type CitationFailure, type HandoffReview, type ResultContent, type SubmittedResult } from './handoff.ts';
-import { answerChangeId, answerUpdate, buildTaskContext, fileOwnerFor, startNotice, humanizeRefs, questionMessageId, relevantDecisions, taskQuestions } from './context.ts';
+import { answerChangeId, answerUpdate, buildTaskContext, fileOwnerFor, humanizeRefs, MAX_AGENT_REVISIONS, questionMessageId, relevantDecisions, revisionCount, revisionUpdate, startNotice, taskQuestions } from './context.ts';
 import type { Delivery } from './session-runner.ts';
 
 /** The part of a SessionConnector (or SessionRunner) the dispatcher drives. */
@@ -40,7 +40,17 @@ export type ResultOutcome =
    * could not be verified.
    */
   | { kind: 'error'; message: string; citationFailures?: CitationFailure[] }
-  | { kind: 'revision'; review: HandoffReview; notice: string }
+  /**
+   * A predecessor is not checked yet: the submission stays recorded and unjudged, and is judged when
+   * the predecessors are checked. `notice` (empty for agents) tells the submitter what it waits on.
+   */
+  | { kind: 'deferred'; waitingOn: Id[]; notice: string }
+  /**
+   * `delivery` says how an agent's revision request reached it: steered into its live turn, carried
+   * by a new turn, left for deliverPendingChanges, or not sent because the task hit the revision cap
+   * and is blocked for a person (`notice` is then addressed to the goal's decider).
+   */
+  | { kind: 'revision'; review: HandoffReview; notice: string; delivery?: 'steer' | 'next_turn' | 'pending' | 'blocked' }
   | { kind: 'checked'; review: HandoffReview; started: StartedTask[]; notices: string[]; failures: string[]; limitNotice?: string };
 
 const pm = { kind: 'pm' as const, id: 'pm' };
@@ -80,6 +90,10 @@ export class Dispatcher {
       if (!task || !result || result.taskId !== taskId) return { kind: 'skipped', reason: `Unknown result ${resultId} for task ${taskId}` };
       if (events.some((e) => e.idempotencyKey === reviewKey(resultId))) return { kind: 'skipped', reason: `Result ${resultId} was already reviewed` };
       if (task.status !== 'submitted' || task.results.at(-1)?.resultId !== resultId) return { kind: 'skipped', reason: `Result ${resultId} is not the task's pending submission` };
+      // A result built before its inputs were accepted is kept but not judged yet: checking it now
+      // would start the next task on top of unaccepted work.
+      const waitingOn = task.spec.dependsOn.filter((id) => { const dep = state.tasks.get(id)?.status; return dep !== undefined && dep !== 'checked' && dep !== 'cancelled'; });
+      if (waitingOn.length) return { kind: 'deferred', waitingOn, notice: this.waitNotice(state, events, taskId, resultId, waitingOn) };
 
       const judged = await judgeHandoff({ state, result, resultContent: await this.options.readResult(result),
         decisions: relevantDecisions(state, taskId), llm: this.options.llm, model: this.options.model });
@@ -100,7 +114,7 @@ export class Dispatcher {
       });
       if (!decided) return { kind: 'skipped', reason: `Result ${resultId} was already reviewed` };
       const { review } = decided;
-      if (review.verdict === 'insufficient') return { kind: 'revision', review, notice: this.revisionNotice(state, taskId, review) };
+      if (review.verdict === 'insufficient') return this.requestRevision(taskId, resultId, review);
 
       const outcome: Extract<ResultOutcome, { kind: 'checked' }> = { kind: 'checked', review, started: [], notices: [], failures: [] };
       if (decided.limited) outcome.limitNotice = `PM 자동 행동이 상한(${AUTOMATION_LIMIT}회)에 닿아 다음 작업 시작을 멈췄습니다. 확인 후 재개해 주세요.`;
@@ -148,10 +162,54 @@ export class Dispatcher {
     }
   }
 
-  private revisionNotice(state: ProjectState, taskId: Id, review: HandoffReview): string {
+  /**
+   * A person's revision request is the channel notice. An agent gets it the same way as answers and
+   * changes: steered into its live turn, else a new turn on its thread; it acknowledges and resubmits.
+   * Past MAX_AGENT_REVISIONS the task is blocked for the goal's decider instead of looping forever.
+   */
+  private async requestRevision(taskId: Id, resultId: Id, review: HandoffReview): Promise<ResultOutcome> {
+    const { events, state } = await this.ledger();
+    const agentId = state.tasks.get(taskId)!.spec.assignee;
+    if (state.members.get(agentId)?.kind !== 'agent') return { kind: 'revision', review, notice: this.revisionNotice(state, events, taskId, review) };
+    if (revisionCount(events, taskId) > MAX_AGENT_REVISIONS) {
+      const reason = `보완을 ${MAX_AGENT_REVISIONS}회 요청했지만 인계 조건을 채우지 못했습니다`;
+      await this.options.store.transaction(this.options.context.projectId, (current) => project(current).tasks.get(taskId)?.status === 'revising'
+        ? { append: [this.event('task_blocked', { taskId, reason, ...(state.goal ? { unblockBy: state.goal.decider } : {}) }, `revision-limit:${resultId}`, { kind: 'system', id: 'dispatcher' })], result: undefined }
+        : { append: [], result: undefined });
+      const decider = state.goal?.decider;
+      const gap = review.missing[0] ? ` 남은 문제: ${humanizeRefs(review.missing[0], events)}` : '';
+      const notice = `${decider ? `@${this.name(state, decider)} ` : ''}${this.name(state, agentId)}의 "${taskName(state, taskId)}" 결과가 보완 ${MAX_AGENT_REVISIONS}회 뒤에도 인계 조건을 채우지 못해 작업을 멈췄습니다. 결과를 직접 확인하거나 다시 맡겨 주세요.${gap}`;
+      return { kind: 'revision', review, notice, delivery: 'blocked' };
+    }
+    const update = revisionUpdate(events, state.plan!.version, taskId, resultId);
+    let delivery: 'steer' | 'next_turn' | 'pending' = 'pending';
+    if (update) {
+      try {
+        if (this.options.connector.deliver) {
+          const sent = await this.options.connector.deliver(agentId, taskId, update);
+          if (sent.sent) delivery = sent.via;
+        } else if (state.activeTurn.get(agentId) === taskId && (await this.options.connector.sendUpdate(agentId, update)).sent) delivery = 'steer';
+      } catch { /* Left for deliverPendingChanges; a failed turn start already blocked the task and told a person. */ }
+    }
+    return { kind: 'revision', review, notice: this.revisionNotice(state, events, taskId, review, delivery !== 'pending'), delivery };
+  }
+
+  private revisionNotice(state: ProjectState, events: readonly LedgerEvent[], taskId: Id, review: HandoffReview, handedBack = false): string {
     const assignee = state.tasks.get(taskId)!.spec.assignee;
     const mention = state.members.get(assignee)?.kind === 'human' ? `@${this.name(state, assignee)} ` : '';
-    return [`${mention}${taskName(state, taskId)} 결과에 보완이 필요합니다.`, ...review.missing.slice(0, 3).map((item) => `- ${channelText(item.replace(/^인계 조건 "([^"]+)"(?:이|가) 충족되지 않았습니다\.\s*(.*)/s, '$1: $2'), state, 1)}`)].join('\n');
+    const lead = handedBack ? `${taskName(state, taskId)} 결과에 보완이 필요해 ${this.name(state, assignee)}에게 다시 맡겼습니다.` : `${taskName(state, taskId)} 결과에 보완이 필요합니다.`;
+    return [`${mention}${lead}`, ...review.missing.slice(0, 3).map((item) => `- ${channelText(humanizeRefs(item, events), state, 1)}`)].join('\n');
+  }
+
+  /** One line for a person whose result waits on predecessors; agents are not told (they cannot act on it). */
+  private waitNotice(state: ProjectState, events: readonly LedgerEvent[], taskId: Id, resultId: Id, waitingOn: Id[]): string {
+    const submitter = typed(events).findLast((e) => e.type === 'result_submitted' && e.payload.resultId === resultId)?.actor.id;
+    if (!submitter || state.members.get(submitter)?.kind !== 'human') return '';
+    const label: Partial<Record<string, string>> = { revising: '보완 중', running: '진행 중', reserved: '진행 중', submitted: '검토 중', blocked: '멈춰 있어', waiting: '시작 전', ready: '시작 전' };
+    const first = state.tasks.get(waitingOn[0]!)!;
+    const names = waitingOn.map((id) => `"${taskName(state, id)}"`).join(', ');
+    const status = label[first.status] ?? '확인 전';
+    return `@${this.name(state, submitter)} "${taskName(state, taskId)}" 결과는 받아 두었어요 — 선행 작업 ${names}${particle(names, '이/가')} 아직 ${status}${status.endsWith('어') ? '서' : '이라'} 확인되면 이어서 검토합니다.`;
   }
 
   /**

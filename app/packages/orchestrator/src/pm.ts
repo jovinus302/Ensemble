@@ -1,4 +1,4 @@
-import { channelText } from './channel-text.ts';
+import { channelText, particle } from './channel-text.ts';
 import { randomUUID } from 'node:crypto';
 import { automationGate, project, type AnyEvent, type EventContext, type NewLedgerEvent } from '@ensemble/core';
 import type { SessionConnector, SessionEvent } from '@ensemble/agents';
@@ -6,7 +6,7 @@ import type { LlmProvider } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
 import { Coordinator, type CoordinationResult } from './coordination.ts';
 import { Dispatcher, type ResultOutcome } from './dispatch.ts';
-import { pendingChangeUpdate, taskQuestions } from './context.ts';
+import { MAX_AGENT_REVISIONS, pendingChangeUpdate, revisionChangeId, revisionCount, revisionUpdate, taskQuestions } from './context.ts';
 import type { ResultContent, SubmittedResult } from './handoff.ts';
 import { SessionRunner, type BlockedTurn } from './session-runner.ts';
 import { startFreeProject, decidePlan } from './planning.ts';
@@ -128,6 +128,30 @@ export class ProjectManager {
       // A delivery problem never undoes the operation that recorded the change.
       try { await this.sessions.deliver(agentId, taskId, update); } catch (error) { this.failures.push(error); }
     }
+    await this.deliverRevisions(events, handled);
+  }
+
+  /**
+   * PM revision requests an agent has not received yet — its turn could not take one when the review
+   * ended, or the server restarted in between — go out now, within the revision cap. The update is
+   * rebuilt from the ledger under the same ID, so nothing is sent twice.
+   */
+  private async deliverRevisions(events?: AnyEvent[], handled?: Set<string>): Promise<void> {
+    events ??= await this.read() as AnyEvent[];
+    handled ??= new Set(events.flatMap(e => e.type === 'update_sent' || e.type === 'update_rejected' || e.type === 'update_acknowledged' ? [e.payload.updateId] : []));
+    const state = project(events);
+    for (const task of state.tasks.values()) {
+      const agentId = task.spec.assignee;
+      const resultId = task.results.at(-1)?.resultId;
+      if (task.status !== 'revising' || !resultId || !state.plan || state.members.get(agentId)?.kind !== 'agent') continue;
+      const requested = events.findLast(e => e.type === 'revision_requested' && e.payload.taskId === task.spec.id);
+      if (requested?.type !== 'revision_requested' || requested.payload.resultId !== resultId || handled.has(revisionChangeId(resultId))) continue;
+      if (revisionCount(events, task.spec.id) > MAX_AGENT_REVISIONS) continue;
+      const update = revisionUpdate(events, state.plan.version, task.spec.id, resultId);
+      if (!update) continue;
+      handled.add(update.updateId);
+      try { await this.sessions.deliver(agentId, task.spec.id, update); } catch (error) { this.failures.push(error); }
+    }
   }
   setAvailability(memberId: string, weeklyHours: number): Promise<void> {
     return this.enqueue(async () => {
@@ -186,17 +210,23 @@ export class ProjectManager {
         || addressed(state.tasks.get(q.taskId)!.spec.assignee));
       // Structural metadata can identify a submission; text interpretation is model-owned.
       const declaredTasks = [...new Set(attachments.map(a => a.taskId).filter((id): id is string => !!id))];
-      let route: { kind: 'chat' | 'result' | 'answer'; taskId?: string; questionId?: string } = { kind: 'chat' };
-      if (attachments.length && declaredTasks.length === 1 && attachments.every(a => a.taskId === declaredTasks[0])) route = { kind: 'result', taskId: declaredTasks[0] };
-      else if (attachments.length || pending.length) {
+      // Agent results a person may send back for another handoff review (S3): the agent is not on it now.
+      const recheckable = [...state.tasks.values()].filter(t => state.members.get(t.spec.assignee)?.kind === 'agent' && t.results.length > 0
+        && (t.status === 'revising' || (t.status === 'blocked' && t.blocked?.prevStatus === 'revising')) && state.activeTurn.get(t.spec.assignee) !== t.spec.id);
+      const canRecheck = (taskId: unknown) => typeof taskId === 'string' && recheckable.some(t => t.spec.id === taskId);
+      let route: { kind: 'chat' | 'result' | 'answer' | 'recheck'; taskId?: string; questionId?: string } = { kind: 'chat' };
+      if (attachments.length && declaredTasks.length === 1 && attachments.every(a => a.taskId === declaredTasks[0])) route = { kind: canRecheck(declaredTasks[0]) && state.tasks.get(declaredTasks[0]!)?.spec.assignee !== authorId ? 'recheck' : 'result', taskId: declaredTasks[0] };
+      else if (attachments.length || pending.length || recheckable.length) {
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
             const response = await this.options.llm.complete({ model: this.options.model,
-              system: '메시지를 결과 제출, 미해결 질문에 대한 답, 일반 대화로 분류하세요. 단어 규칙 없이 의미를 해석하세요. 확실하지 않으면 chat으로 두세요. 결과는 첨부가 있는 본인 담당 작업만, 답은 제공된 미해결 질문만 선택하세요.',
-              forceTool: 'route_message', tools: [{ name: 'route_message', description: '인계 또는 대화 경로 선택', inputSchema: { type: 'object', required: ['kind'], properties: { kind: { enum: ['chat', 'result', 'answer'] }, taskId: { type: 'string' }, questionId: { type: 'string' } } } }],
-              messages: [{ role: 'user', content: JSON.stringify({ messageId, planVersion: state.plan?.version, attempt, authorId, text, attachments, tasks: [...state.tasks.values()].filter(t => t.spec.assignee === authorId).map(t => t.spec), pending }) }] });
+              system: '메시지를 결과 제출, 미해결 질문에 대한 답, Agent 결과 재확인 요청, 일반 대화로 분류하세요. 단어 규칙 없이 의미를 해석하세요. 확실하지 않으면 chat으로 두세요. 결과는 첨부가 있는 본인 담당 작업만, 답은 제공된 미해결 질문만 선택하세요. recheck는 사람이 recheckable에 있는 Agent 작업의 결과를 다시 첨부하거나 그 결과를 다시 확인해 달라고 할 때만 그 taskId로 고르세요.',
+              forceTool: 'route_message', tools: [{ name: 'route_message', description: '인계 또는 대화 경로 선택', inputSchema: { type: 'object', required: ['kind'], properties: { kind: { enum: ['chat', 'result', 'answer', 'recheck'] }, taskId: { type: 'string' }, questionId: { type: 'string' } } } }],
+              messages: [{ role: 'user', content: JSON.stringify({ messageId, planVersion: state.plan?.version, attempt, authorId, text, attachments, tasks: [...state.tasks.values()].filter(t => t.spec.assignee === authorId).map(t => t.spec), pending,
+                recheckable: recheckable.map(t => ({ taskId: t.spec.id, title: t.spec.title, assignee: state.members.get(t.spec.assignee)?.displayName, status: t.status })) }) }] });
             const input = response.toolCalls.find(c => c.name === 'route_message')?.input;
             if (input?.kind === 'chat') break;
+            if (input?.kind === 'recheck' && canRecheck(input.taskId)) { route = { kind: 'recheck', taskId: input.taskId as string }; break; }
             if (input?.kind === 'result' && attachments.length && typeof input.taskId === 'string' && state.tasks.get(input.taskId)?.spec.assignee === authorId) { route = { kind: 'result', taskId: input.taskId }; break; }
             if (input?.kind === 'answer' && typeof input.questionId === 'string') {
               const question = pending.find(q => q.questionId === input.questionId && q.taskId === input.taskId);
@@ -204,6 +234,9 @@ export class ProjectManager {
             }
           } catch { /* Retry once, then retain ordinary conversational handling. */ }
         }
+      }
+      if (route.kind === 'recheck' && route.taskId) {
+        const posts = await this.recheck(route.taskId, messageId, authorId, text, attachmentIds); await markProcessed(); return posts;
       }
       if (route.kind === 'result' && route.taskId) {
         const task = state.tasks.get(route.taskId);
@@ -224,22 +257,89 @@ export class ProjectManager {
     });
   }
 
+  /**
+   * A person sends an agent's result back for review (S3): the handoff judgement runs again on the
+   * files they attached, or on the agent's latest files, and only its verdict moves the task — the PM
+   * never declares a result sufficient in conversation. A task stopped at the revision cap resumes
+   * into that review.
+   */
+  private async recheck(taskId: string, messageId: string, authorId: string, text: string, attachmentIds: string[]): Promise<PmPost[]> {
+    const events = await this.read() as AnyEvent[];
+    const state = project(events);
+    const task = state.tasks.get(taskId)!;
+    const latest = events.findLast(e => e.type === 'result_submitted' && e.payload.taskId === taskId);
+    const previous = latest?.type === 'result_submitted' ? latest.payload : undefined;
+    const artifactIds = attachmentIds.length ? attachmentIds : previous?.artifactIds ?? [];
+    const resultId = `result:${messageId}`;
+    const actor = { kind: 'human' as const, id: authorId };
+    await this.options.store.append([
+      ...(task.status === 'blocked' ? [{ ...this.context, actor, type: 'task_resumed' as const, idempotencyKey: `recheck-resume:${messageId}`, payload: { taskId } }] : []),
+      { ...this.context, actor, type: 'result_submitted', idempotencyKey: resultId, payload: { taskId, resultId, planVersion: previous?.planVersion ?? state.plan!.version, summary: previous?.summary ?? text, artifactIds } },
+    ]);
+    return this.review(taskId, resultId);
+  }
+
   private async review(taskId: string, resultId: string): Promise<PmPost[]> {
     const outcome = await this.dispatcher.onResultSubmitted(taskId, resultId);
-    const notices = outcome.kind === 'revision' ? [outcome.notice] : outcome.kind === 'error' ? [outcome.message] : outcome.kind === 'checked' ? [...outcome.notices, ...outcome.failures, ...(outcome.limitNotice ? [outcome.limitNotice] : [])] : [];
-    if (!notices.length) return [];
-    return this.recordNotices(resultId, taskId, outcome, notices);
+    const notices = outcome.kind === 'revision' || outcome.kind === 'deferred' ? [outcome.notice].filter(Boolean)
+      : outcome.kind === 'error' ? [outcome.message]
+      : outcome.kind === 'checked' ? [...await this.acceptedNotice(taskId, resultId), ...outcome.notices, ...outcome.failures, ...(outcome.limitNotice ? [outcome.limitNotice] : [])] : [];
+    const posts = notices.length ? await this.recordNotices(resultId, taskId, outcome, notices) : [];
+    // Results that waited for this task are judged now that it is checked (M1).
+    if (outcome.kind === 'checked') posts.push(...await this.reviewWaiting(taskId));
+    return posts;
+  }
+
+  /** Submissions of dependent tasks that were kept unjudged until their predecessors were checked. */
+  private async reviewWaiting(checkedTaskId: string): Promise<PmPost[]> {
+    const events = await this.read() as AnyEvent[];
+    const state = project(events);
+    const posts: PmPost[] = [];
+    for (const task of state.tasks.values()) {
+      const resultId = task.results.at(-1)?.resultId;
+      if (!resultId || task.status !== 'submitted' || !task.spec.dependsOn.includes(checkedTaskId)) continue;
+      if (task.spec.dependsOn.some(id => { const dep = state.tasks.get(id)?.status; return dep !== undefined && dep !== 'checked' && dep !== 'cancelled'; })) continue;
+      if (events.some(e => e.idempotencyKey === `handoff:${resultId}`)) continue;
+      posts.push(...await this.review(task.spec.id, resultId));
+    }
+    return posts;
+  }
+
+  /**
+   * A person who revised a result, resubmitted one for a check, or was told their result waits on a
+   * predecessor hears once that it was accepted and what starts next (L3). A first result that simply
+   * passes needs no word: the next assignee's own notice already shows it.
+   */
+  private async acceptedNotice(taskId: string, resultId: string): Promise<string[]> {
+    const events = await this.read() as AnyEvent[];
+    const state = project(events);
+    const submitter = events.findLast(e => e.type === 'result_submitted' && e.payload.resultId === resultId)?.actor.id;
+    const task = state.tasks.get(taskId);
+    if (!submitter || !task || state.members.get(submitter)?.kind !== 'human') return [];
+    const revised = events.some(e => e.type === 'revision_requested' && e.payload.taskId === taskId && e.payload.resultId !== resultId);
+    const waited = events.some(e => e.type === 'pm_considered' && e.idempotencyKey === `handoff-wait:${resultId}`);
+    const onBehalf = submitter !== task.spec.assignee;
+    if (!revised && !waited && !onBehalf) return [];
+    const name = (id: string) => state.members.get(id)?.displayName ?? id;
+    const next = events.flatMap(e => e.type === 'task_start_reserved' && e.payload.trigger === resultId ? [state.tasks.get(e.payload.taskId)] : [])
+      .flatMap(t => t ? [`${name(t.spec.assignee)}${particle(name(t.spec.assignee), '이/가')} "${t.spec.title}"${particle(t.spec.title)}`] : []);
+    const what = onBehalf ? `"${task.spec.title}" 결과를 다시 확인했어요 — 인계 조건을 충족합니다` : `"${task.spec.title}" ${revised ? '보완본을' : '결과를'} 확인했어요`;
+    return [`@${name(submitter)} ${what}${next.length ? `. 다음은 ${next.join(', ')} 시작합니다.` : '.'}`];
   }
   private async recordNotices(trigger: string, taskId: string, outcome: ResultOutcome, notices: string[]): Promise<PmPost[]> {
     const events = await this.read() as AnyEvent[];
     const state = project(events);
     if (outcome.kind === 'error') return this.recordJudgeFailure(trigger, taskId, outcome, state);
-    const recipients = outcome.kind === 'checked' ? events.filter(e => e.type === 'task_start_reserved' && e.payload.trigger === trigger).flatMap(e => e.type === 'task_start_reserved' ? [state.tasks.get(e.payload.taskId)?.spec.assignee] : []).filter(id => id && state.members.get(id)?.kind === 'human') : [state.tasks.get(taskId)?.spec.assignee];
-    const considerationId = `handoff-notice:${trigger}`;
+    const submitter = events.findLast(e => e.type === 'result_submitted' && e.payload.resultId === trigger)?.actor.id;
+    const recipients = outcome.kind === 'checked' ? [...new Set([submitter, ...events.filter(e => e.type === 'task_start_reserved' && e.payload.trigger === trigger).flatMap(e => e.type === 'task_start_reserved' ? [state.tasks.get(e.payload.taskId)?.spec.assignee] : [])])].filter(id => id && state.members.get(id)?.kind === 'human')
+      : outcome.kind === 'revision' && outcome.delivery === 'blocked' ? [state.goal?.decider]
+      : outcome.kind === 'deferred' ? [submitter] : [state.tasks.get(taskId)?.spec.assignee];
+    // A deferred notice and the later verdict on the same result are two separate considerations.
+    const considerationId = outcome.kind === 'deferred' ? `handoff-wait:${trigger}` : `handoff-notice:${trigger}`;
     const evidence = outcome.kind === 'revision' || outcome.kind === 'checked' ? outcome.review.evidence : [];
-    const posts: PmPost[] = notices.map(text => ({ text: outcome.kind === 'revision' ? text : channelText(text, state), kind: outcome.kind === 'checked' ? 'nudge' : 'ask' }));
+    const posts: PmPost[] = notices.map(text => ({ text: outcome.kind === 'revision' ? text : channelText(text, state, 3), kind: outcome.kind === 'checked' ? 'nudge' : outcome.kind === 'deferred' || (outcome.kind === 'revision' && (outcome.delivery === 'steer' || outcome.delivery === 'next_turn')) ? 'fact' : 'ask' }));
     await this.options.store.append([
-      { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId: trigger, whoseAction: `${recipients.join(", ") || state.goal?.decider}: 결과 보완 또는 다음 작업 시작`, alreadyKnows: 'unknown', evidence: [trigger, ...evidence], decision: 'speak', reason: '인계 판단 결과에 따라 다음 행동이 필요하다', openTopics: state.openTopics } },
+      { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId: trigger, whoseAction: `${recipients.join(", ") || state.goal?.decider}: ${outcome.kind === 'deferred' ? '선행 작업 확인 대기' : '결과 보완 또는 다음 작업 시작'}`, alreadyKnows: 'unknown', evidence: [trigger, ...evidence], decision: 'speak', reason: outcome.kind === 'deferred' ? '선행 작업이 확인되지 않아 제출한 결과의 인계 판단을 미룬다' : '인계 판단 결과에 따라 다음 행동이 필요하다', openTopics: state.openTopics } },
       ...posts.map((post, i) => ({ ...this.context, actor: { kind: 'system' as const, id: 'pm' }, type: 'pm_spoke', idempotencyKey: `${considerationId}:${i}`, payload: { considerationId, messageId: `${considerationId}:${i}`, ...post } })),
     ]);
     return posts;
@@ -282,6 +382,8 @@ export class ProjectManager {
   onSessionEvent(event: SessionEvent): Promise<PmPost[]> {
     return this.enqueue(async () => {
       await this.sessions.flush();
+      // A turn that ended frees its agent: a revision request that could not reach it goes out now.
+      if (event.type === 'turn' && event.status !== 'started') { await this.deliverRevisions(); return []; }
       if (event.type !== 'report') return [];
       const events = await this.read() as AnyEvent[];
       if (event.report.type === 'result_report') {

@@ -49,10 +49,12 @@ try {
   if (html.includes('>모의 결제</button>') || html.includes('data-screen="payment"') || html.includes('<h2>결제')) throw new Error('changed prototype still contains payment flow');
   const reviewStarted = Date.now();
   const prototypeTask = () => state.roadmap.tasks.find((task: { assigneeName: string }) => task.assigneeName === '프로토타입 Agent');
-  while ((state.activity?.kind === 'pm_thinking' || prototypeTask()?.status === 'submitted') && Date.now() - reviewStarted < 120000) {
+  while (prototypeTask()?.status !== 'checked' && Date.now() - reviewStarted < 120000) {
+    if (prototypeTask()?.status === 'blocked' || state.activity?.stalled) throw new Error(`prototype review stopped: ${state.activity?.stalled?.reason ?? 'blocked'}`);
     await new Promise(r => setTimeout(r, 1000)); state = await request('state');
   }
   const prototypeStatus = prototypeTask()?.status;
+  if (prototypeStatus !== 'checked') throw new Error(`prototype must be checked, received ${prototypeStatus}`);
   const clarificationUsed = state.messages.some((message: { authorId: string; text: string }) => message.authorId === 'owner' && message.text === continuousScenario.steps.at(-1)!.text);
   writeFileSync(path.join(output, 'http-result.json'), JSON.stringify({ success: true, skipped: 0, changedPrototype: prototype.name, prototypeStatus, clarificationUsed, state }, null, 2));
 } catch (error) {

@@ -45,6 +45,12 @@ it.each([false, true])('plays all three scenes through actual API handlers (defa
     expect(state.project.title).not.toContain('시연용');
     expect(state.project.synthetic).toBe(true);
     expect(state.roadmap.planVersion).toBe(2);
+    if (defaultConnector) {
+      await eventually(async () => (await app.state()).roadmap.tasks.find(t => t.id === 'prototype')?.status === 'checked');
+      expect((await app.store.read() as AnyEvent[]).some(e => e.type === 'task_checked' && e.payload.taskId === 'prototype')).toBe(true);
+    }
+    // A channel must not mix PM's fixed 09:00 demo clock with human wall time.
+    for (const message of state.messages) expect(Math.abs(Date.parse(message.at) - Date.now())).toBeLessThan(60_000);
     for (const step of continuousScenario.steps.filter(s => ['goal', 'availability', 'approvePlan'].includes(s.action ?? ''))) expect(state.messages.some(m => m.text === step.text)).toBe(true);
     const before = await app.store.read({ projectId: originalId });
     const conflict = await post('scenario/start', { name: continuousScenario.key });
@@ -183,10 +189,41 @@ it('detects an unresponsive running agent at two minutes without resetting elaps
     const stalled = await app.state();
     expect(stalled.activity.since).toBe(first.activity.since);
     expect(stalled.activity.stalled?.reason).toContain('2분');
+    expect(stalled.activity.stalled?.reason).toContain('프로토타입');
     await app.store.append([{ ...ctx, at: new Date(start + 120000).toISOString(), type: 'reply_recorded', payload: { memberId: 'prototype-agent', taskId: 'prototype', turnId: 'quiet', text: '화면 작성 중' } }]);
     expect((await app.state()).activity.stalled).toBeUndefined();
     expect((await app.state()).activity.since).toBe(first.activity.since);
   } finally { clock?.mockRestore(); await app.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+it('shows the persisted revision limit with its task title and a next action', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'ensemble-stop-reason-'));
+  const app = new WebRuntime({ dataDir: dir, store: new MemoryLedgerStore() });
+  try {
+    await app.state();
+    await app.startScenario(continuousScenario.key);
+    app.meta.script!.stopped = 'Step 5: 보완 2회 후 미충족: 인터뷰 결과\n@사용자 자료를 보완해 주세요.';
+    const activity = (await app.state()).activity;
+    expect(activity.stalled?.reason).toContain('인터뷰 결과');
+    expect(activity.stalled?.reason).toContain('보완 2회');
+    expect(activity.stalled?.reason).not.toContain('\n');
+    expect(activity.stalled?.reason).toContain('직접 확인');
+  } finally { await app.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+it('shows a ledger-blocked task after the agent revision limit even when the script is done', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'ensemble-blocked-reason-'));
+  const app = new WebRuntime({ dataDir: dir, store: new MemoryLedgerStore() });
+  try {
+    await app.state();
+    const ctx = { projectId: app.meta.projectId, targetProductId: 'test', actor: { kind: 'system' as const, id: 'dispatcher' } };
+    await app.store.append(sceneEvents(3, ctx));
+    await app.store.append([{ ...ctx, type: 'task_blocked', payload: { taskId: 'prototype', reason: '보완을 2회 요청했지만 인계 조건을 채우지 못했습니다', unblockBy: 'owner' } }]);
+    const activity = (await app.state()).activity;
+    expect(activity.stalled?.reason).toContain('프로토타입');
+    expect(activity.stalled?.reason).toContain('보완을 2회');
+    expect(activity.stalled?.reason).toContain('직접 확인');
+  } finally { await app.stop(); await rm(dir, { recursive: true, force: true }); }
 });
 
 it('delivers a persisted next-turn change once when the web runtime restarts', async () => {

@@ -113,7 +113,12 @@ it('routes question → person answer → acknowledged update → result handoff
   f.connector.emit({ ...base, itemId: 'result-before-ack', index: 1, report });
   await f.pm.flush();
   expect(project(await f.store.read()).tasks.get('prototype')?.status).toBe('revising');
+  // The revision request reaches the agent the same way as the answer: steered into its live turn (QA3 S1).
+  const revision = f.connector.updates[1]!;
+  expect(revision.updateId).toMatch(/^revision:result:turn:prototype:1$/);
+  expect(revision.change[0]).toContain('not yet acknowledged');
   f.connector.emit({ ...base, itemId: 'ack', index: 2, report: { type: 'acknowledge_update', updateId: update.updateId, planVersion: 1, applied: update.change, dropped: [] } });
+  f.connector.emit({ ...base, itemId: 'ack-revision', index: 4, report: { type: 'acknowledge_update', updateId: revision.updateId, planVersion: 1, applied: revision.change, dropped: [] } });
   await f.pm.flush();
   f.connector.emit({ ...base, itemId: 'result-after-ack', index: 3, report });
   await f.pm.flush();

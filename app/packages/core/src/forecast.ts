@@ -65,7 +65,9 @@ export interface ForecastFailed {
   reasons: ForecastFailure[];
 }
 
-export type ForecastResult = ForecastSuccess | ForecastFailed;
+export type ForecastResult = (ForecastSuccess | ForecastFailed) & {
+  uncertainty?: { stoppedTaskIds: string[]; warning: string };
+};
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const AGENT_HOURS_PER_DAY = 24;
