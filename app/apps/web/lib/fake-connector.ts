@@ -29,6 +29,25 @@ const research = `# 조사 보고서
 `;
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const excludesPayment = (text: string) => /결제|payment/i.test(text) && /제외|삭제|제거|빼|drop|exclude/i.test(text);
+/** Describe observable demo behavior, never fabricate external verification. */
+function conditionResponse(condition: string, prototype: boolean, excludePayment: boolean): string {
+  const parts: string[] = [];
+  if (/실제|접속|확인\s*날짜|확인일|최신|가격|인터뷰|고객\s*검증/.test(condition)) parts.push('시연용: 실제 확인 없음. 실제 접속 날짜·최신 가격·고객 증거는 미확인입니다.');
+  if (prototype) {
+    if (/버튼|모의/.test(condition)) parts.push('모든 동작 버튼은 로컬 화면 상태만 바꾸는 시연용 모의 버튼입니다. data-go 버튼은 show 함수로 화면을 전환하고, 가입 제출은 preventDefault로 서버 전송을 막으며, 예약 확인·완료·초기화 버튼은 브라우저 메모리의 표시만 바꿉니다. 실제 계정 생성·예약 요청·청구·외부 통신은 없습니다.');
+    if (/가입|오류|재입력|입력|이메일/.test(condition)) parts.push('가입 흐름: 가상 이름과 이메일 입력 → 가입하고 시간 선택. 오류 흐름: 오류 안내 후 입력값을 유지하며 수정해 재입력합니다. 이름 공백과 이메일 형식을 검사합니다.');
+    if (/시간|예약|확인|흐름|화면|상호작용|클릭|이동/.test(condition)) parts.push('시간 선택: 10:00·14:00·16:00 KST 중 선택 → 예약 확인 → 예약 요약 → 예약 완료. 미선택 시 오류 안내, 이전·시간 바꾸기·처음부터 체험 버튼으로 이동합니다. 예약 요약과 완료에 선택 시간이 표시됩니다.');
+    if (/개인정보|외부|API|저장|배포|로컬|HTML|파일|체크리스트/.test(condition)) parts.push('구현 확인 체크리스트: 단일 HTML 안에 CSS와 JavaScript 포함; 로컬 브라우저에서 열기; 외부 script·스타일·라이브러리 없음; fetch·XMLHttpRequest·외부 API 호출 없음; 쿠키·localStorage·서버 저장 없음; 가상 이름·이메일만 메모리에서 표시; 실제 개인정보 수집·공개 배포 없음.');
+    if (/결제|payment/i.test(condition)) parts.push(excludePayment ? '결제 화면·모의 결제 버튼·처리 코드를 제외했습니다. 예약 요약에서 바로 예약 완료로 이동합니다.' : '결제 모형은 시연 금액 0원이며 모의 결제 버튼으로 완료합니다. 실제 청구·결제 서비스 연결 없음.');
+  } else {
+    if (/조사|비교|대안|출처|서비스|공개|근거/.test(condition)) parts.push('시연용 가상 비교: Calendly https://calendly.com/ 는 링크 기반 시간 선택, Cal.com https://cal.com/ 은 예약 구성, Google Calendar https://support.google.com/calendar/answer/10729749 는 캘린더 예약을 비교할 출처 후보입니다. 실제 접속·기능·가격은 확인하지 않았습니다.');
+    if (/가설|요약|관찰|시사점|흐름|문제/.test(condition)) parts.push('시연용 가설: 소규모 팀은 일정 조율과 재조율이 어렵습니다. 가입→시간 선택→예약 확인 흐름을 가상 인터뷰 자료와 비교해 설계하며 실제 시장 수요는 미검증입니다.');
+  }
+  return parts.join(' ') || '시연용: 실제 확인 없음. 이 조건에 대한 별도 근거는 만들지 않았으며 담당자의 직접 확인이 필요합니다.';
+}
+function conditionSections(input: TaskInstructionsInput, prototype: boolean, excludePayment: boolean): string {
+  return input.handoffConditions.map((c, i) => `### ${i + 1}. ${c.text}\n${conditionResponse(c.text, prototype, excludePayment)}`).join('\n\n');
+}
 export function prototypeHtml(input: TaskInstructionsInput, excludePayment: boolean): string {
   return `<!doctype html><html lang="ko"><meta charset="utf-8"><title>Interview Loop 시연</title>
 <meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:17px/1.6 sans-serif;max-width:640px;margin:32px auto;padding:16px;color:#183a2c}input,select,button{font:inherit;padding:10px;margin:6px}label{display:block}button{cursor:pointer}section{padding:16px;border:1px solid #aecaba;border-radius:12px}[hidden]{display:none}#error{color:#a32020}</style>
@@ -42,9 +61,9 @@ ${excludePayment ? '<p>제외: 결제 화면과 모의 결제 버튼. 해당 화
 <section data-screen="summary-step" hidden><h2>예약 요약</h2><p id="summary"></p><button data-go="booking">시간 바꾸기</button>${excludePayment ? '<button id="finish">예약 완료</button>' : '<button data-go="payment">결제 모형 보기</button>'}</section>
 ${excludePayment ? '' : '<section data-screen="payment" hidden><h2>결제 모형</h2><p>시연 금액 0원 · 실제 청구 없음</p><button data-go="summary-step">이전</button><button id="finish">모의 결제</button></section>'}
 <section data-screen="complete" hidden><h2>예약 완료</h2><p id="confirmation" role="status"></p><button id="reset">처음부터 체험</button></section>
-<details><summary>작업 조건과 확인 한계</summary><p>아래는 요청된 인계 조건이며 충족 선언이 아닙니다. 구현 여부는 실제 HTML 동작과 코드로 확인해야 합니다.</p><pre>${escape(input.handoffConditions.map(c => c.text).filter(c => !excludePayment || !/결제|payment/i.test(c)).join('\n'))}</pre><p>가입 오류는 이메일 형식 안내 후 입력을 유지합니다. 예약 확인 후 선택 시간이 표시됩니다. 이 파일을 로컬 브라우저에서 열어 버튼을 확인하세요.</p></details>
+<details><summary>작업 조건과 확인 한계</summary><h2>인계 조건 확인</h2><p>시연용 가상 자료의 조건별 대응입니다. 구현 여부는 실제 HTML 동작과 코드로 확인해야 합니다.</p><pre>${escape(conditionSections(input, true, excludePayment))}</pre><p>가입 오류는 이메일 형식 안내 후 입력을 유지합니다. 예약 확인 후 선택 시간이 표시됩니다. 이 파일을 로컬 브라우저에서 열어 버튼을 확인하세요.</p></details>
 <script>
-const get=id=>document.getElementById(id), labels={'intro':'시작','signup-step':'가입','booking':'시간 선택','summary-step':'예약 확인','payment':'모형','complete':'완료'};
+const get=id=>document.getElementById(id), labels={'intro':'시작','signup-step':'가입','booking':'시간 선택','summary-step':'예약 확인',${excludePayment ? '' : "'payment':'모형',"}'complete':'완료'};
 function show(id){document.querySelectorAll('[data-screen]').forEach(s=>s.hidden=s.dataset.screen!==id);get('step').textContent=labels[id];get('error').textContent='';}
 document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.go));
 get('signup').addEventListener('submit',e=>{e.preventDefault();if(!get('name').value.trim()){get('error').textContent='이름을 입력해 주세요';get('name').focus();return;}if(!get('email').checkValidity()||!/^[^ @]+@[^ @]+[.][^ @]+$/.test(get('email').value)){get('error').textContent='이메일 형식을 확인해 주세요';get('email').focus();return;}show('booking');});
@@ -59,7 +78,8 @@ export class FakeConnector implements SessionConnector {
   private listeners = new Set<(e: SessionEvent) => void>();
   private sessions = new Map<string, { threadId: string; workspace: string }>();
   private runs = new Map<string, { input: TaskInstructionsInput; turnId: string; timer?: ReturnType<typeof setTimeout>; index: number; excludePayment: boolean; generation: number; finished: boolean }>();
-  constructor(private root: string, private generate?: RevisionGenerator, private readyToFinish: (agentId: string, planVersion: number) => boolean = () => true, private delayMs = 2000) {}
+  constructor(private root: string, private generate?: RevisionGenerator, private readyToFinish: (agentId: string, planVersion: number) => boolean = () => true, private delayMs = 2000,
+    private currentTask?: (taskId: string) => Promise<{ title: string; handoffConditions: readonly string[] } | undefined>) {}
   async startSession(agentId: string, projectId: string) {
     const session = { threadId: `fake-${projectId}-${agentId}`, workspace: path.join(this.root, encodeURIComponent(projectId), encodeURIComponent(agentId)) };
     mkdirSync(session.workspace, { recursive: true }); this.sessions.set(agentId, session); return session;
@@ -92,8 +112,14 @@ export class FakeConnector implements SessionConnector {
     const run = this.runs.get(agentId)!;
     if (!this.readyToFinish(agentId, run.input.planVersion)) { this.schedule(agentId); return; }
     const generation = run.generation;
+    const current = await this.currentTask?.(run.input.taskId);
+    if (this.runs.get(agentId) !== run || generation !== run.generation) return;
+    if (current) {
+      run.input.taskTitle = { ...run.input.taskTitle, text: current.title };
+      run.input.handoffConditions = current.handoffConditions.map(text => ({ text, sourceId: `plan:${run.input.planVersion}` }));
+    }
     const prototype = agentId === 'prototype-agent';
-    let content = prototype ? prototypeHtml(run.input, run.excludePayment) : research;
+    let content = prototype ? prototypeHtml(run.input, run.excludePayment) : `${research}\n## 인계 조건 확인\n${conditionSections(run.input, false, run.excludePayment)}`;
     if (!prototype && this.generate) content += '\n## 인계 조건별 시연 보완\n' + await this.generate({ title: run.input.taskTitle.text, handoffConditions: run.input.handoffConditions.map(c => c.text), request: '시연용 조사 보고서의 조건별 근거를 구체화하세요. 실제 조사라고 주장하지 말고 출처 후보와 미확인 사항을 구분하세요.', previous: [{ name: 'research.md', mimeType: 'text/markdown', content }] });
     if (this.runs.get(agentId) !== run || generation !== run.generation) return;
     const file = `${prototype ? 'prototype' : 'research'}-v${run.input.planVersion}-${run.index}.${prototype ? 'html' : 'md'}`;

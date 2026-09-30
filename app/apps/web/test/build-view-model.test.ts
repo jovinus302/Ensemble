@@ -175,6 +175,27 @@ describe("buildViewModel — M8 화면 계약", () => {
 });
 
 describe("문구 보정 함수", () => {
+  it('warns about stopped tasks beside the forecast and identifies the roadmap task', () => {
+    const l = approved();
+    l.emit('task_blocked', { taskId: 'research', reason: '보완 요청 후 진행 없음' });
+    const roadmap = buildViewModel(l.events, { me: 'owner', mode: 'free', busy: false, now: NOW }).roadmap;
+    expect(roadmap.forecast).toMatchObject({ uncertainty: { stoppedTaskIds: ['research'], warning: expect.any(String) } });
+    expect(roadmap.tasks.find(t => t.id === 'research')).toMatchObject({ stopped: true });
+  });
+  it('labels result triggers and attachment UUIDs with task titles and filenames', () => {
+    const l = approved();
+    const attachmentId = 'c2286d04-26aa-48cf-bf0f-e3ad78047056';
+    const resultId = 'result:fake-89256d03-936c-42b6-8ea4-e01d6dfcf301:1';
+    l.emit('attachment_recorded', { attachmentId, taskId: 'research', name: 'research-v2.md', mimeType: 'text/markdown', uri: 'data:text/plain;base64,QQ==' });
+    l.emit('result_submitted', { taskId: 'research', resultId, planVersion: 1, summary: '조사', artifactIds: [attachmentId] });
+    l.emit('pm_considered', { considerationId: 'review', triggerId: resultId, whoseAction: 'designer', alreadyKnows: 'no', evidence: [attachmentId, `attachment:${attachmentId}`, resultId, `근거 ← ${attachmentId}: 원문`], decision: 'speak', reason: `${resultId} 확인, 첨부 ${attachmentId}`, openTopics: [] });
+    const log = buildViewModel(l.events, { me: 'owner', mode: 'free', busy: false, now: NOW }).pmLog.at(-1)!;
+    expect(log.triggerLabel).toBe('경쟁 서비스 조사 결과');
+    expect(log.evidence).toContain('research-v2.md · 경쟁 서비스 조사');
+    expect(log.evidence).toContain('근거 ← research-v2.md · 경쟁 서비스 조사: 원문');
+    expect(log.reason).toBe('경쟁 서비스 조사 결과 확인, 첨부 research-v2.md · 경쟁 서비스 조사');
+    expect(JSON.stringify(log)).not.toContain(`result:${resultId} 확인`);
+  });
   it("refreshTodo: 이전 요약에서는 낡은 문장을 지우고, 최신 요약만 현재 상태를 말한다", () => {
     const text = "제목\n할 일: PM이 보완을 요청했습니다. 보완본이 오면 다시 알려드립니다.\n확인할 곳: 없음";
     expect(refreshTodo(text, "checked", false)).toBe("제목\n확인할 곳: 없음");

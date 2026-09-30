@@ -82,6 +82,7 @@ function labeler(typed: readonly AnyEvent[], state: ProjectState, name: (id: str
   const messages = new Map<string, { authorId: string; text: string }>();
   const proposals = new Map<string, EventPayloads['plan_proposed']>();
   const results = new Map<string, string>();
+  const attachments = new Map<string, EventPayloads['attachment_recorded']>();
   const events = new Map<string, AnyEvent['type']>();
   // 근거가 메시지 id 대신 기록(event) id를 가리키는 경우도 같은 메시지로 읽는다.
   const messageEvents = new Map<string, { authorId: string; text: string }>();
@@ -92,6 +93,7 @@ function labeler(typed: readonly AnyEvent[], state: ProjectState, name: (id: str
     else if (e.type === 'reply_recorded') messages.set(e.id, { authorId: e.payload.memberId, text: e.payload.text });
     else if (e.type === 'plan_proposed') proposals.set(e.payload.proposalId, e.payload);
     else if (e.type === 'result_submitted') results.set(e.payload.resultId, e.payload.taskId);
+    else if (e.type === 'attachment_recorded') attachments.set(e.payload.attachmentId, e.payload);
   }
   const taskTitle = (id: string) => state.tasks.get(id)?.spec.title ?? [...proposals.values()].flatMap(p => p.tasks).find(t => t.id === id)?.title ?? id;
   const quote = (m: { authorId: string; text: string }) => `${name(m.authorId)}: "${clip(m.text, 28)}"`;
@@ -107,7 +109,9 @@ function labeler(typed: readonly AnyEvent[], state: ProjectState, name: (id: str
     if (prefix === 'plan-failed') return '계획 초안 작성 실패';
     if (prefix === 'turn-blocked') return 'Agent 작업 멈춤';
     if (prefix === 'question') return 'Agent 질문';
-    const id = prefix === 'result' ? rest : raw;
+    const id = results.has(raw) || attachments.has(raw) ? raw : prefix === 'result' || prefix === 'attachment' ? rest : raw;
+    const attachment = attachments.get(id);
+    if (attachment) return `${attachment.name}${attachment.taskId ? ` · ${taskTitle(attachment.taskId)}` : ''}`;
     const m = messages.get(id) ?? messageEvents.get(id);
     if (m) return `메시지 · ${quote(m)}`;
     if (proposals.has(id)) return `계획 v${version(id)} 제안`;
@@ -117,7 +121,12 @@ function labeler(typed: readonly AnyEvent[], state: ProjectState, name: (id: str
     if (UUID.test(raw) && raw.replace(UUID, '').replace(/[:\s]/g, '').length <= 8) return '작업 기록';
     return raw;
   };
-  return { label, isMessage: (id: string) => messages.has(id), version, taskTitle };
+  const humanize = (text: string) => {
+    const ids = [...results.keys()].flatMap(id => [`result:${id}`, id]).concat([...attachments.keys()].flatMap(id => [`attachment:${id}`, id]));
+    if (!ids.length) return text;
+    return text.replace(new RegExp(ids.sort((a, b) => b.length - a.length).map(escape).join('|'), 'g'), label);
+  };
+  return { label, humanize, isMessage: (id: string) => messages.has(id), version, taskTitle };
 }
 
 /** "designer: 결과 보완", "prototype-agent, designer" 같은 값의 멤버 id를 이름으로. */
@@ -133,7 +142,8 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
   const now = options.now ?? new Date();
   const name = (id: string) => id === 'pm' ? 'PM' : state.members.get(id)?.displayName ?? id;
   const forecastNow = state.plan ? forecastFromState(state, now) : null;
-  const { label, isMessage, version, taskTitle } = labeler(typed, state, name);
+  const uncertainty = forecastNow?.uncertainty;
+  const { label, humanize, isMessage, version, taskTitle } = labeler(typed, state, name);
   const taskIds = [...new Set([...state.tasks.keys(), ...typed.flatMap(e => e.type === 'plan_proposed' ? e.payload.tasks.map(t => t.id) : [])])];
   const dayIso = (day: number) => new Date(now.getTime() + day * DAY_MS).toISOString();
   const attachments = new Map(typed.filter(e => e.type === 'attachment_recorded').map(e => [e.payload.attachmentId, e.payload]));
@@ -193,14 +203,14 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
   const seen = new Set<string>();
   const pmLog: VmPmJudgement[] = typed.flatMap(e => {
     if (e.type !== 'pm_considered') return [];
-    const p = e.payload, spokenText = spoken.get(p.considerationId), reason = REASONS[p.reason] ?? p.reason;
+    const p = e.payload, spokenText = spoken.get(p.considerationId), reason = humanize(REASONS[p.reason] ?? p.reason);
     // 같은 계기에 같은 판단·같은 말이 두 번 기록되면 한 번만 보인다.
     const key = JSON.stringify([p.triggerId, p.decision, reason, spokenText ?? '']);
     if (seen.has(key)) return [];
     seen.add(key);
     return [{ triggerMessageId: p.triggerId, decision: p.decision, reason, whoseAction: p.whoseAction === null ? null : whoLabel(p.whoseAction, state),
-      alreadyKnows: KNOWS[p.alreadyKnows] ?? p.alreadyKnows, evidence: [...new Set(p.evidence.map(label))], at: e.at,
-      ...(isMessage(p.triggerId) ? {} : { triggerLabel: label(p.triggerId) }), ...(spokenText ? { spokenText: stripTaskKeys(spokenText, taskIds) } : {}) }];
+      alreadyKnows: KNOWS[p.alreadyKnows] ?? p.alreadyKnows, evidence: [...new Set(p.evidence.map(e => label(humanize(e))))], at: e.at,
+      ...(isMessage(p.triggerId) ? {} : { triggerLabel: label(p.triggerId) }), ...(spokenText ? { spokenText: humanize(stripTaskKeys(spokenText, taskIds)) } : {}) }];
   });
 
   const forecastView = !forecastNow ? null : forecastNow.ok
@@ -214,10 +224,11 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
     roadmap: { planVersion: state.plan?.version ?? null,
       tasks: (state.plan?.tasks ?? []).map(t => { const span = forecastNow?.ok ? forecastNow.tasks.find(f => f.taskId === t.id) : undefined; const h = state.estimates.get(t.id);
         return { id: t.id, title: t.title, assigneeName: name(t.assignee), status: state.tasks.get(t.id)?.status ?? 'waiting',
+          ...(uncertainty?.stoppedTaskIds.includes(t.id) ? { stopped: true } : {}),
           ...(span ? { startDay: span.min.startDay, endDayMin: span.min.endDay, endDayMax: span.max.endDay } : {}),
           ...(h ? { hours: { min: h.min, max: h.max } } : {}), ...(t.handoffConditions.length ? { handoffConditions: t.handoffConditions } : {}) }; }),
       blocked: [...state.tasks.values()].filter(t => t.blocked).map(t => ({ taskId: t.spec.id, reason: t.blocked!.reason, ...(t.blocked!.unblockBy ? { unblockByName: name(t.blocked!.unblockBy!) } : {}) })),
-      forecast: forecastView,
+      forecast: forecastView ? { ...forecastView, ...(uncertainty ? { uncertainty } : {}) } : null,
       ...(forecastNow?.ok ? { origin: now.toISOString() } : {}),
       ...(state.plan ? { lastChange: { version: state.plan.version, reason: state.plan.reason } } : {}),
     },
