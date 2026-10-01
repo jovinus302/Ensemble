@@ -187,13 +187,22 @@ export const QUOTE_CONTEXT_CHARS = 60;
  * and passes; a quote not found in the file is checkCitation's problem, not this one's.
  */
 export function quoteRelevant(condition: string, quote: string, text: string): boolean {
-  const keys = [...new Set(words(condition).filter((word) => !CONDITION_GENERIC.has(word)))];
+  const keys = [...new Set([...words(condition).filter((word) => !CONDITION_GENERIC.has(word)), ...(condition.match(/[+-]\d+/g) ?? [])])];
   if (!keys.length) return true;
   const squashed = squash(text);
   const at = locateQuote(squash(quote), squashed);
   const hay = citationKey(squashed).toLowerCase();
   const near = at ? hay.slice(Math.max(0, at.start - QUOTE_CONTEXT_CHARS), at.end + QUOTE_CONTEXT_CHARS) : citationKey(squash(quote)).toLowerCase();
-  return keys.some((key) => near.includes(key));
+  if (keys.some((key) => near.includes(key))) return true;
+  // A code citation can implement a labelled control far from its HTML. Follow
+  // only literal DOM ID references in the quote to that exact element's label;
+  // unrelated prose elsewhere in the file must not make a citation relevant.
+  for (const reference of quote.matchAll(/\bgetElementById\(\s*(['"])([^'"]+)\1\s*\)/g)) {
+    const id = reference[2]!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const element = new RegExp(`<([a-z][\\w:-]*)\\b[^>]*\\sid\\s*=\\s*(['"])${id}\\2[^>]*>([^<]{1,200})<\\/\\1\\s*>`, 'i').exec(text);
+    if (element && keys.some(key => citationKey(squash(element[3]!)).toLowerCase().includes(key))) return true;
+  }
+  return false;
 }
 
 /**

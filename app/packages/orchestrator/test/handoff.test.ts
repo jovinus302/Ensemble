@@ -2,7 +2,17 @@ import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { project, type LedgerEvent } from '@ensemble/core';
 import type { LlmProvider, LlmRequest, LlmResponse, ToolCall } from '@ensemble/llm';
-import { checkCitation, handoffEvents, judgeHandoff, normalizeCitation, quoteInText, REVIEW_TOOL, type Decision, type SubmittedResult } from '../src/handoff.ts';
+import { checkCitation, handoffEvents, judgeHandoff, normalizeCitation, quoteInText, quoteRelevant, REVIEW_TOOL, type Decision, type SubmittedResult } from '../src/handoff.ts';
+
+it('grounds a code handler in its exact labelled HTML control, not unrelated file text', () => {
+  const quote = "document.getElementById('increase').addEventListener('click', () => { count += 1n; render(); });";
+  const spacer = ' '.repeat(100) + '/* implementation details */'.repeat(20);
+  const html = `<button id="increase">+1</button>${spacer}<script>${quote}</script>`;
+  expect(quoteRelevant('최초 0 표시와 +1·-1·초기화 버튼이 동작한다', quote, html)).toBe(true);
+  expect(quoteRelevant('초기화 버튼이 동작한다', quote, html)).toBe(false);
+  expect(quoteRelevant('+1 버튼이 동작한다', quote, html.replace('id="increase"', 'id="other"'))).toBe(false);
+  expect(quoteRelevant('+1 버튼이 동작한다', quote, html.replace('id="increase"', 'data-id="increase"'))).toBe(false);
+});
 
 const ctx = { projectId: 'handoff-tests', targetProductId: 'product' };
 let seq = 0;
