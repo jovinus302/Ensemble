@@ -5,13 +5,21 @@ import path from 'node:path';
 import { SqliteLedgerStore, type LedgerStore } from '@ensemble/store';
 import { loadEnv, modelFor, pmRuntimeFromEnv, type LlmProvider } from '@ensemble/llm';
 import { ClaudeSessionConnector, CodexSessionConnector, CodexLlmProvider, codexSettingsFromEnv, type SessionConnector } from '@ensemble/agents';
-import { ProjectManager, type FreeStartResult } from '@ensemble/orchestrator';
-import { project, type AnyEvent, type LedgerEvent } from '@ensemble/core';
+import { DecisionRequestError, ProjectManager, TaskResolutionError, type FreeStartResult } from '@ensemble/orchestrator';
+import { DEFAULT_DIGEST_SETTINGS, DEFAULT_PM_MAY_APPLY, project, taskThreadId, type AnyEvent, type DecisionAnswer, type EventPayloads, type LedgerEvent, type ProjectState } from '@ensemble/core';
 import { continuousScenario, advanceScript, createRevisionGenerator, sceneEvents, SCENE_NOW, type ScriptProgress, type Condition, type RevisionGenerator } from '@ensemble/scenarios';
-import { FakeConnector } from './fake-connector';
-import { buildViewModel, projectTitle } from './build-view-model';
+import { FakeConnector, FakePmLlm } from './fake-connector';
+import { buildTaskDetail, buildViewModel, projectTitle } from './build-view-model';
 import { taskResolutions, type ResolutionAction } from './task-resolution';
-import type { VmActivity } from './view-model';
+import type { DecisionAnswer as WebDecisionAnswer, VmActivity } from './view-model';
+
+/** B8: the stuck-work sweep runs this often; the daily digest is offered on the same tick (it posts at most once a day, from 09:00 Asia/Seoul). */
+export const SWEEP_INTERVAL_MS = 5 * 60_000;
+/** Fake agents in a free project take this long per turn, so a person can watch work run and comment on it (ENSEMBLE_FAKE_AGENT_DELAY_MS overrides). */
+export const FREE_FAKE_AGENT_DELAY_MS = 30_000;
+const SCENARIO_FAKE_AGENT_DELAY_MS = 2000;
+/** Q4 switch: ENSEMBLE_DIGEST=off turns the daily digest off (on by default). */
+export function digestEnabledFromEnv(env: NodeJS.ProcessEnv = process.env): boolean { return !/^(?:0|false|off|no)$/i.test(env.ENSEMBLE_DIGEST?.trim() ?? ''); }
 
 /** Cuts at a word boundary so the title (with "…") stays within `max` characters; a single long word is cut at `max`. */
 export function shortTitle(text: string, max = 40) {
@@ -56,6 +64,20 @@ function appRoot() {
   return dir;
 }
 
+/** The card's "포함할 작업" lists work titles (people never see ids): map them back to the request's task ids. Ids pass through. */
+function includedTaskIds(request: EventPayloads['decision_requested'], state: ProjectState, include: unknown[]): string[] {
+  const drafts = new Map<string, string>();
+  for (const option of request.options) for (const effect of option.effects) {
+    if (effect.type !== 'plan_ops') continue;
+    for (const op of effect.ops) {
+      if (op.type === 'create_task') drafts.set(op.tempId, op.title);
+      else if (op.type === 'split_task') for (const child of op.children) drafts.set(child.tempId, child.title);
+    }
+  }
+  const ids = [...new Set([...request.impact.taskIds, ...request.impact.blockedTaskIds])];
+  return [...new Set(include.flatMap(value => typeof value !== 'string' ? [] : ids.includes(value) ? [value] : ids.filter(id => (state.tasks.get(id)?.spec.title ?? drafts.get(id)) === value)))];
+}
+
 /** SOUND: ledger-backed UI and real PM decisions; scenario changes only the human input.
  * All three scenes retain the drafted plan and resolve human submissions by assignee.
  * Verification: fake-provider continuous-script integration and condition/target tests.
@@ -83,8 +105,16 @@ export class WebRuntime {
   private activityKind: Activity['kind'] = 'idle';
   private ready: Promise<void>;
   private readonly metaFile: string;
+  private timer?: ReturnType<typeof setInterval>;
+  private ticking = false;
+  /** Q4: whether the daily digest posts (default on; ENSEMBLE_DIGEST=off or the `digest` option turns it off). */
+  readonly digestEnabled: boolean;
 
-  constructor(private readonly options: { dataDir?: string; store?: LedgerStore; llm?: LlmProvider; connector?: SessionConnector; generateRevision?: RevisionGenerator } = {}) {
+  /**
+   * `timers: false` leaves the sweep/digest timer off (callers run `tick` themselves); `fakeAgentDelayMs` sets the fake agents' turn length in
+   * free projects; `digest` is the Q4 on/off switch.
+   */
+  constructor(private readonly options: { dataDir?: string; store?: LedgerStore; llm?: LlmProvider; connector?: SessionConnector; generateRevision?: RevisionGenerator; timers?: boolean; fakeAgentDelayMs?: number; digest?: boolean } = {}) {
     loadEnv();
     this.dataDir = options.dataDir ?? process.env.ENSEMBLE_DATA_DIR ?? path.join(appRoot(), 'data');
     this.metaFile = path.join(this.dataDir, 'runtime.json');
@@ -96,7 +126,29 @@ export class WebRuntime {
       transaction: async (projectId, fn) => { const result = await sqlite.transaction(projectId, fn); if (result.appended.length) this.changed(); return result; },
     };
     this.meta = existsSync(this.metaFile) ? JSON.parse(readFileSync(this.metaFile, 'utf8')) as Metadata : { projectId: randomUUID(), mode: 'free', scene: 1, step: 0 };
+    this.digestEnabled = options.digest ?? digestEnabledFromEnv();
     this.ready = this.initialize();
+    if (options.timers !== false) {
+      // Never keeps the process (or a test run) alive; `stop` clears it.
+      this.timer = setInterval(() => { void this.tick(); }, SWEEP_INTERVAL_MS);
+      this.timer.unref?.();
+    }
+  }
+  /**
+   * One timer tick: the stuck-work sweep (B8) and the daily digest (B9; a no-op before the hour or once posted today).
+   * Free projects only — the scripted scenario keeps its own pace. Ticks never overlap and never fail the server.
+   */
+  async tick(now = new Date()) {
+    if (this.ticking) return;
+    this.ticking = true;
+    try {
+      await this.ready;
+      if (this.replacing || this.meta.mode !== 'free') return;
+      const pm = this.pm;
+      await pm.sweep(now);
+      if (this.digestEnabled) await pm.digest(now);
+    } catch (error) { console.error('[ensemble] 정체 점검·하루 요약을 마치지 못했습니다', error); }
+    finally { this.ticking = false; }
   }
   changed() { for (const listener of this.listeners) listener(); }
   private async save() {
@@ -119,14 +171,19 @@ export class WebRuntime {
     catch { console.info('[ensemble] 재시작 후 대기 중인 변경 전달을 마치지 못했습니다. 작업 상태를 확인하세요.'); }
     await this.save();
   }
-  /** ENSEMBLE_PM_RUNTIME picks the PM backend (api, codex, or claude); an injected provider wins. */
+  private fakeDelay() {
+    if (this.meta.mode === 'scenario') return SCENARIO_FAKE_AGENT_DELAY_MS;
+    const env = Number(process.env.ENSEMBLE_FAKE_AGENT_DELAY_MS);
+    return this.options.fakeAgentDelayMs ?? (Number.isFinite(env) && env >= 0 && process.env.ENSEMBLE_FAKE_AGENT_DELAY_MS?.trim() ? env : FREE_FAKE_AGENT_DELAY_MS);
+  }
+  /** ENSEMBLE_PM_RUNTIME picks the PM backend (api, codex, claude, or fake — the rule-based demo model); an injected provider wins. */
   private createPm() {
     const runtime = process.env.ENSEMBLE_AGENT_RUNTIME ?? 'fake';
     if (!['fake', 'codex', 'claude'].includes(runtime)) throw new Error('ENSEMBLE_AGENT_RUNTIME must be fake, codex, or claude');
     const pmRuntime = process.env.ENSEMBLE_PM_RUNTIME?.trim() || 'api';
-    if (!['api', 'codex', 'claude'].includes(pmRuntime)) throw new Error('ENSEMBLE_PM_RUNTIME must be api, codex, or claude');
+    if (!['api', 'codex', 'claude', 'fake'].includes(pmRuntime)) throw new Error('ENSEMBLE_PM_RUNTIME must be api, codex, claude, or fake');
     const timeoutMs = process.env.ENSEMBLE_PM_TIMEOUT_MS ? Number(process.env.ENSEMBLE_PM_TIMEOUT_MS) : Number(process.env.ENSEMBLE_PM_TIMEOUT_MINUTES ?? 1.5) * 60_000;
-    this.pmLlm = this.options.llm ?? (pmRuntime === 'codex'
+    this.pmLlm = this.options.llm ?? (pmRuntime === 'fake' ? new FakePmLlm() : pmRuntime === 'codex'
       ? new CodexLlmProvider({ timeoutMs, effort: process.env.ENSEMBLE_PM_EFFORT?.trim() || 'low', onTiming: timing => console.info('[ensemble:pm-model]', JSON.stringify(timing)) })
       : pmRuntimeFromEnv().llm);
     this.pmModel = modelFor('pm', pmRuntime === 'codex' ? 'codex' : 'anthropic');
@@ -134,8 +191,13 @@ export class WebRuntime {
     this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: this.pmLlm, model: this.pmModel,
       onTiming: timing => console.info('[ensemble:pm-queue]', JSON.stringify(timing)),
       // The demo's third scene observes a change during construction; its simulated build ends after that change.
-      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' || runtime === 'claude' ? liveAgents(runtime) : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'), this.options.generateRevision ?? createRevisionGenerator(this.pmLlm, this.pmModel), (agentId, version) => this.meta.mode !== 'scenario' || agentId !== 'prototype-agent' || version > 1, 2000,
-        async taskId => project(await this.store.read({ projectId: this.meta.projectId })).tasks.get(taskId)?.spec) }),
+      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' || runtime === 'claude' ? liveAgents(runtime) : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'),
+        // The rule-based demo PM has no prose model, so the fake research report keeps its fixed text.
+        this.options.generateRevision ?? (this.pmLlm instanceof FakePmLlm ? undefined : createRevisionGenerator(this.pmLlm, this.pmModel)),
+        (agentId, version) => this.meta.mode !== 'scenario' || agentId !== 'prototype-agent' || version > 1, this.fakeDelay(),
+        async taskId => project(await this.store.read({ projectId: this.meta.projectId })).tasks.get(taskId)?.spec,
+        { askQuestions: () => this.meta.mode === 'free' }) }),
+      digestSettings: { ...DEFAULT_DIGEST_SETTINGS, enabled: this.digestEnabled },
       // Live scenario inputs and PM/agent replies share the store's wall clock.
       clock: () => new Date(),
     });
@@ -155,7 +217,7 @@ export class WebRuntime {
     const other = decider === 'owner' ? 'designer' : 'owner';
     await this.store.append([
       ...[{ memberId: decider, kind: 'human', displayName: decider === 'owner' ? '사용자' : decider }, { memberId: other, kind: 'human', displayName: other === 'owner' ? '사용자' : '디자이너' }, { memberId: 'research-agent', kind: 'agent', displayName: '조사 Agent', role: '고객 조사와 반응 분석' }, { memberId: 'prototype-agent', kind: 'agent', displayName: '프로토타입 Agent', role: '웹 프로토타입 구현' }].map(payload => ({ ...base, type: 'member_joined', payload })),
-      { ...base, type: 'goal_set', payload: { text: '새 프로젝트', decider, delegation: { pmMayApply: ['reorder', 'reassign_agent'] } } },
+      { ...base, type: 'goal_set', payload: { text: '새 프로젝트', decider, delegation: { pmMayApply: [...DEFAULT_PM_MAY_APPLY] } } },
     ]);
   }
   async state(me = 'owner') {
@@ -379,6 +441,79 @@ export class WebRuntime {
     this.changed();
     return { accepted: true as const };
   }
+  /** `GET tasks/:id`: one work item with its activity and comments (kept out of the state poll). */
+  async task(taskId: string, me = 'owner') {
+    await this.ready;
+    const events = await this.store.read({ projectId: this.meta.projectId });
+    const state = project(events);
+    if (state.members.get(me)?.kind !== 'human') me = state.goal?.decider ?? 'owner';
+    const detail = buildTaskDetail(events, taskId, { me });
+    if (!detail) throw new RuntimeError('task_not_found', '작업을 찾지 못했습니다.', 404);
+    return detail;
+  }
+  /**
+   * `POST tasks/:id/comments` (B6): `pm.postComment` in its two steps — the comment is recorded as a `task:<id>` thread message
+   * before the reply (so the reopened thread shows it), then the PM handles it in the background like any message: an agent's
+   * work gets the comment forwarded, then the coordinator considers it. Shares the message intake, so receipt order holds.
+   */
+  async comment(taskId: string, authorId: string, text: string) {
+    if (this.replacing) throw new RuntimeError('project_switching', '프로젝트를 전환 중입니다. 입력을 유지하고 잠시 후 다시 보내 주세요.');
+    if (!text.trim()) throw new RuntimeError('invalid_input', '댓글 내용을 입력해 주세요.', 400);
+    const accept = this.intake.then(async () => {
+      await this.ready;
+      if (this.replacing) throw new RuntimeError('project_switching', '프로젝트를 전환 중입니다. 입력을 유지하고 잠시 후 다시 보내 주세요.');
+      const state = project(await this.store.read({ projectId: this.meta.projectId }));
+      if (!state.tasks.has(taskId)) throw new RuntimeError('task_not_found', '작업을 찾지 못했습니다.', 404);
+      if (state.members.get(authorId)?.kind !== 'human') throw new RuntimeError('forbidden', '이 프로젝트의 사람만 작업에 댓글을 남길 수 있습니다.', 403);
+      const pm = this.pm;
+      const { messageId } = await pm.recordMessage(authorId, text, [], taskThreadId(taskId));
+      this.pendingMessages++;
+      void pm.processRecordedMessage(messageId).catch(error => console.error('[ensemble] comment processing failed', error)).finally(() => { this.pendingMessages--; this.changed(); });
+      return { accepted: true as const, messageId };
+    });
+    this.intake = accept.catch(() => undefined);
+    return accept;
+  }
+  /**
+   * `POST decisions/:id`: a person's answer to a decision request, applied by `pm.decideRequest`. Only the person asked may answer (403);
+   * an unknown request is 404. The card's "포함할 작업" sends work titles; they become the request's task ids here.
+   */
+  async decide(requestId: string, me: string, answer: Omit<WebDecisionAnswer, 'me'>) {
+    await this.ready;
+    if (this.replacing) throw new RuntimeError('project_switching', '프로젝트를 전환 중입니다. 잠시 후 다시 시도해 주세요.');
+    const state = project(await this.store.read({ projectId: this.meta.projectId }));
+    const entry = state.decisionRequests.get(requestId);
+    if (!entry) throw new RuntimeError('decision_not_found', '결정 요청을 찾지 못했습니다.', 404);
+    if (state.members.get(me)?.kind !== 'human' || entry.request.targetMemberId !== me) throw new RuntimeError('forbidden', '결정을 요청받은 사람만 답할 수 있어요.', 403);
+    // An option that relays the person's words (missing_info "답하기") needs those words: "추천대로 진행" or picking it
+    // without text would close the request and leave the agent waiting for an answer that never comes.
+    const picked = answer.action === 'approve' ? entry.request.recommendation.optionId : answer.action === 'choose' || answer.action === 'edit' ? answer.optionId : undefined;
+    if (picked !== undefined && entry.request.options.find(o => o.optionId === picked)?.effects.some(e => e.type === 'answer')) {
+      if (!answer.text?.trim()) throw new RuntimeError('answer_required', '이 질문에는 답을 적어 주세요. 적은 답이 Agent에게 그대로 전달돼요.', 400);
+      answer = { action: 'answer', text: answer.text };
+    }
+    let core: DecisionAnswer;
+    switch (answer.action) {
+      case 'approve': case 'reject': core = { by: me, action: answer.action }; break;
+      case 'choose':
+        if (!answer.optionId) throw new RuntimeError('invalid_input', '선택지를 골라 주세요.', 400);
+        core = { by: me, action: 'choose', optionId: answer.optionId }; break;
+      case 'answer':
+        if (!answer.text?.trim()) throw new RuntimeError('invalid_input', '답을 입력해 주세요.', 400);
+        core = { by: me, action: 'answer', text: answer.text.trim() }; break;
+      case 'edit': {
+        const edits = { ...(answer.edits ?? {}) };
+        if (Array.isArray(edits.include)) edits.include = includedTaskIds(entry.request, state, edits.include);
+        core = { by: me, action: 'edit', ...(answer.optionId ? { optionId: answer.optionId } : {}), edits }; break;
+      }
+      default: throw new RuntimeError('invalid_input', '답하는 방법을 선택해 주세요.', 400);
+    }
+    try { await this.pm.decideRequest(requestId, core); }
+    catch (error) {
+      if (error instanceof DecisionRequestError || error instanceof TaskResolutionError) throw new RuntimeError(error.code === 'not_found' ? 'decision_not_found' : error.code, error.message, error.status);
+      throw error;
+    }
+  }
   async persistAttachments() {
     for (const e of await this.store.read({ projectId: this.meta.projectId }) as AnyEvent[]) {
       if (e.type !== 'attachment_recorded' || !/^[\w-]+$/.test(e.payload.attachmentId)) continue;
@@ -398,6 +533,7 @@ export class WebRuntime {
     return { data: await readFile(file), name: event.payload.name, mimeType: event.payload.mimeType };
   }
   async stop() {
+    clearInterval(this.timer); this.timer = undefined;
     this.scenarioAbort?.abort();
     if (!this.options?.llm) await this.pmLlm?.close?.();
     await this.scenarioFlight?.catch(() => undefined);
