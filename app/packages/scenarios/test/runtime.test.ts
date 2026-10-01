@@ -51,6 +51,11 @@ it('keeps project identity through scene 2 and routes attachment by role', async
   }
   await store.append(events);
   await store.append([{ ...ctx, actor: { kind: 'system', id: 'test' }, type: 'task_start_reserved', payload: { taskId: 'draft-design', specVersion: 1, trigger: 'approve' } }]);
+  // The next line (revised flow) is offered only on the PM's revision request for the designer's submitted flow.
+  await store.append([
+    { ...ctx, actor: { kind: 'human', id: 'designer' }, type: 'attachment_recorded', payload: { attachmentId: 'flow', name: 'flow.md', mimeType: 'text/markdown', uri: 'data:text/markdown;base64,', taskId: 'draft-design' } },
+    { ...ctx, actor: { kind: 'system', id: 'test' }, type: 'revision_requested', payload: { taskId: 'draft-design', resultId: 'r', missing: ['오류 흐름'] } },
+  ]);
   app.meta.script!.step = 6;
   await app.scenarioNext();
   expect(app.meta.projectId).toBe('retained-project');

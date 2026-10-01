@@ -213,6 +213,20 @@ function finishedAgentThreadTask(state: ProjectState, threadId: string | undefin
   return task && task.status === 'checked' && state.members.get(task.spec.assignee)?.kind === 'agent' ? task : undefined;
 }
 
+const FOLLOW_UP_SUFFIX = / 보완(?: (\d+))?$/;
+/**
+ * The title of follow-up work on `title`: the original name with one "보완" suffix, numbered from the second follow-up
+ * on ("… 보완", "… 보완 2", "… 보완 3") — never "… 보완 보완". `titles` are the plan's current work item titles.
+ */
+export function followUpTitle(title: string, titles: readonly string[] = []): string {
+  const base = title.replace(FOLLOW_UP_SUFFIX, '');
+  const round = (t: string) => {
+    const match = t.startsWith(base) ? /^ 보완(?: (\d+))?$/.exec(t.slice(base.length)) : null;
+    return match ? Number(match[1] ?? 1) : 0;
+  };
+  const n = Math.max(0, ...[title, ...titles].map(round)) + 1;
+  return n === 1 ? `${base} 보완` : `${base} 보완 ${n}`;
+}
 /**
  * A change asked for in a finished agent work item's own thread becomes follow-up work for the agent (§2.1: work
  * with a result is not reworked in place; new work builds on it), with the comment as its origin. A model that read
@@ -222,7 +236,8 @@ function commentFollowUps(state: ProjectState, message: { messageId: string; thr
   const task = finishedAgentThreadTask(state, message.threadId);
   if (!task) return ops;
   const taken = new Set((state.plan?.tasks ?? []).map(t => t.id));
-  const base = task.spec.baseTitle ?? task.spec.title;
+  const base = (task.spec.baseTitle ?? task.spec.title).replace(FOLLOW_UP_SUFFIX, '');
+  const titles = (state.plan?.tasks ?? []).map(t => t.title);
   const agent = state.members.get(task.spec.assignee)?.displayName ?? 'Agent';
   return ops.map((op): CoordinationOp => {
     if (op.type !== 'reopen_task' || op.taskId !== task.spec.id || !op.sourceMessageIds.includes(message.messageId)) return op;
@@ -230,7 +245,7 @@ function commentFollowUps(state: ProjectState, message: { messageId: string; thr
     while (taken.has(`follow-up-${n}`)) n++;
     const tempId = `follow-up-${n}`;
     taken.add(tempId);
-    return { type: 'create_task', sourceMessageIds: op.sourceMessageIds, tempId, title: `${base} 보완`, assignee: task.spec.assignee,
+    return { type: 'create_task', sourceMessageIds: op.sourceMessageIds, tempId, title: followUpTitle(task.spec.baseTitle ?? task.spec.title, titles), assignee: task.spec.assignee,
       handoffConditions: [op.reason], dependsOn: [task.spec.id], priority: 'normal',
       routing: { executor: 'agent', reason: 'agent_capable', note: `${agent}${particle(agent, '이/가')} 만든 결과에 이어지는 일이라 같은 Agent에게 맡겨요` },
       brief: { why: `완료된 "${base}" 결과에 남긴 댓글 요청을 반영하는 후속 작업이에요.`, decisionIds: [], attachmentIds: [], constraints: [] } } as unknown as CoordinationOp;

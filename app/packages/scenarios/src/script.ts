@@ -95,9 +95,9 @@ export async function waitForCondition(condition: Condition, read: () => Promise
     await pause(Math.min(100, timeout - (now() - started)));
   }
 }
-/** A line said only in reply to a PM question: a choice (`answerIfAsked`) or a scope clarification (`clarifyScopeIfAsked`). */
+/** A line said only when the PM asks for it: a choice (`answerIfAsked`), a scope clarification (`clarifyScopeIfAsked`), or revised material (`respondToRevision`). */
 export function isConditionalStep(step: ScriptedStep): boolean {
-  return step.action === 'answerIfAsked' || step.action === 'clarifyScopeIfAsked';
+  return step.action === 'answerIfAsked' || step.action === 'clarifyScopeIfAsked' || step.action === 'respondToRevision';
 }
 /** The PM question a conditional line answers, asked after `after` (the ledger seq before the previous line); undefined when none. */
 export function promptFor(step: ScriptedStep, events: readonly LedgerEvent[], after: number): Extract<AnyEvent, { type: 'pm_spoke' }> | undefined {
@@ -105,6 +105,15 @@ export function promptFor(step: ScriptedStep, events: readonly LedgerEvent[], af
   if (step.action === 'clarifyScopeIfAsked') return spoken.findLast(e => /적용할 작업.*범위/.test(e.payload.text) && /알려|확인/.test(e.payload.text));
   if (step.action === 'answerIfAsked') return spoken.findLast(e => e.payload.kind === 'ask' && e.payload.text.includes('(선택지:'));
   return undefined;
+}
+/** Whether a conditional line will post once delivered: a PM question to answer, or a revision (or its stop) on the speaker's submitted work. */
+export function conditionalLineDue(step: ScriptedStep, events: readonly LedgerEvent[], after: number): boolean {
+  if (step.action !== 'respondToRevision') return !!promptFor(step, events, after);
+  const last = (events as readonly AnyEvent[]).findLast(e => e.type === 'attachment_recorded' && e.actor.id === step.as && e.payload.taskId);
+  const taskId = last?.type === 'attachment_recorded' ? last.payload.taskId : undefined;
+  const status = taskId ? project(events).tasks.get(taskId)?.status : undefined;
+  // `blocked` still delivers the step, so its stop reason reaches the person instead of a silent skip.
+  return status === 'revising' || status === 'blocked';
 }
 export interface ScriptHost {
   waitOptions?: WaitOptions;
@@ -167,13 +176,17 @@ export async function advanceScript(host: ScriptHost, steps: readonly ScriptedSt
       }
       (progress.executed ??= {})[progress.step] = true;
     }
-    // A line that is said only when the PM asks for it (a clarification, a choice) is never offered as the next
-    // line once the PM, having handled this step, did not ask: it is passed over, so the script ends (or moves on)
-    // instead of showing a line that "다음 발언" would never post.
+    // A line that is said only when the PM asks for it (a clarification, a choice, revised material) is never offered
+    // as the next line once the PM, having handled this step, did not ask: it is passed over, so the script ends (or
+    // moves on) instead of showing a line that "다음 발언" would never post. Its own wait (e.g. the PM's review) runs
+    // first, so the decision is made on the PM's verdict rather than before it.
     let next = progress.step + 1;
-    const after = await host.read();
-    while (steps[next] && isConditionalStep(steps[next]!) && !promptFor(steps[next]!, after, progress.anchors[next - 1] ?? project(after).lastSeq)) {
-      progress.anchors[next] = progress.anchors[next - 1] ?? project(after).lastSeq;
+    while (steps[next] && isConditionalStep(steps[next]!)) {
+      const step = steps[next]!;
+      if (step.waitFor) await waitForCondition(step.waitFor, () => host.read(), progress.anchors, host.waitOptions);
+      const after = await host.read(), anchor = progress.anchors[next - 1] ?? project(after).lastSeq;
+      if (conditionalLineDue(step, after, anchor)) break;
+      progress.anchors[next] = anchor;
       (progress.executed ??= {})[next] = true;
       next++;
     }

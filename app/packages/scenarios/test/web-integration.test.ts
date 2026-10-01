@@ -403,6 +403,19 @@ it('MD2 drives the work flow through the API with the fake PM model and fake age
       const detail = await (await get(`tasks/${workItem.id}`)).json() as VmTaskDetail;
       for (const entry of detail.activity) expect(entry.text).not.toMatch(/\{"|"\w+":/);
     }
+    // A change asked for on the finished follow-up: numbered follow-up work, never "… 보완 보완".
+    // Settle the follow-up directly (its agent's own question flow is covered above).
+    const ctx = { projectId: app.meta.projectId, targetProductId: 'ensemble-demo', actor: { kind: 'system' as const, id: 'test' } };
+    await app.store.append([
+      { ...ctx, type: 'result_submitted', payload: { taskId: followUp.id, resultId: 'follow-up-result', planVersion: project(await app.store.read()).plan!.version, summary: '비밀번호 찾기 링크 추가', artifactIds: [] } },
+      { ...ctx, type: 'task_checked', payload: { taskId: followUp.id, resultId: 'follow-up-result', reason: '확인' } },
+    ]);
+    await eventually(async () => (await item('로그인 화면 보완'))?.status === 'done');
+    expect((await post(`tasks/${followUp.id}/comments`, { me: 'owner', text: '로그인 유지 체크박스도 넣어 주세요' })).status).toBe(202);
+    await eventually(async () => !!(await item('로그인 화면 보완 2')));
+    const titles = (await view('owner')).work!.items.map(i => i.title);
+    expect(titles.some(t => /보완 보완/.test(t))).toBe(false);
+    expect(project(await app.store.read()).tasks.get((await item('로그인 화면 보완 2'))!.id)?.spec.dependsOn).toEqual([followUp.id]);
   } finally { await app.stop(); delete globalRuntime.ensembleRuntime; await rm(dir, { recursive: true, force: true }); }
 }, 30000);
 

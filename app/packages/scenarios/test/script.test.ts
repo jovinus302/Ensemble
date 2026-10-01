@@ -170,3 +170,31 @@ it('passes over a reply line the PM never asked for, so the next line offered is
   await advanceScript(host, steps, asked);
   expect(postMessage).toHaveBeenLastCalledWith('owner', clarify.text);
 });
+it.each([true, false])('offers a revision line only when the PM requested a revision (requested: %s)', async requested => {
+  const store = await ledger([task('interview', 'owner')]);
+  await store.append([{ ...ctx, type: 'member_joined', payload: { memberId: 'owner', kind: 'human', displayName: '사용자' } }]);
+  const postMessage = vi.fn(async (_who: string, text: string) => {
+    if (text !== '인터뷰 올렸어요') return [];
+    await store.append([
+      { ...ctx, actor: { kind: 'human', id: 'owner' }, type: 'attachment_recorded', payload: { attachmentId: 'a1', name: 'interviews.txt', mimeType: 'text/plain', uri: `data:text/plain;base64,${Buffer.from('노트').toString('base64')}`, taskId: 'interview' } },
+      { ...ctx, type: 'result_submitted', payload: { taskId: 'interview', resultId: 'r1', planVersion: 1, summary: '인터뷰', artifactIds: ['a1'] } },
+    ]);
+    // The PM's review lands a little later than the upload itself.
+    setTimeout(() => void store.append([requested
+      ? { ...ctx, type: 'revision_requested', payload: { taskId: 'interview', resultId: 'r1', missing: ['빈도'] } }
+      : { ...ctx, type: 'task_checked', payload: { taskId: 'interview', resultId: 'r1', reason: '충분' } }]), 20);
+    return [];
+  });
+  const host = { read: () => store.read(), recordStop: vi.fn(), pm: { postMessage }, waitOptions: { pause: (ms: number) => new Promise<void>(r => setTimeout(r, ms)) } } as unknown as ScriptHost;
+  const revise = continuousScenario.steps.find(s => s.action === 'respondToRevision' && s.as === 'owner')!;
+  expect(revise.waitFor).toBeDefined();
+  const steps = [{ as: 'owner', text: '인터뷰 올렸어요' }, { ...revise, waitFor: { ...revise.waitFor!, timeoutMs: 2000 } }, { as: 'owner', text: '다음 이야기' }];
+  const progress: ScriptProgress = { step: 0, anchors: {} };
+  await advanceScript(host, steps, progress);
+  // "다음 발언" shows steps[progress.step]: the revision line only when a revision is pending, never otherwise.
+  expect(steps[progress.step]!.text).toBe(requested ? revise.text : '다음 이야기');
+  if (!requested) {
+    await advanceScript(host, steps, progress);
+    expect(postMessage.mock.calls.map(c => c[1])).toEqual(['인터뷰 올렸어요', '다음 이야기']);
+  }
+});
