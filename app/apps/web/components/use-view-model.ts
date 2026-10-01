@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ViewModel, VmMessage } from "../lib/view-model";
+import { buildMockViewModel, mockTaskDetail } from "../lib/mock-view-model";
+import type { DecisionAnswer, ViewModel, VmMessage, VmTaskDetail } from "../lib/view-model";
 import { koreanOr } from "./format";
 
 // 서버 경로는 여기 한 곳에만 둔다. 시나리오 재시도·건너뛰기 경로는 서버(W-S)가 확정하면 이 값만 바꾼다.
@@ -11,6 +12,9 @@ export const API = {
   messages: "/api/messages",
   availability: "/api/availability",
   card: (id: string) => `/api/cards/${encodeURIComponent(id)}`,
+  decision: (id: string) => `/api/decisions/${encodeURIComponent(id)}`,
+  task: (id: string) => `/api/tasks/${encodeURIComponent(id)}`,
+  taskComments: (id: string) => `/api/tasks/${encodeURIComponent(id)}/comments`,
   resolve: (id: string) => `/api/tasks/${encodeURIComponent(id)}/resolve`,
   freeStart: "/api/free/start",
   scenarioStart: "/api/scenario/start",
@@ -26,12 +30,20 @@ const GENERIC_ERROR = "요청을 처리하지 못했어요. 잠시 뒤 다시 �
 const LOST_AFTER_MS = 1500;
 
 export type ActionResult = { ok: true } | { ok: false; code?: string; message: string };
+export type DecisionInput = Omit<DecisionAnswer, "me">;
+export type LoadTaskResult = { ok: true; detail: VmTaskDetail } | { ok: false; code?: string; message: string };
 
 export interface ViewModelActions {
   resolveTask(taskId: string, action: 'accept' | 'retry' | 'recheck', note?: string): Promise<ActionResult>;
   /** 즉시 "보내는 중"으로 보이고, 이전 전송이 끝난 뒤 순서대로 서버에 보낸다. */
   sendMessage(text: string, files: File[]): Promise<ActionResult>;
   decideCard(cardId: string, approve: boolean): Promise<ActionResult>;
+  /** 결정 요청 카드에 답한다(`POST decisions/:id`). */
+  decide(requestId: string, answer: DecisionInput): Promise<ActionResult>;
+  /** 작업 댓글(`POST tasks/:id/comments`). 서버가 threadId "task:<id>" 메시지로 기록한다. */
+  comment(taskId: string, text: string): Promise<ActionResult>;
+  /** 작업 상세(`GET tasks/:id`): 활동 기록·댓글은 상태 폴링에 싣지 않아 따로 가져온다. */
+  loadTask(taskId: string): Promise<LoadTaskResult>;
   setAvailability(memberId: string, weeklyHours: number): Promise<ActionResult>;
   scenarioNext(): Promise<ActionResult>;
   scenarioRetry(): Promise<ActionResult>;
@@ -83,12 +95,21 @@ async function call(url: string, body: object): Promise<CallResult> {
   return response.ok ? { ok: true, data } : { ok: false, ...readError(data) };
 }
 
+/** 주소에 `?mock`이 있으면 서버 없이 목업 뷰 모델로 그린다(화면 확인용). 결정·댓글은 이 탭 안에서만 반영된다. */
+function readMockFlag(): boolean {
+  try { return typeof window !== "undefined" && new URLSearchParams(window.location.search).has("mock"); } catch { return false; }
+}
+interface MockState { decided: string[]; comments: Record<string, VmMessage[]> }
+const MOCK_ONLY = "목업 화면에서는 서버로 보내지 않아요.";
+
 function readStoredMe(): string {
   try { return (typeof window !== "undefined" && window.localStorage.getItem(ME_KEY)) || "owner"; } catch { return "owner"; }
 }
 
 export function useViewModel(): UseViewModelResult {
   const [me, setMe] = useState(readStoredMe);
+  const [mock] = useState(readMockFlag);
+  const [mockState, setMockState] = useState<MockState>({ decided: [], comments: {} });
   const [vm, setVm] = useState<ViewModel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -119,6 +140,14 @@ export function useViewModel(): UseViewModelResult {
   }, [me]);
 
   useEffect(() => {
+    if (!mock) return;
+    const base = buildMockViewModel(me);
+    const decided = new Set(mockState.decided);
+    setVm({ ...base, decisionCards: base.decisionCards?.filter(c => !decided.has(c.id)) });
+  }, [mock, me, mockState]);
+
+  useEffect(() => {
+    if (mock) return;
     let events: EventSource | null = null;
     let polling: ReturnType<typeof setInterval> | undefined;
     let reopen: ReturnType<typeof setTimeout> | undefined;
@@ -143,7 +172,7 @@ export function useViewModel(): UseViewModelResult {
     void refresh();
     open();
     return () => { closed = true; events?.close(); clearTimeout(reopen); clearTimeout(lost); if (polling) clearInterval(polling); revision.current++; };
-  }, [refresh]);
+  }, [refresh, mock]);
 
   // 서버 기록에 나타난 내 메시지는 "보내는 중" 목록에서 뺀다.
   useEffect(() => {
@@ -158,6 +187,7 @@ export function useViewModel(): UseViewModelResult {
   }, [me, refresh]);
 
   const post = useCallback(async (url: string, body: object, quiet: string[] = []): Promise<ActionResult> => {
+    if (mock) { setError(MOCK_ONLY); return { ok: false, code: "mock", message: MOCK_ONLY }; }
     setPending(true); setError(null);
     try {
       const result = await call(url, { ...body, me });
@@ -166,11 +196,28 @@ export function useViewModel(): UseViewModelResult {
       void refresh();
       return result;
     } finally { setPending(false); }
-  }, [me, accept, refresh]);
+  }, [me, accept, refresh, mock]);
+
+  const loadTask = useCallback(async (taskId: string): Promise<LoadTaskResult> => {
+    if (mock) {
+      const detail = mockTaskDetail(taskId);
+      if (!detail) return { ok: false, code: "task_not_found", message: "작업을 찾지 못했어요." };
+      return { ok: true, detail: { ...detail, comments: [...detail.comments, ...(mockState.comments[taskId] ?? [])] } };
+    }
+    let response: Response;
+    try { response = await fetch(API.task(taskId), { cache: "no-store" }); } catch { return { ok: false, code: "network", message: NETWORK_ERROR }; }
+    let data: unknown = null;
+    try { data = await response.json(); } catch { /* 본문 없는 응답 */ }
+    if (!response.ok) return { ok: false, ...readError(data) };
+    const detail = data as VmTaskDetail | null;
+    return detail && typeof detail === "object" && detail.item && Array.isArray(detail.activity) && Array.isArray(detail.comments)
+      ? { ok: true, detail } : { ok: false, message: GENERIC_ERROR };
+  }, [mock, mockState]);
 
   const actions = useMemo<ViewModelActions>(() => ({
     resolveTask: (id, action, note) => post(API.resolve(id), { action, note }),
     sendMessage: (text, files) => {
+      if (mock) { setError(MOCK_ONLY); return Promise.resolve({ ok: false, code: "mock", message: MOCK_ONLY }); }
       const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       setOutbox(items => [...items, { localId, authorId: me, text, fileNames: files.map(f => f.name), at: new Date().toISOString() }]);
       setError(null);
@@ -194,6 +241,19 @@ export function useViewModel(): UseViewModelResult {
       return next;
     },
     decideCard: (id, approve) => post(API.card(id), { memberId: me, approve }),
+    decide: async (id, answer) => {
+      if (mock) { setMockState(s => ({ ...s, decided: [...s.decided, id] })); return { ok: true }; }
+      return post(API.decision(id), answer);
+    },
+    comment: async (taskId, text) => {
+      if (mock) {
+        const message: VmMessage = { id: `mock-${Date.now()}`, authorId: me, kind: "human", text, at: new Date().toISOString(), threadId: `task:${taskId}`, attachments: [] };
+        setMockState(s => ({ ...s, comments: { ...s.comments, [taskId]: [...(s.comments[taskId] ?? []), message] } }));
+        return { ok: true };
+      }
+      return post(API.taskComments(taskId), { text });
+    },
+    loadTask,
     setAvailability: (memberId, weeklyHours) => post(API.availability, { memberId, weeklyHours }),
     scenarioNext: () => post(API.scenarioNext, {}),
     scenarioRetry: () => post(API.scenarioRetry, {}),
@@ -205,7 +265,7 @@ export function useViewModel(): UseViewModelResult {
       try { window.localStorage.setItem(ME_KEY, memberId); } catch { /* 저장소를 못 쓰면 이번 탭에서만 유지 */ }
     },
     dismissError: () => setError(null),
-  }), [me, post, accept, refresh]);
+  }), [me, post, accept, refresh, mock, loadTask]);
 
   const merged = useMemo(() => {
     if (!vm) return null;

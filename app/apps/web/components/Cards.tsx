@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { VmCard } from "../lib/view-model";
+import type { VmCard, VmDecisionCard, VmMember } from "../lib/view-model";
+import { DecisionRequestCard, type DecideRequest } from "./DecisionRequestCard";
 import { formatDateRange, formatHourRange } from "./format";
 import { ScopeLists } from './TaskResolution';
 
@@ -10,7 +11,18 @@ const CHANGE_KIND: Record<string, string> = {
   reassign_human: "사람 담당 변경", reschedule: "일정 변경", deadline_change: "기한 변경",
 };
 
-export function DecisionCard({ card, onDecide }: { card: VmCard; onDecide: (cardId: string, approve: boolean) => Promise<unknown> }) {
+/** 채널·"내 결정" 탭의 카드 하나. 결정 요청(kind "decision")은 별도 카드와 응답 경로(`decisions/:id`)를 쓴다. */
+export function DecisionCard({ card, onDecide, onDecideRequest, members = [] }: {
+  card: VmCard | VmDecisionCard; onDecide: (cardId: string, approve: boolean) => Promise<unknown>;
+  onDecideRequest?: DecideRequest; members?: VmMember[];
+}) {
+  if (card.kind === "decision") {
+    return <DecisionRequestCard card={card} members={members} onDecide={onDecideRequest ?? (async () => ({ ok: false, message: "이 화면에서는 답할 수 없어요." }))} />;
+  }
+  return <ApprovalCard card={card} onDecide={onDecide} />;
+}
+
+function ApprovalCard({ card, onDecide }: { card: VmCard; onDecide: (cardId: string, approve: boolean) => Promise<unknown> }) {
   const [pending, setPending] = useState(false);
   const decide = async (approve: boolean) => {
     setPending(true);
