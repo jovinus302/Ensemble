@@ -1,0 +1,576 @@
+{
+  "issue": 47,
+  "pr": 49,
+  "baseline": "d0a5a10b79cab4f8c4d640843bd9fdeb1d78561e",
+  "productionAndTestCommit": "ab9c3f56fefd9d4d5ac754bda80f763024a877ee",
+  "tests": {
+    "files": 77,
+    "passed": 689,
+    "typecheck": "passed",
+    "build": "passed; production source unchanged since build; final additions only tests"
+  },
+  "scope": "Real PM coordination on isolated copies of completed QA projects. No new worker/artifact completion is claimed; prior end-to-end evidence is issue 46. No API/fake fallback.",
+  "engineeringTarget": "A durably saved same-author plain chat correction must release an obsolete call without awaiting its provider timeout. Deterministic regression requires completion within 1000ms.",
+  "comparison": "Identical stalled-provider regression fails on baseline and passes after the fix. Live samples are observations, not a controlled wall-clock before/after speedup or provider comparison.",
+  "limitations": [
+    "External provider completion latency remains; unrelated ordered work can still queue behind necessary model work.",
+    "Claude buffered JSON exposes first_output, not model first token. Network and remote computation cannot be separated.",
+    "Codex uses the CLI default model; its resolved model ID is not exposed in these timing logs. Claude requested claude-sonnet-5.",
+    "Initial harness failures (wrong combobox label; exact PM text excluded its badge) are preserved. No product failure was hidden.",
+    "issue47 and issue47-live completedScreenAt is an API idle poll, not a DOM timestamp. Visible new PM answers are confirmed by screenshots; screenshot file completion is only an upper bound.",
+    "issue47-final records composer-clear UI reaction. Repeated identical requests correctly produced no duplicate PM speech, so its completion is idle processing, not a new visible answer.",
+    "No runtime configuration, process or folder in task-2/ensemble-benchmark was accessed or modified."
+  ],
+  "runs": [
+    {
+      "run": "issue47",
+      "provider": "codex",
+      "passed": true,
+      "requestId": "ca9f92e9-45b6-4485-907f-716e006bbcc6",
+      "uiActionMs": 8,
+      "httpAcceptedObservedMs": 68,
+      "queueWaitMs": 16,
+      "operationMs": 32433,
+      "model": [
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:07:45.568Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "first_response",
+          "elapsedMs": 5931,
+          "at": "2026-10-01T22:07:51.499Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 12414,
+          "at": "2026-10-01T22:07:57.982Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:07:57.987Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "first_response",
+          "elapsedMs": 10095,
+          "at": "2026-10-01T22:08:08.082Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 19994,
+          "at": "2026-10-01T22:08:17.981Z"
+        }
+      ],
+      "previousCall": [
+        {
+          "kind": "model",
+          "provider": "codex",
+          "model": "",
+          "projectId": "b643403c-3847-41e7-9563-9d177d9343a7",
+          "messageId": "1a4ec417-9d42-459c-8dbf-951c53103a69",
+          "callId": "f2ff98e0-a0ee-44db-9433-f348bfdbaae9",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:07:45.414Z",
+          "elapsedMs": 0,
+          "phase": "started"
+        },
+        {
+          "kind": "model",
+          "provider": "codex",
+          "model": "",
+          "projectId": "b643403c-3847-41e7-9563-9d177d9343a7",
+          "messageId": "1a4ec417-9d42-459c-8dbf-951c53103a69",
+          "callId": "f2ff98e0-a0ee-44db-9433-f348bfdbaae9",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:07:45.545Z",
+          "elapsedMs": 131,
+          "phase": "superseded"
+        }
+      ],
+      "stateIdleObservedMs": 32594,
+      "screenShotUpperBoundMs": 32655,
+      "modelEndToScreenshotUpperBoundMs": 170,
+      "newPmSpeech": true,
+      "replaceMs": 1801
+    },
+    {
+      "run": "issue47",
+      "provider": "claude",
+      "passed": true,
+      "requestId": "511c1ba3-4aea-4701-81b2-681d377586c3",
+      "uiActionMs": 9,
+      "httpAcceptedObservedMs": 150,
+      "queueWaitMs": 23,
+      "operationMs": 30872,
+      "model": [
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:08:03.169Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "first_output",
+          "elapsedMs": 15423,
+          "at": "2026-10-01T22:08:18.592Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 16111,
+          "at": "2026-10-01T22:08:19.280Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:08:19.286Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "first_output",
+          "elapsedMs": 14047,
+          "at": "2026-10-01T22:08:33.333Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 14728,
+          "at": "2026-10-01T22:08:34.014Z"
+        }
+      ],
+      "previousCall": [
+        {
+          "kind": "model",
+          "provider": "claude",
+          "model": "claude-sonnet-5",
+          "projectId": "38f177d7-481b-4141-bbc7-60ba78c24d6c",
+          "messageId": "809d2291-7654-45cd-bb99-911039917562",
+          "callId": "bb8ffa36-bad1-4360-923a-29eafab27545",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:08:02.948Z",
+          "elapsedMs": 0,
+          "phase": "started"
+        },
+        {
+          "kind": "model",
+          "provider": "claude",
+          "model": "claude-sonnet-5",
+          "projectId": "38f177d7-481b-4141-bbc7-60ba78c24d6c",
+          "messageId": "809d2291-7654-45cd-bb99-911039917562",
+          "callId": "bb8ffa36-bad1-4360-923a-29eafab27545",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:08:03.134Z",
+          "elapsedMs": 186,
+          "phase": "superseded"
+        }
+      ],
+      "stateIdleObservedMs": 31139,
+      "screenShotUpperBoundMs": 31213,
+      "modelEndToScreenshotUpperBoundMs": 209,
+      "newPmSpeech": true,
+      "replaceMs": 123
+    },
+    {
+      "run": "issue47-live",
+      "provider": "codex",
+      "passed": true,
+      "requestId": "2ea9e8e4-3d10-4485-bc68-78b6d4ffcbd8",
+      "uiActionMs": 8,
+      "httpAcceptedObservedMs": 44,
+      "queueWaitMs": 20,
+      "operationMs": 30723,
+      "model": [
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:11:36.316Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "first_response",
+          "elapsedMs": 7233,
+          "at": "2026-10-01T22:11:43.549Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 13312,
+          "at": "2026-10-01T22:11:49.628Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:11:49.633Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "first_response",
+          "elapsedMs": 7357,
+          "at": "2026-10-01T22:11:56.990Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 17378,
+          "at": "2026-10-01T22:12:07.011Z"
+        }
+      ],
+      "previousCall": [
+        {
+          "kind": "model",
+          "provider": "codex",
+          "model": "",
+          "projectId": "b643403c-3847-41e7-9563-9d177d9343a7",
+          "messageId": "91dcf9a0-9452-41c6-84e6-dc9f8c0f7f07",
+          "callId": "a1cc4cf4-8b55-4497-81ce-7aef3d1f77bd",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:11:29.623Z",
+          "elapsedMs": 0,
+          "phase": "started"
+        },
+        {
+          "kind": "model",
+          "provider": "codex",
+          "model": "",
+          "projectId": "b643403c-3847-41e7-9563-9d177d9343a7",
+          "messageId": "91dcf9a0-9452-41c6-84e6-dc9f8c0f7f07",
+          "callId": "a1cc4cf4-8b55-4497-81ce-7aef3d1f77bd",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:11:36.229Z",
+          "elapsedMs": 6606,
+          "phase": "first_response"
+        },
+        {
+          "kind": "model",
+          "provider": "codex",
+          "model": "",
+          "projectId": "b643403c-3847-41e7-9563-9d177d9343a7",
+          "messageId": "91dcf9a0-9452-41c6-84e6-dc9f8c0f7f07",
+          "callId": "a1cc4cf4-8b55-4497-81ce-7aef3d1f77bd",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:11:36.286Z",
+          "elapsedMs": 6663,
+          "phase": "superseded"
+        }
+      ],
+      "stateIdleObservedMs": 30858,
+      "screenShotUpperBoundMs": 30939,
+      "modelEndToScreenshotUpperBoundMs": 193,
+      "newPmSpeech": true,
+      "replaceMs": 1605
+    },
+    {
+      "run": "issue47-live",
+      "provider": "claude",
+      "passed": true,
+      "requestId": "184626c7-6a7c-404d-9f53-cf0fa345cef5",
+      "uiActionMs": 8,
+      "httpAcceptedObservedMs": 41,
+      "queueWaitMs": 18,
+      "operationMs": 23839,
+      "model": [
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:12:06.169Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "first_output",
+          "elapsedMs": 7300,
+          "at": "2026-10-01T22:12:13.469Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 8300,
+          "at": "2026-10-01T22:12:14.469Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:12:14.478Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "first_output",
+          "elapsedMs": 14760,
+          "at": "2026-10-01T22:12:29.238Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 15502,
+          "at": "2026-10-01T22:12:29.980Z"
+        }
+      ],
+      "previousCall": [
+        {
+          "kind": "model",
+          "provider": "claude",
+          "model": "claude-sonnet-5",
+          "projectId": "38f177d7-481b-4141-bbc7-60ba78c24d6c",
+          "messageId": "b8219080-ec12-4aa5-bec4-fd8a35089b26",
+          "callId": "b858136f-1a1a-45a0-813d-e5b5f2eeb92a",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:12:01.037Z",
+          "elapsedMs": 0,
+          "phase": "started"
+        },
+        {
+          "kind": "model",
+          "provider": "claude",
+          "model": "claude-sonnet-5",
+          "projectId": "38f177d7-481b-4141-bbc7-60ba78c24d6c",
+          "messageId": "b8219080-ec12-4aa5-bec4-fd8a35089b26",
+          "callId": "b858136f-1a1a-45a0-813d-e5b5f2eeb92a",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:12:06.143Z",
+          "elapsedMs": 5106,
+          "phase": "superseded"
+        }
+      ],
+      "stateIdleObservedMs": 24042,
+      "screenShotUpperBoundMs": 24124,
+      "modelEndToScreenshotUpperBoundMs": 267,
+      "newPmSpeech": true,
+      "replaceMs": 134
+    },
+    {
+      "run": "issue47-final",
+      "provider": "codex",
+      "passed": true,
+      "requestId": "965f3533-fbc4-4bcc-90a2-7a553a4d23b7",
+      "uiActionMs": 7,
+      "composerClearedMs": 8,
+      "httpAcceptedObservedMs": 38,
+      "queueWaitMs": 17,
+      "operationMs": 33405,
+      "model": [
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:16:11.842Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "first_response",
+          "elapsedMs": 8331,
+          "at": "2026-10-01T22:16:20.173Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 15293,
+          "at": "2026-10-01T22:16:27.135Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:16:27.141Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "first_response",
+          "elapsedMs": 7881,
+          "at": "2026-10-01T22:16:35.022Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 18088,
+          "at": "2026-10-01T22:16:45.229Z"
+        }
+      ],
+      "previousCall": [
+        {
+          "kind": "model",
+          "provider": "codex",
+          "model": "",
+          "projectId": "b643403c-3847-41e7-9563-9d177d9343a7",
+          "messageId": "b4dafdfd-a7e3-48bf-8b7e-d8a3e5e04a63",
+          "callId": "b4449dca-de39-4c1f-bb3c-f47846f969d2",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:16:04.642Z",
+          "elapsedMs": 0,
+          "phase": "started"
+        },
+        {
+          "kind": "model",
+          "provider": "codex",
+          "model": "",
+          "projectId": "b643403c-3847-41e7-9563-9d177d9343a7",
+          "messageId": "b4dafdfd-a7e3-48bf-8b7e-d8a3e5e04a63",
+          "callId": "b4449dca-de39-4c1f-bb3c-f47846f969d2",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:16:11.768Z",
+          "elapsedMs": 7126,
+          "phase": "first_response"
+        },
+        {
+          "kind": "model",
+          "provider": "codex",
+          "model": "",
+          "projectId": "b643403c-3847-41e7-9563-9d177d9343a7",
+          "messageId": "b4dafdfd-a7e3-48bf-8b7e-d8a3e5e04a63",
+          "callId": "b4449dca-de39-4c1f-bb3c-f47846f969d2",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:16:11.819Z",
+          "elapsedMs": 7177,
+          "phase": "superseded"
+        }
+      ],
+      "stateIdleObservedMs": 33547,
+      "screenShotUpperBoundMs": 33614,
+      "modelEndToScreenshotUpperBoundMs": 185,
+      "newPmSpeech": false,
+      "replaceMs": 1669
+    },
+    {
+      "run": "issue47-final",
+      "provider": "claude",
+      "passed": true,
+      "requestId": "efb56992-c97d-4573-a8ff-dff5cab2e76c",
+      "uiActionMs": 8,
+      "composerClearedMs": 11,
+      "httpAcceptedObservedMs": 42,
+      "queueWaitMs": 19,
+      "operationMs": 24958,
+      "model": [
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:16:41.100Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "first_output",
+          "elapsedMs": 11615,
+          "at": "2026-10-01T22:16:52.715Z"
+        },
+        {
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 12357,
+          "at": "2026-10-01T22:16:53.457Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "started",
+          "elapsedMs": 0,
+          "at": "2026-10-01T22:16:53.461Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "first_output",
+          "elapsedMs": 11895,
+          "at": "2026-10-01T22:17:05.356Z"
+        },
+        {
+          "operation": "judge_coordination",
+          "attempt": 0,
+          "phase": "completed",
+          "elapsedMs": 12577,
+          "at": "2026-10-01T22:17:06.038Z"
+        }
+      ],
+      "previousCall": [
+        {
+          "kind": "model",
+          "provider": "claude",
+          "model": "claude-sonnet-5",
+          "projectId": "38f177d7-481b-4141-bbc7-60ba78c24d6c",
+          "messageId": "5505c449-9cd2-4958-8fab-d8698b2e3aca",
+          "callId": "24aca3c1-c147-446d-9c4b-dcb2939c541e",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:16:35.956Z",
+          "elapsedMs": 0,
+          "phase": "started"
+        },
+        {
+          "kind": "model",
+          "provider": "claude",
+          "model": "claude-sonnet-5",
+          "projectId": "38f177d7-481b-4141-bbc7-60ba78c24d6c",
+          "messageId": "5505c449-9cd2-4958-8fab-d8698b2e3aca",
+          "callId": "24aca3c1-c147-446d-9c4b-dcb2939c541e",
+          "operation": "interpret_coordination",
+          "attempt": 0,
+          "at": "2026-10-01T22:16:41.073Z",
+          "elapsedMs": 5118,
+          "phase": "superseded"
+        }
+      ],
+      "stateIdleObservedMs": 25150,
+      "screenShotUpperBoundMs": 25210,
+      "modelEndToScreenshotUpperBoundMs": 225,
+      "newPmSpeech": false,
+      "replaceMs": 263
+    }
+  ]
+}
