@@ -2,9 +2,13 @@
 
 Tracking: https://github.com/jovinus302/Ensemble/issues/35
 
-## Current status: live paused; legacy comparison invalid
+## Current authorization: one separate Codex Task A pair
 
-The original `prototype-role-v1` pilot consumed **five of eight approved execution slots**: cells 01–04 completed and cell 05 was interrupted during stopping. Cells 06–08 remain unrun; **three original slots are unused**. No further live execution is authorized now. Existing authorization for commit, push and draft PR continues separately and does not authorize another model run.
+The user approved two new Task A cells after offline role/schema preflight: Ensemble + Codex followed by direct Codex, both `gpt-6-astra` / `low`. This uses two of the three remaining slots, leaves one unused, and authorizes no retries. Codex was selected before results to exercise both corrected failures. New evidence belongs to `evidence/codex-a-pair-v2/`; legacy evidence is never pooled. The reviewed production baseline is `b34b00888b6fc79f5d349a5de195cf942c42f4e2`. PR #50 was merged separately as `c5f300a73e9d4a2499285899b3952209841554e1`; that merge does not change the experiment baseline.
+
+## Historical pause: legacy comparison invalid
+
+The original `prototype-role-v1` pilot consumed **five of eight approved execution slots**: cells 01–04 completed and cell 05 was interrupted during stopping. Cells 06–08 remain unrun; **three original slots are unused**. At that pause no further live execution was authorized. The subsequent narrow two-cell authorization above supersedes the pause only for that pair.
 
 | Legacy cell | Condition | Recorded outcome | Total elapsed | Acceptance |
 |---|---|---|---|---|
@@ -17,9 +21,9 @@ The original `prototype-role-v1` pilot consumed **five of eight approved executi
 
 **All legacy comparison results are invalid for the intended Ensemble effect.** The direct native connector inherited a prototype role asking for single HTML, inline code and mock behavior, conflicting with the repository development task. Earlier preflight checked configuration and fixtures but missed the final composed prompts. Keep failures and partial observations as diagnostic evidence; never pool them with the corrected design or reinterpret the passing checks as a valid paired comparison. Potential shared machine load from [#47](https://github.com/jovinus302/Ensemble/issues/47), noticed at **21:53:23 UTC**, is another timing confound; no timing superiority follows from these observations.
 
-The corrected **`development-brief-v2` is a nonlive plan**. Direct runs use a plain transport with the same neutral development system instructions and tools; Ensemble's coordination protocol is the treatment. Resume rejects a different `protocolRevision`, including legacy manifests with no revision. A new valid eight-cell batch must be separate: with five slots already consumed, it requires **five additional slots beyond the original eight (13 total)** and renewed explicit authorization. The three remaining slots do not authorize eight more runs.
+The corrected **`development-brief-v2` is a separate protocol**. Direct runs use a plain transport with the same neutral development system instructions and tools; Ensemble's coordination protocol is the treatment. Resume rejects a different `protocolRevision`, including legacy manifests with no revision. A new valid eight-cell batch must be separate: with five slots already consumed, it requires **five additional slots beyond the original eight (13 total)** and renewed explicit authorization. The three remaining slots do not authorize eight more runs.
 
-The original Codex PM schema failure is repaired offline in `strictSchema`: explicit types are inferred for literal constraints without changing their values, and nullable literals preserve their meaning. The preflight reproduces the original negative case and verifies the transformed positive case without a provider. No live validation has occurred. The historical baseline stays fixed in existing evidence; the repaired production code differs from it, so the live baseline guard intentionally rejects this checkout until a new reviewed baseline and authorization are recorded.
+The original Codex PM schema failure is repaired offline in `strictSchema`: explicit types are inferred for literal constraints without changing their values, and nullable literals preserve their meaning. The preflight reproduces the original negative case and verifies the transformed positive case without a provider. No live validation has occurred. The historical baseline stays fixed in existing evidence. The newly authorized pair pins the repaired reviewed production source at `b34b008`; the guard rejects changes to its production dependencies.
 
 Both designs are **n=1 exploratory**, not evidence of statistical superiority. Fixture results verify the harness, not Ensemble, Codex or Claude quality. Historical 623-test coverage and the earlier 63.94-to-29.69-second observation are background only, not measurements from this pilot.
 
@@ -27,7 +31,7 @@ Product-scope limitation (issues [#3](https://github.com/jovinus302/Ensemble/iss
 
 ## Corrected development-brief-v2 design (nonlive)
 
-Base: `main@a6bfc345bde634422421c500fad264419bc04ec9`. Each run receives a fresh copy of `starter/`, with the same source SHA-256. It deliberately has an unfinished, disabled time control. No generated output is carried to another condition or from task A to B.
+Base for the new pair: `b34b00888b6fc79f5d349a5de195cf942c42f4e2`; historical pilot base: `a6bfc345bde634422421c500fad264419bc04ec9`. Each run receives a fresh copy of `starter/`, with the same source SHA-256. It deliberately has an unfinished, disabled time control. No generated output is carried to another condition or from task A to B.
 
 | Order | Task | Condition |
 |---|---|---|
@@ -84,20 +88,20 @@ The fixture server has fixed POST `/api/reservations` responses: `2030-06-15T19:
 
 Outputs default to `.local/<mode>-<timestamp>/`: manifest, per-cell reports, summary, original workspaces, screenshots, and blind source packages. `report.schema.json` specifies machine-readable fields. Keep failed workspaces/evidence. Never publish logs containing private runtime data without review.
 
-## Future live execution: paused, renewed approval required
+## Narrow authorized live execution
 
-**The earlier live authorization does not authorize the corrected eight-run batch.** Live is paused. The CLI refuses `--live` without explicit provenance, matching base and rubric hash, and pinned provider config, and checks the Codex schema before provider launch. Commit, push and draft PR are outside these scripts and retain their existing separate authorization.
+**The authorization covers two Codex Task A cells only, not a corrected eight-run batch.** The CLI refuses `--live` without explicit provenance, matching base and rubric hash, and pinned provider config, and checks the Codex schema before provider launch. Commit, push and draft PR are outside these scripts and retain their existing separate authorization.
 
-After explicit parent/user approval, a reviewer supplies an external JSON approval file with `liveEightRuns: true`, `approvedBy`, `source` (the actual authorization), `baseSha`, `rubricHash`, `starterHash`, `evaluatorHash`, and `implementationHash` from `benchmark:plan`, plus `toolsMatched: true` after the preflight below. Never synthesize authorization. The CLI also checks pinned-main ancestry and rejects production dependency source changes. Provider config shape:
+After explicit parent/user approval, a reviewer supplies an external JSON approval file with `livePairedRuns: 2`, `provider: "codex"`, `task: "A"`, `previousConservativeAttempts: 5`, `totalAuthorizedSlots: 8`, `reruns: false`, `approvedBy`, `source` (the actual authorization), `baseSha`, `rubricHash`, `starterHash`, `evaluatorHash`, and `implementationHash` from `benchmark:plan`, plus `toolsMatched: true` after the preflight below. Never synthesize authorization. The CLI also checks pinned-main ancestry and rejects production dependency source changes. Provider config shape:
 
 ```json
 {"codex":{"model":"EXACT_APPROVED_CODEX_MODEL","effort":"medium"},"claude":{"model":"EXACT_APPROVED_CLAUDE_MODEL","effort":"medium"}}
 ```
 
-Only after renewed authorization explicitly covers the separate v2 batch, the repaired schema is included in a newly frozen reviewed baseline, and the complete composed prompts/tools have been reviewed:
+After the narrow authorization and all preflight checks are recorded, run once in the single designated fresh output directory. Pair resume is forbidden; a new directory is not permission to retry:
 
 ```powershell
-npm run benchmark:live -- --approval-file C:/approved/authorization.json --config C:/approved/models.json
+npm run benchmark:live -- --pair codex --approval-file C:/approved/authorization.json --config C:/approved/models.json --output C:/designated/new-pair-output
 ```
 
 Preflight must inspect the **complete composed prompts**, confirm equal tools/settings within each provider pair, validate the Codex PM schema, and record CLI versions. Configuration and reference fixture success alone are insufficient. Codex's native app-server inherits local configuration; additional configured tools/MCPs are not fully enumerated by this harness. Claude uses isolated settings, existing `acceptEdits`, no extra auto-approved tools, and denies Agent/Task/WebSearch/WebFetch. A denied build command is a failure, not permission to expand access. Do not perform live runs if those existing capabilities differ within a pair or if provenance/settings cannot be confirmed. This local implementation deliberately does not change authentication, subscriptions, global CLI configuration or permissions.
