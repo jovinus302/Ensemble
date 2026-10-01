@@ -145,6 +145,27 @@ it('defers a change a live turn cannot take and carries it in a new turn once th
   expect(events.some(event => event.type === 'update_rejected' || event.type === 'task_blocked')).toBe(false);
 }, 30_000);
 
+it('does not submit an obsolete result before a queued change reaches the next turn', async () => {
+  const { runner, store, agentId } = await claudeFixture('slow-result');
+  const first = await runner.startTask(agentId, input);
+  expect(await runner.deliver(agentId, 'task', update)).toMatchObject({ sent: false });
+  await vi.waitFor(async () => { await runner.flush(); expect((await store.read()).some(e => e.type === 'turn_observed' && (e.payload as any).turnId === first && (e.payload as any).status === 'completed')).toBe(true); }, { timeout: 5000 });
+  expect((await store.read()).filter(e => e.type === 'result_submitted' && (e.payload as any).planVersion === 1)).toEqual([]);
+  await vi.waitFor(async () => { await runner.flush(); expect((await store.read()).some(e => e.type === 'result_submitted')).toBe(true); }, { timeout: 5000 });
+  const events = await store.read();
+  expect(events.filter(e => e.type === 'update_sent')).toHaveLength(1);
+  expect(events.filter(e => e.type === 'update_acknowledged')).toHaveLength(1);
+  expect(events.filter(e => e.type === 'result_submitted')).toHaveLength(1);
+  expect(events.find(e => e.type === 'result_submitted')?.payload).toMatchObject({ planVersion: 2 });
+  await runner.deliver(agentId, 'task', update);
+  expect((await store.read()).filter(e => e.type === 'task_started')).toHaveLength(2);
+  await vi.waitFor(async () => { await runner.flush(); expect((await store.read()).filter(e => e.type === 'turn_observed' && (e.payload as any).status === 'completed')).toHaveLength(2); }, { timeout: 5000 });
+  await runner['observe']({ type: 'report', agentId, taskId: 'task', turnId: first, threadId: project(await store.read()).sessions.get(agentId)!.threadId, itemId: 'late-duplicate', index: 0,
+    report: { type: 'result_report', taskId: 'task', planVersion: 1, summary: 'Obsolete duplicate', files: [{ path: 'out.md', description: 'Old result' }] } });
+  expect((await store.read()).filter(e => e.type === 'result_submitted')).toHaveLength(1);
+  expect((await store.read()).some(e => e.type === 'task_blocked')).toBe(false);
+}, 10000);
+
 it('keeps the live turn and its time limit when a change has to wait', async () => {
   const onBlocked = vi.fn();
   const { runner, store, agentId } = await claudeFixture('hang', { turnTimeoutMs: 1000, onBlocked });

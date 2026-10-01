@@ -1,0 +1,202 @@
+{
+  "source": "qa-runtime/md2/codex/server.log",
+  "timeoutCalls": [
+    {
+      "line": 51,
+      "kind": "pm-model",
+      "operation": "interpret_coordination",
+      "elapsedMs": 240045,
+      "modelMs": 239418,
+      "outcome": "timeout"
+    },
+    {
+      "line": 101,
+      "kind": "pm-model",
+      "operation": "interpret_coordination",
+      "elapsedMs": 240032,
+      "firstResponseMs": 6084,
+      "modelMs": 239539,
+      "outcome": "timeout"
+    },
+    {
+      "line": 102,
+      "kind": "pm-model",
+      "operation": "interpret_coordination",
+      "elapsedMs": 240042,
+      "firstResponseMs": 7284,
+      "modelMs": 239579,
+      "outcome": "timeout"
+    }
+  ],
+  "maxQueueWaitMs": 511111,
+  "maxOperationMs": 517539,
+  "selected": [
+    {
+      "line": 51,
+      "kind": "pm-model",
+      "operation": "interpret_coordination",
+      "elapsedMs": 240045,
+      "modelMs": 239418,
+      "outcome": "timeout"
+    },
+    {
+      "line": 54,
+      "kind": "pm-queue",
+      "queueWaitMs": 52315,
+      "operationMs": 342559,
+      "pending": 7
+    },
+    {
+      "line": 55,
+      "kind": "pm-queue",
+      "queueWaitMs": 386931,
+      "operationMs": 0,
+      "pending": 6
+    },
+    {
+      "line": 56,
+      "kind": "pm-queue",
+      "queueWaitMs": 375830,
+      "operationMs": 0,
+      "pending": 5
+    },
+    {
+      "line": 57,
+      "kind": "pm-queue",
+      "queueWaitMs": 311706,
+      "operationMs": 0,
+      "pending": 4
+    },
+    {
+      "line": 58,
+      "kind": "pm-queue",
+      "queueWaitMs": 311705,
+      "operationMs": 106,
+      "pending": 4
+    },
+    {
+      "line": 59,
+      "kind": "pm-queue",
+      "queueWaitMs": 307536,
+      "operationMs": 1,
+      "pending": 3
+    },
+    {
+      "line": 60,
+      "kind": "pm-queue",
+      "queueWaitMs": 276276,
+      "operationMs": 52,
+      "pending": 2
+    },
+    {
+      "line": 101,
+      "kind": "pm-model",
+      "operation": "interpret_coordination",
+      "elapsedMs": 240032,
+      "firstResponseMs": 6084,
+      "modelMs": 239539,
+      "outcome": "timeout"
+    },
+    {
+      "line": 102,
+      "kind": "pm-model",
+      "operation": "interpret_coordination",
+      "elapsedMs": 240042,
+      "firstResponseMs": 7284,
+      "modelMs": 239579,
+      "outcome": "timeout"
+    },
+    {
+      "line": 105,
+      "kind": "pm-queue",
+      "queueWaitMs": 0,
+      "operationMs": 517539,
+      "pending": 6
+    },
+    {
+      "line": 106,
+      "kind": "pm-queue",
+      "queueWaitMs": 511111,
+      "operationMs": 0,
+      "pending": 5
+    },
+    {
+      "line": 107,
+      "kind": "pm-queue",
+      "queueWaitMs": 485206,
+      "operationMs": 0,
+      "pending": 4
+    },
+    {
+      "line": 108,
+      "kind": "pm-queue",
+      "queueWaitMs": 434179,
+      "operationMs": 0,
+      "pending": 3
+    },
+    {
+      "line": 110,
+      "kind": "pm-queue",
+      "queueWaitMs": 434179,
+      "operationMs": 11274,
+      "pending": 2
+    },
+    {
+      "line": 111,
+      "kind": "pm-queue",
+      "queueWaitMs": 442489,
+      "operationMs": 3,
+      "pending": 1
+    },
+    {
+      "line": 112,
+      "kind": "pm-queue",
+      "queueWaitMs": 315776,
+      "operationMs": 12,
+      "pending": 0
+    }
+  ],
+  "longestOperation": {
+    "operationMs": 517539,
+    "providerCallsMs": 517502,
+    "remainderMs": 37,
+    "calls": [
+      {
+        "line": 101,
+        "kind": "pm-model",
+        "operation": "interpret_coordination",
+        "elapsedMs": 240032,
+        "firstResponseMs": 6084,
+        "modelMs": 239539,
+        "outcome": "timeout"
+      },
+      {
+        "line": 102,
+        "kind": "pm-model",
+        "operation": "interpret_coordination",
+        "elapsedMs": 240042,
+        "firstResponseMs": 7284,
+        "modelMs": 239579,
+        "outcome": "timeout"
+      },
+      {
+        "line": 103,
+        "kind": "pm-model",
+        "operation": "interpret_coordination",
+        "elapsedMs": 21424,
+        "firstResponseMs": 8194,
+        "modelMs": 20768,
+        "outcome": "completed"
+      },
+      {
+        "line": 104,
+        "kind": "pm-model",
+        "operation": "judge_coordination",
+        "elapsedMs": 16004,
+        "firstResponseMs": 7031,
+        "modelMs": 15440,
+        "outcome": "completed"
+      }
+    ]
+  }
+}

@@ -56,6 +56,10 @@ if (mode === 'hang') {
   await new Promise(resolve => setTimeout(resolve, Number(process.env.ENSEMBLE_FAKE_CLAUDE_DELAY_MS ?? 1000)));
   out(reply([fence({ type: 'question', taskId, question: '어떤 틀로 쓸까요?', options: ['A', 'B'] })]));
   out(success);
+} else if (mode === 'slow-result' && !updateId) {
+  await new Promise(resolve => setTimeout(resolve, 300));
+  out(reply(normal()));
+  out(success);
 } else {
   const blocks = mode === 'errors'
     ? ['```ensemble-report\n{broken\n```', fence({ type: 'question', taskId, question: '어떤 틀로 쓸까요?', options: ['A', 'B'] })]
