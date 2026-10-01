@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { project, type EventContext, type EventPayloads, type NewLedgerEvent, type TaskSpec } from '@ensemble/core';
+import { project, type EventContext, type EventPayloads, type NewLedgerEvent, type ProjectState, type TaskSpec } from '@ensemble/core';
 import type { LlmProvider, ToolSpec } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
 import type { Dispatcher } from './dispatch.ts';
@@ -20,6 +20,8 @@ class MissingTemplateRoleError extends PlanDraftingError {
 class AttemptFailure extends Error {
   constructor(message: string, readonly reason: string, options?: ErrorOptions) { super(message, options); }
 }
+/** Subtasks per template task in a first plan; depth stays within MAX_TASK_DEPTH (task → subtask). */
+export const MAX_SUBTASKS = 3;
 const INVALID_DRAFT_REASON = '모델이 만든 초안이 계획 규칙(담당자, 의존 관계, 예상 시간)을 지키지 못했습니다';
 // Preserve the M5 output budget and truncation retry for Korean titles and conditions.
 const DRAFT_MAX_TOKENS = 8192;
@@ -64,12 +66,18 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
               templateKey: { enum: taskIds }, title: { type: 'string', minLength: 1 },
               handoffConditions: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'string', minLength: 1 } },
               hours: { type: 'object', additionalProperties: false, required: ['min', 'max'], properties: { min: { type: 'number', minimum: 0 }, max: { type: 'number', minimum: 0 } } },
+              subtasks: { type: 'array', maxItems: MAX_SUBTASKS, description: 'Optional. Only for clearly separable parts the same assignee hands off one by one; the task then only groups them.', items: {
+                type: 'object', additionalProperties: false, required: ['title', 'handoffConditions', 'hours'], properties: {
+                  title: { type: 'string', minLength: 1 }, handoffConditions: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'string', minLength: 1 } },
+                  hours: { type: 'object', additionalProperties: false, required: ['min', 'max'], properties: { min: { type: 'number', minimum: 0 }, max: { type: 'number', minimum: 0 } } },
+                },
+              } },
             },
           } },
         },
       } };
       const response = await complete({ model: input.model, forceTool: tool.name, tools: [tool], maxTokens: DRAFT_MAX_TOKENS,
-        system: 'Fill each of the four supplied MVP role-template tasks exactly once. Task identities, assignees and dependencies are fixed by code. Supply only templateKey, a goal-specific title, 1–3 concrete handoff conditions and an hour range. The 3-condition maximum applies to EVERY task, especially flow: combine related screen requirements into one condition, preserving all requirements and prohibitions. Do not append a fourth condition for customer problem selection; combine it with the design rationale condition. Before responding, count the conditions for each task and check rules and validationError. Keep work within the supplied role purpose and availability. If selecting a customer problem requires a decision, express it as a flow handoff condition, never as another task. Do not invent members or capabilities. Handoff conditions must be verifiable solely from artifact contents. For research, require the covered subjects, a cited source (URL or document name) per item and a separate limitations section for anything not directly checked; never require that sources were actually opened, accessed or verified live, because a reviewer cannot observe that from the artifact and the agent may have no web access. Never require delivery, sharing, upload, notification, or evidence that someone received a document (전달, 공유, 업로드, 알림): those are system responsibilities. State required content, not communication actions.',
+        system: 'Fill each of the four supplied MVP role-template tasks exactly once. Task identities, assignees and dependencies are fixed by code. Supply only templateKey, a goal-specific title, 1–3 concrete handoff conditions and an hour range. A task may optionally list up to 3 subtasks (title, conditions, hours) when it holds clearly separable parts its assignee hands off one by one; do not split by default. The 3-condition maximum applies to EVERY task, especially flow: combine related screen requirements into one condition, preserving all requirements and prohibitions. Do not append a fourth condition for customer problem selection; combine it with the design rationale condition. Before responding, count the conditions for each task and check rules and validationError. Keep work within the supplied role purpose and availability. If selecting a customer problem requires a decision, express it as a flow handoff condition, never as another task. Do not invent members or capabilities. Handoff conditions must be verifiable solely from artifact contents. For research, require the covered subjects, a cited source (URL or document name) per item and a separate limitations section for anything not directly checked; never require that sources were actually opened, accessed or verified live, because a reviewer cannot observe that from the artifact and the agent may have no web access. Never require delivery, sharing, upload, notification, or evidence that someone received a document (전달, 공유, 업로드, 알림): those are system responsibilities. State required content, not communication actions.',
         messages: [{ role: 'user', content: JSON.stringify(facts) }] });
       const call = response.toolCalls.length === 1 ? response.toolCalls[0] : undefined;
       const value = call?.input;
@@ -79,7 +87,7 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
       for (const raw of value.tasks) {
         const t = raw as Record<string, unknown>;
         if (!t || !taskIds.includes(String(t.templateKey)) || !nonempty(t.title)) throw new Error('Invalid template key or title');
-        if (Object.keys(t).some(k => !['templateKey', 'title', 'handoffConditions', 'hours'].includes(k))) throw new Error('Fields outside the role template are forbidden');
+        if (Object.keys(t).some(k => !['templateKey', 'title', 'handoffConditions', 'hours', 'subtasks'].includes(k))) throw new Error('Fields outside the role template are forbidden');
         const slot = template.find(slot => slot.id === t.templateKey)!;
         const member = input.members.find(m => m.memberId === slot.assignee);
         if (!member || member.kind !== slot.kind || (member.kind === 'agent' && !nonempty(member.role))) throw new Error('Unknown assignee or incompatible agent role');
@@ -94,6 +102,20 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
         if (!h || !Number.isFinite(h.min) || !Number.isFinite(h.max) || h.min < 0 || h.max < h.min) throw new Error(`Task ${slot.id}: Invalid estimate ${JSON.stringify(h)}; hours must satisfy finite 0 <= min <= max.`);
         tasks.push({ id: slot.id, title: t.title, baseTitle: t.title, exclusions: [], limits: [], assignee: member.memberId, dependsOn: [...slot.dependsOn], handoffConditions: t.handoffConditions as string[] });
         estimates.push({ taskId: slot.id, hours: { min: h.min, max: h.max } });
+        // Subtasks keep the slot's assignee and inherit its dependencies (projection reads each task's own dependsOn).
+        const subtasks = t.subtasks ?? [];
+        if (!Array.isArray(subtasks) || subtasks.length > MAX_SUBTASKS) throw new Error(`Task ${slot.id}: subtasks must be an array of at most ${MAX_SUBTASKS}`);
+        for (const [n, raw] of subtasks.entries()) {
+          const sub = raw as Record<string, unknown>;
+          const subId = `${slot.id}-${n + 1}`;
+          if (!sub || !nonempty(sub.title) || Object.keys(sub).some(k => !['title', 'handoffConditions', 'hours'].includes(k))) throw new Error(`Subtask ${subId}: needs only a title, conditions and hours`);
+          if (!Array.isArray(sub.handoffConditions) || sub.handoffConditions.length < 1 || sub.handoffConditions.length > 3 || !sub.handoffConditions.every(nonempty)) throw new Error(`Subtask ${subId}: handoffConditions must contain 1–3 nonempty strings`);
+          if (sub.handoffConditions.some(unobservableHandoffCondition)) throw new Error(`Subtask ${subId}: handoff conditions must be verifiable in artifact contents`);
+          const sh = sub.hours as { min: number; max: number } | undefined;
+          if (!sh || !Number.isFinite(sh.min) || !Number.isFinite(sh.max) || sh.min < 0 || sh.max < sh.min) throw new Error(`Subtask ${subId}: Invalid estimate ${JSON.stringify(sh)}; hours must satisfy finite 0 <= min <= max.`);
+          tasks.push({ id: subId, title: sub.title, baseTitle: sub.title, exclusions: [], limits: [], assignee: member.memberId, dependsOn: [...slot.dependsOn], handoffConditions: sub.handoffConditions as string[], parentId: slot.id });
+          estimates.push({ taskId: subId, hours: { min: sh.min, max: sh.max } });
+        }
       }
       const byId = new Map(tasks.map(t => [t.id, t]));
       if (byId.size !== tasks.length || taskIds.some(id => !byId.has(id))) throw new Error('Duplicate or missing task ID');
@@ -106,7 +128,7 @@ export async function proposePlan(input: PlanInput & { llm: LlmProvider; model: 
         visiting.add(id); task.dependsOn.forEach(visit); visiting.delete(id); visited.add(id);
       };
       tasks.forEach(t => visit(t.id));
-      return { tasks: taskIds.map(id => byId.get(id)!), estimates, reason: 'MVP 역할 템플릿: 조사와 인터뷰 → 사용 흐름 설계 → 프로토타입' };
+      return { tasks: taskIds.flatMap(id => [byId.get(id)!, ...tasks.filter(t => t.parentId === id)]), estimates, reason: 'MVP 역할 템플릿: 조사와 인터뷰 → 사용 흐름 설계 → 프로토타입' };
     } catch (error) {
       failure = error instanceof Error ? error.message : 'Invalid draft';
       reason = error instanceof AttemptFailure ? error.reason : INVALID_DRAFT_REASON;
@@ -157,6 +179,23 @@ export async function startFreeProject(options: { store: LedgerStore; llm: LlmPr
   return { proposal };
 }
 
+/**
+ * Metadata of a first-plan task, recorded with its commit (§3 B2). The role template fixes who does
+ * what, so routing follows the assignee's kind; the brief says why the work serves the goal.
+ */
+export function initialTaskMeta(state: ProjectState, tasks: readonly TaskSpec[], task: TaskSpec): EventPayloads['task_meta_set'] {
+  const agent = state.members.get(task.assignee)?.kind === 'agent';
+  const parent = tasks.find(t => t.id === task.parentId);
+  const goal = state.goal?.text ?? '';
+  return {
+    taskId: task.id, priority: 'normal',
+    routing: agent ? { executor: 'agent', reason: 'agent_capable', note: 'Agent 역할로 할 수 있는 일이라 바로 맡겼어요' }
+      : { executor: 'human', reason: 'needs_human_judgement', note: '사람의 판단과 접촉이 필요한 일이라 사람이 맡아요' },
+    brief: { why: parent ? `목표 "${goal}"를 위한 ${parent.title}의 하위 작업이에요` : `목표 "${goal}"를 위해 필요한 일이에요`, sourceMessageIds: [], decisionIds: [], attachmentIds: [], constraints: [] },
+    origin: { createdBy: 'pm', planVersion: 1, sourceMessageIds: [] },
+  };
+}
+
 export async function decidePlan(options: { store: LedgerStore; context: EventContext; dispatcher: Dispatcher }, proposalId: string, memberId: string, approve: boolean): Promise<PmPost[]> {
   const tx = await options.store.transaction(options.context.projectId, events => {
     const state = project(events), proposal = state.pendingPlans.get(proposalId);
@@ -170,7 +209,9 @@ export async function decidePlan(options: { store: LedgerStore; context: EventCo
     if (state.plan) throw new Error('초기 계획이 이미 확정됐습니다.');
     const base = { ...options.context, actor: { kind: 'human' as const, id: memberId } };
     const append: NewLedgerEvent[] = [{ ...base, type: 'plan_decided', payload: { proposalId, memberId, approved: approve } }];
-    if (approve) append.push({ ...base, type: 'plan_committed', payload: { version: 1, basedOn: null, tasks: proposal.tasks, reason: proposal.reason, approvedBy: memberId, sourceMessageIds: [] } }, ...proposal.estimates.map(e => ({ ...base, type: 'estimate_updated', payload: { ...e, source: 'pm' } })));
+    if (approve) append.push({ ...base, type: 'plan_committed', payload: { version: 1, basedOn: null, tasks: proposal.tasks, reason: proposal.reason, approvedBy: memberId, sourceMessageIds: [] } }, ...proposal.estimates.map(e => ({ ...base, type: 'estimate_updated', payload: { ...e, source: 'pm' } })),
+      // Work metadata goes in with the commit, so every first-plan task has its routing and brief from the start.
+      ...proposal.tasks.map((task): NewLedgerEvent => ({ ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'task_meta_set', idempotencyKey: `plan-meta:${proposalId}:${task.id}`, payload: initialTaskMeta(state, proposal.tasks, task) })));
     else append.push(...planningNotice(options.context, `reject:${proposalId}`, memberId, '계획에서 무엇을 바꾸면 좋을까요?', state.openTopics));
     return { append, result: true };
   });

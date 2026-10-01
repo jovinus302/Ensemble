@@ -128,7 +128,7 @@ it('fixes exactly four task identities, assignments and dependencies independent
     { id: 'prototype', assignee: 'prototype-agent', dependsOn: ['flow'] },
   ]);
   const schema = f.calls[0]!.tools![0]!.inputSchema as any;
-  expect(Object.keys(schema.properties.tasks.items.properties)).toEqual(['templateKey', 'title', 'handoffConditions', 'hours']);
+  expect(Object.keys(schema.properties.tasks.items.properties)).toEqual(['templateKey', 'title', 'handoffConditions', 'hours', 'subtasks']);
   expect(schema.properties.tasks.items.properties.templateKey.enum).toEqual(['research', 'interview', 'flow', 'prototype']);
   await f.pm.stop();
 });
