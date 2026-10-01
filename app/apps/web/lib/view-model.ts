@@ -45,8 +45,11 @@ export interface VmDecisionCard {
   question: string;
   /** 항상 있다. 화면은 추천안을 강조한다. evidence는 사람이 읽는 근거 문장. */
   recommendation: { optionId: string; rationale: string; evidence: string[] };
-  /** summary: 이 선택지가 하는 일(효과)을 사람이 읽는 말로. */
-  options: { optionId: string; label: string; tradeoff: string; summary: string[] }[];
+  /**
+   * summary: 이 선택지가 하는 일(효과)을 사람이 읽는 말로.
+   * answerText: 답변형(missing_info) 카드에서 이 선택지를 고르면 Agent에게 그대로 전달되는 답. 있으면 화면이 바로 고를 수 있는 버튼으로 그린다.
+   */
+  options: { optionId: string; label: string; tradeoff: string; summary: string[]; answerText?: string }[];
   impact: { taskTitles: string[]; blockedTitles: string[]; deadlineDeltaDays?: number };
   /** "고쳐서 승인"에서 바꿀 수 있는 필드. 없으면 그 버튼을 감춘다. */
   editable?: ("assignee" | "title" | "priority" | "include")[];

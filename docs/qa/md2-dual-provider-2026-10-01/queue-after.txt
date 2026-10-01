@@ -1,0 +1,12 @@
+
+> test
+> vitest run packages/orchestrator/test/coordination.test.ts
+
+
+ RUN  v5.0.2 <qa-workspace>/ensemble-md2-qa/app
+
+
+ Test Files  1 passed (1)
+      Tests  98 passed (98)
+   Start at  01:42:17
+   Duration  1.45s (transform 44%, tests 28%, import 27%)

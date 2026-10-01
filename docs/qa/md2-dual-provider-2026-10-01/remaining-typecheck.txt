@@ -1,0 +1,7 @@
+
+> typecheck
+> tsc -p tsconfig.json && npm run typecheck -w @ensemble/web
+
+
+> @ensemble/web@0.0.0 typecheck
+> tsc -p tsconfig.json

@@ -6,7 +6,7 @@ import { DecisionRequestCard } from "../components/DecisionRequestCard";
 import { WorkChips } from "../components/Message";
 import { WorkItemDetail } from "../components/WorkItemDetail";
 import { TeamList, WorkPanel, WorkTree } from "../components/WorkPanel";
-import { decisionOptions, decisionTotal, groupWorkItems, planTaskTree, stallGuidance, taskDetailRevision, teamLines, waitingLabel, workGroupOf } from "../components/work-view";
+import { briefPreview, decisionOptions, decisionTotal, groupWorkItems, pmTeamState, planTaskTree, stallGuidance, taskDetailRevision, teamLines, waitingLabel, workGroupOf } from "../components/work-view";
 import { ActivityLine } from "../components/Activity";
 import { buildMockViewModel } from "../lib/mock-view-model";
 import type { VmDecisionCard, VmMessage, VmWorkItem } from "../lib/view-model";
@@ -275,5 +275,56 @@ describe("묶인 결정 요청", () => {
     expect(decisionTotal([lead, payment])).toBe(4);
     const panel = html(createElement(WorkPanel, { vm: { ...vm, decisionCards: [lead], cards: [] }, tab: "decisions", onTab: () => {}, onOpenTask: () => {}, onDecide: noop, onDecideRequest: noop, onSetAvailability: noop }));
     expect(panel).toContain('<span class="tab-count num">3</span>');
+  });
+});
+
+describe("R1 QA 회귀", () => {
+  const answerCard = vm.decisionCards!.find(c => c.id === "decision-retry")!;
+
+  it("답변형 카드: answerText가 있는 선택지를 바로 고르는 버튼으로 보이고, 추천안에 PM 추천과 근거를 붙이며, 직접 답하기 입력란을 둔다", () => {
+    const out = html(createElement(DecisionRequestCard, { card: answerCard, members: vm.members, onDecide: noop }));
+    expect(out).toContain('aria-label="고를 수 있는 답"');
+    expect(out).toMatch(/<button type="button" class="btn-primary"><span class="badge badge-recommend">PM 추천<\/span> 5회<\/button>/);
+    expect(out).toMatch(/<button type="button" class="btn-outlined"> 나중에 정하기<\/button>/);
+    expect(out).toContain("전달할 답: “잠금 없이 시안을 만들고, 검토 때 정해 주세요.”");
+    expect(out).toContain(answerCard.recommendation.rationale);
+    expect(out).toContain("직접 답하기<textarea");
+    expect(out).toContain(">답변 보내기</button>");
+    expect(out).not.toContain('aria-label="PM 추천안"'); // 추천안을 두 번 보이지 않는다
+    expect(out).not.toContain(">답하기<");
+  });
+
+  it("answerText가 하나도 없으면(예전 서버) 지금처럼 추천 블록과 답변 입력란만 둔다", () => {
+    const legacy = { ...answerCard, options: answerCard.options.map(({ answerText: _a, ...o }) => o) };
+    const out = html(createElement(DecisionRequestCard, { card: legacy, members: vm.members, onDecide: noop }));
+    expect(out).not.toContain("고를 수 있는 답");
+    expect(out).toContain('aria-label="PM 추천안"');
+    expect(out).toContain("답변<textarea");
+  });
+
+  it("팀 탭 PM 줄은 PM이 판단 중일 때만 '작업을 정리하는 중'이고, 일이 끝나면 쉬는 중이다", () => {
+    const at = "2026-10-01T00:00:00Z";
+    expect(pmTeamState({ activity: { kind: "pm_thinking", label: "PM이 판단 중", since: at }, busy: true })).toBe("작업을 정리하는 중");
+    expect(pmTeamState({ activity: { kind: "idle", label: "", since: at }, busy: false })).toBe("쉬는 중");
+    expect(pmTeamState({ activity: { kind: "agent_working", label: "", since: at }, busy: true })).toBe("쉬는 중");
+    expect(pmTeamState({ busy: false })).toBe("쉬는 중");
+    expect(pmTeamState({ busy: true })).toBe("작업을 정리하는 중");
+    const idle = { ...vm, busy: false, activity: { kind: "idle" as const, label: "", since: at } };
+    const out = html(createElement(TeamList, { vm: idle, onOpen: () => {} }));
+    expect(out).not.toContain("작업을 정리하는 중");
+    expect(teamLines(idle.work, idle.members, idle).find(l => l.member.kind === "pm")!.row.state).toBe("쉬는 중");
+  });
+
+  it("긴 맥락은 앞 두 문장만 먼저 보이고 나머지는 더 보기로 접는다", () => {
+    const goal = "2주 안에 소규모 제품팀을 위한 고객 인터뷰 예약 서비스의 고객 반응을 확인하자. 대상은 한국의 제품팀이야. 가입, 시간 선택, 예약 확인까지 눌러 볼 수 있어야 해. 결제는 빼고 가자.";
+    const p = briefPreview(goal);
+    expect(p.head).toBe("2주 안에 소규모 제품팀을 위한 고객 인터뷰 예약 서비스의 고객 반응을 확인하자. 대상은 한국의 제품팀이야.");
+    expect(p.rest).toBe("가입, 시간 선택, 예약 확인까지 눌러 볼 수 있어야 해. 결제는 빼고 가자.");
+    expect(briefPreview("짧은 맥락이에요.")).toEqual({ head: "짧은 맥락이에요." });
+    expect(briefPreview("가".repeat(300)).head.length).toBeLessThanOrEqual(140);
+    const items2 = vm.work!.items.map(i => i.id === "prototype" ? { ...i, brief: { ...i.brief!, why: goal } } : i);
+    const out = html(createElement(WorkItemDetail, { taskId: "prototype", items: items2, members: vm.members, me: "owner", messages: vm.messages,
+      onClose: () => {}, onLoad: async () => ({ ok: false as const, message: "x" }), onComment: noop, onOpenTask: () => {}, onJumpToMessage: () => {} }));
+    expect(out).toContain('<details class="compact-more"><summary class="small">더 보기</summary><p>가입, 시간 선택, 예약 확인까지');
   });
 });

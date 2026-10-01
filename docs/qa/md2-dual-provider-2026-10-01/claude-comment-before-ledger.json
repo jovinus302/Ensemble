@@ -1,0 +1,70 @@
+{
+  "baseline": "129731406a3c1b312a8edf4fc64491e3e08230fd",
+  "marker": "QA-COMMENT-20261001-C7F2",
+  "comment": {
+    "seq": 43,
+    "type": "message_recorded",
+    "at": "2026-10-01T16:39:44.891Z",
+    "payload": {
+      "messageId": "84a0df9a-122b-4356-93cc-529802d057f9",
+      "authorId": "owner",
+      "text": "QA 댓글: 문서 첫 줄에 비밀이 아닌 검증 문자열 QA-COMMENT-20261001-C7F2를 정확히 한 번 써 주세요. 이 변경을 실제 Markdown 산출물에 반영해 주세요.",
+      "threadId": "task:research-1",
+      "attachmentIds": []
+    }
+  },
+  "notice": {
+    "seq": 44,
+    "type": "change_notified",
+    "at": "2026-10-01T16:39:44.894Z",
+    "payload": {
+      "changeId": "comment:84a0df9a-122b-4356-93cc-529802d057f9",
+      "planVersion": 1,
+      "recipientId": "research-agent",
+      "text": "{\"updateId\":\"comment:84a0df9a-122b-4356-93cc-529802d057f9:research-agent:turn\",\"fromVersion\":1,\"toVersion\":1,\"keep\":[],\"drop\":[],\"change\":[\"사용자의 댓글: QA 댓글: 문서 첫 줄에 비밀이 아닌 검증 문자열 QA-COMMENT-20261001-C7F2를 정확히 한 번 써 주세요. 이 변경을 실제 Markdown 산출물에 반영해 주세요.\"],\"reason\":\"사용자가 맡은 작업에 댓글을 남겼습니다. 반영할 것이 있으면 반영하고 이어서 진행하세요\"}",
+      "via": "next_turn"
+    }
+  },
+  "sent": [],
+  "ack": [],
+  "artifacts": [
+    {
+      "seq": 58,
+      "at": "2026-10-01T16:41:18.454Z",
+      "name": "input-method-comparison.md",
+      "taskId": "research-1",
+      "marker": false
+    },
+    {
+      "seq": 69,
+      "at": "2026-10-01T16:42:18.520Z",
+      "name": "button-behavior-rules.md",
+      "taskId": "research-2",
+      "marker": false
+    },
+    {
+      "seq": 81,
+      "at": "2026-10-01T16:43:01.362Z",
+      "name": "input-method-comparison.md",
+      "taskId": "qa-marker",
+      "marker": true
+    }
+  ],
+  "checks": [
+    {
+      "seq": 63,
+      "at": "2026-10-01T16:41:26.920Z",
+      "taskId": "research-1"
+    },
+    {
+      "seq": 74,
+      "at": "2026-10-01T16:42:27.003Z",
+      "taskId": "research-2"
+    },
+    {
+      "seq": 86,
+      "at": "2026-10-01T16:43:08.807Z",
+      "taskId": "qa-marker"
+    }
+  ]
+}

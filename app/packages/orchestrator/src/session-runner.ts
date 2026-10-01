@@ -13,6 +13,8 @@ interface TaskRun {
   updates: Map<string, { input: UpdateInstructionsInput; sent: boolean; dropped: string[] }>;
   /** Updates the live turn could not take; delivered once it ends. */
   deferred?: UpdateInstructionsInput[];
+  /** This turn's result predates an undelivered update; duplicates must stay deferred. */
+  resultDeferred?: boolean;
   timer?: ReturnType<typeof setTimeout>;
   timedOut?: boolean;
   blocked?: boolean;
@@ -284,6 +286,12 @@ export class SessionRunner {
           applied: report.applied, dropped: report.dropped }, `update:${report.updateId}:acknowledged`)
         : this.event(agentId, 'update_rejected', { updateId: report.updateId, taskId, reasons: validation.reasons }, `update:${report.updateId}:rejected`)]);
     } else if (report.type === 'result_report') {
+      if (run.resultDeferred) return;
+      if (run.deferred?.length) {
+        run.resultDeferred = true;
+        await this.append([reply('아직 전달하지 못한 요청을 반영한 뒤 결과를 다시 제출합니다.', 'result:deferred')]);
+        return;
+      }
       const updates = [...run.updates.values()].filter(update => update.sent);
       const validation = validateResult(report, { taskId, planVersion: Math.max(run.input.planVersion, ...updates.map(update => update.input.toVersion)),
         dropped: updates.flatMap(update => [...update.input.drop, ...update.dropped]) });

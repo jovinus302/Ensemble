@@ -104,8 +104,8 @@ const decisionCards: VmDecisionCard[] = [
     question: "가입 화면에서 비밀번호를 몇 번 틀리면 잠글까요?",
     recommendation: { optionId: "five", rationale: "흐름 초안에 기준이 없고, 비교한 서비스 3곳 중 2곳이 5회예요.", evidence: ["comparison.md: 예약 서비스 3곳 비교", "flow-v2.md 오류 흐름"] },
     options: [
-      { optionId: "five", label: "5회", tradeoff: "", summary: ["Agent에게 \"5회\"로 전달"] },
-      { optionId: "later", label: "나중에 정하기", tradeoff: "잠금 없이 시안을 만들고 검토 때 정함", summary: ["Agent에게 잠금 없이 진행하라고 전달"] },
+      { optionId: "five", label: "5회", tradeoff: "", summary: ["Agent에게 \"5회\"로 전달"], answerText: "5회" },
+      { optionId: "later", label: "나중에 정하기", tradeoff: "잠금 없이 시안을 만들고 검토 때 정함", summary: ["Agent에게 잠금 없이 진행하라고 전달"], answerText: "잠금 없이 시안을 만들고, 검토 때 정해 주세요." },
     ],
     impact: { taskTitles: ["가입 화면"], blockedTitles: ["가입 화면"] },
     answerMode: "text",
@@ -123,7 +123,8 @@ const work: VmWork = {
       id: "prototype", title: "프로토타입", ownerId: "prototype-agent", ownerKind: "agent", status: "in_progress", priority: "high", childIds: ["prototype-signup", "prototype-payment"],
       routingNote: "Agent가 할 수 있는 일이라 바로 맡겼어요",
       brief: {
-        why: "2주 안에 고객 반응을 보려면 실제로 눌러 볼 수 있는 화면이 필요해요.",
+        // 장면의 초기 계획 작업처럼 목표 문단 전체가 맥락으로 오는 경우: 화면은 앞부분만 보이고 나머지는 접는다.
+        why: "2주 안에 고객 반응을 보려면 실제로 눌러 볼 수 있는 화면이 필요해요. 대상은 한국의 소규모 제품팀이에요. 가입, 시간 선택, 예약 확인까지 눌러 볼 수 있어야 하고, 결제는 이번 범위에서 빼기로 했어요. 고객 인터뷰 5건에서 반응을 모으고, 디자이너 검토를 거쳐 다음 단계를 정해요.",
         sources: [{ messageId: "m2", excerpt: "2주 안에 고객 반응을 확인하고 싶어요." }],
         decisions: [{ id: "d1", summary: "흐름 초안 기준으로 먼저 진행" }],
         attachments: [{ id: "a2", name: "flow-v2.md", url: "#flow-v2.md" }],

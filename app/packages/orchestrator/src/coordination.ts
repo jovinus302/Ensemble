@@ -382,6 +382,10 @@ export class Coordinator {
       if (!Array.isArray(v.factMentions) || !v.factMentions.every(mention => mention && typeof mention === 'object' && humanMessages.some(m => m.messageId === mention.messageId) && strings(mention.factIds) && mention.factIds.every((id: string) => knownFacts.some(f => f.id === id)))) errors.push('factMentions: 실제 사람 messageId와 knownFacts의 id만 배열로 사용하세요.');
       return errors;
     });
+    // A correction received while interpretation was running already owns this judgement.
+    // Keep the transactional check below for later races, but avoid another obsolete model call.
+    const correction = newerInput(await this.store.read({ projectId: this.options.projectId }) as AnyEvent[]);
+    if (correction) return { posts: [], events: await this.store.append([superseded(correction)]) };
     if (interpretation && !confirmedOps) interpretation.ops = prepareOps(state, events, commentFollowUps(state, message, interpretation.ops)).ops;
     const planOps =(interpretation?.ops ?? []).filter((op): op is PlanOp => !isRecoveryOp(op)).map(op => {
       if (op.type !== 'set_availability') return op;

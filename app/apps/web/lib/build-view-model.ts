@@ -61,6 +61,35 @@ export function stripTaskKeys(text: string, taskIds: readonly string[]): string 
   return out;
 }
 
+/**
+ * 기계가 남긴 문장의 마지막 방어선: 직렬화된 JSON 덩어리(`{"key": …}`)와 UUID 같은 내부 값은 사람에게 보이지 않는다.
+ * 지운 뒤 남는 빈 괄호·구두점은 정리하고, 아무것도 남지 않으면 빈 문자열을 돌려준다(호출하는 쪽이 대신할 말을 정한다).
+ */
+export function sanitizeMachineText(text: string): string {
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    // `{` 다음에 `"키":`가 오면 짝이 맞는 `}`까지 JSON 덩어리로 보고 뺀다(문자열 안의 괄호는 세지 않는다).
+    if (text[i] === '{' && /^\{\s*"[^"]*"\s*:/.test(text.slice(i))) {
+      let depth = 0, inString = false, j = i;
+      for (; j < text.length; j++) {
+        const c = text[j];
+        if (inString) { if (c === '\\') j++; else if (c === '"') inString = false; continue; }
+        if (c === '"') inString = true;
+        else if (c === '{' || c === '[') depth++;
+        else if ((c === '}' || c === ']') && --depth === 0) break;
+      }
+      i = j;
+      continue;
+    }
+    out += text[i];
+  }
+  const stripped = out.replace(new RegExp(UUID.source, 'gi'), '');
+  if (stripped === text) return text; // 뺀 것이 없으면 원문 그대로(줄바꿈·구두점을 건드리지 않는다)
+  return stripped
+    .replace(/\[\s*(?:,\s*)*\]|\(\s*\)/g, '')
+    .split('\n').map(line => line.replace(/[ \t]{2,}/g, ' ').replace(/\s+([,.:;)])/g, '$1').replace(/[:,]\s*$/, '').trimEnd()).join('\n').trim();
+}
+
 /** Agent 요약의 "할 일" 줄을 작업의 현재 상태에 맞춘다. 가장 최근 요약만 현재 상태를 말하고, 이전 요약에서는 낡은 문장을 뺀다. */
 export function refreshTodo(text: string, status: TaskStatus | undefined, latest: boolean): string {
   return text.split('\n').map(line => {
@@ -178,7 +207,7 @@ function buildMessages(typed: readonly AnyEvent[], state: ProjectState, name: (i
     const considered = e.type === 'pm_spoke' ? considerations.get(e.payload.considerationId) : undefined;
     let text = e.payload.text;
     if (e.type === 'reply_recorded') text = text.replace(/^Agent question \([^)]*\):\s*/, '질문: ').replace(/\sOptions:\s*/g, '\n선택지: ');
-    if (e.type !== 'message_recorded') text = plainIds(stripTaskKeys(text, taskIds));
+    if (e.type !== 'message_recorded') text = sanitizeMachineText(plainIds(stripTaskKeys(text, taskIds))) || (e.type === 'pm_spoke' ? 'PM이 기록을 남겼어요' : '결과를 남겼어요');
     if (e.type === 'reply_recorded' && e.payload.taskId) text = refreshTodo(text, state.tasks.get(e.payload.taskId)?.status, latestSummary.get(e.payload.taskId) === e.id);
     // 결정 요청을 안내하는 발언은 그 카드 자리다(카드가 보이는 사람에게는 카드로 그려진다).
     const cardId = e.type === 'pm_spoke' ? e.payload.requestId ?? (proposalIds.has(e.payload.considerationId) ? e.payload.considerationId : undefined) : undefined;
@@ -313,7 +342,7 @@ function readers(typed: readonly AnyEvent[], state: ProjectState, labels: Return
   /** 모델·코드가 쓴 문장에서 "[id 제목]"·"task:id"·맨 id를 작업 이름으로, 멤버 id를 이름으로 바꾼다. */
   /** Bare task ids in PM/agent sentences become work titles (people never see work keys). */
   const plainIds = (text: string) => bare ? text.replace(bare, id => titleOf(id)) : text;
-  const visible = (text: string) => plainIds(humanize(stripTaskKeys(text, taskIds)));
+  const visible = (text: string) => sanitizeMachineText(plainIds(humanize(stripTaskKeys(text, taskIds))));
   /** Evidence ids as people read them; an id that has no readable name is left out rather than shown raw. */
   const evidence = (raw: string): string[] => {
     const prefix = raw.split(':')[0];
@@ -426,7 +455,11 @@ function workBuilder(events: readonly LedgerEvent[], typed: readonly AnyEvent[],
   const decisionCard = (request: OpenRequest): VmDecisionCard => ({
       kind: 'decision' as const, id: request.requestId, forMemberId: request.targetMemberId, requestKind: request.kind, question: visible(request.question),
       recommendation: { optionId: request.recommendation.optionId, rationale: visible(request.recommendation.rationale), evidence: [...new Set(request.recommendation.evidence.flatMap(evidence))] },
-      options: request.options.map(o => ({ optionId: o.optionId, label: visible(o.label), tradeoff: visible(o.tradeoff), summary: o.effects.flatMap(effectLines) })),
+      options: request.options.map(o => {
+        // answerText는 core 선택지의 선택 필드다(계약 FIX-R1-CORE). 아직 없는 core에서도 같은 코드가 돈다.
+        const answer = (o as { answerText?: string }).answerText?.trim();
+        return { optionId: o.optionId, label: visible(o.label), tradeoff: visible(o.tradeoff), summary: o.effects.flatMap(effectLines), ...(answer ? { answerText: answer } : {}) };
+      }),
       impact: { taskTitles: [...new Set(request.impact.taskIds.map(titleOf))], blockedTitles: [...new Set(request.impact.blockedTaskIds.map(titleOf))],
         ...(request.impact.deadlineDeltaDays !== undefined ? { deadlineDeltaDays: request.impact.deadlineDeltaDays } : {}) },
       ...(request.editable?.length ? { editable: [...request.editable] } : {}),
@@ -440,6 +473,8 @@ function workBuilder(events: readonly LedgerEvent[], typed: readonly AnyEvent[],
     bundleDecisions(openDecisions(state).filter(d => d.source === 'decision_requested' && d.targetMemberId === me))
       .map(([lead, ...rest]) => ({ ...decisionCard(lead!), ...(rest.length ? { bundled: rest.map(decisionCard) } : {}) }));
 
+  /** 활동 한 줄 뒤에 붙는 설명. 정리하고 남는 말이 없으면 붙이지 않는다. */
+  const detail = (text: string | undefined) => { const t = text ? visible(text) : ''; return t ? `: ${t}` : ''; };
   const activityText = (a: TaskActivity): string => {
     switch (a.kind) {
       case 'created': {
@@ -449,18 +484,18 @@ function workBuilder(events: readonly LedgerEvent[], typed: readonly AnyEvent[],
       }
       case 'assigned': return `담당이 ${name(a.assignee ?? '')}(으)로 바뀌었어요`;
       case 'started': return '작업을 시작했어요';
-      case 'submitted': return a.text ? `결과를 냈어요: ${clip(visible(a.text), 80)}` : '결과를 냈어요';
+      case 'submitted': { const text = visible(a.text ?? ''); return text ? `결과를 냈어요: ${clip(text, 80)}` : '결과를 냈어요'; }
       case 'reviewed': return a.event === 'task_checked' ? 'PM이 인계 조건을 확인했어요' : a.text === 'sufficient' ? 'PM이 결과를 검토했어요: 조건 충족' : 'PM이 결과를 검토했어요: 보완 필요';
-      case 'revision': return `보완을 요청했어요${a.text ? `: ${visible(a.text)}` : ''}`;
-      case 'blocked': return `멈췄어요${a.text ? `: ${visible(a.text)}` : ''}`;
+      case 'revision': return `보완을 요청했어요${detail(a.text)}`;
+      case 'blocked': return `멈췄어요${detail(a.text)}`;
       case 'resumed': return '다시 이어서 진행해요';
-      case 'changed': return a.cancelled ? '계획에서 빠졌어요' : a.event === 'update_sent' ? '바뀐 내용을 담당에게 전달했어요' : `작업 내용이 바뀌었어요${a.text ? `: ${visible(a.text)}` : ''}`;
+      case 'changed': return a.cancelled ? '계획에서 빠졌어요' : a.event === 'update_sent' ? '바뀐 내용을 담당에게 전달했어요' : `작업 내용이 바뀌었어요${detail(a.text)}`;
       case 'decision_requested': {
         const target = a.requestId ? state.decisionRequests.get(a.requestId)?.request.targetMemberId : undefined;
-        return `${target ? `${name(target)}님에게 ` : ''}결정을 요청했어요${a.text ? `: ${visible(a.text)}` : ''}`;
+        return `${target ? `${name(target)}님에게 ` : ''}결정을 요청했어요${detail(a.text)}`;
       }
       case 'decision_resolved': return OUTCOME_TEXT[a.text ?? ''] ?? '결정했어요';
-      case 'comment': return visible(a.text ?? '');
+      case 'comment': return visible(a.text ?? '') || '댓글을 남겼어요';
     }
   };
   const activity = (taskId: string): VmActivityItem[] => taskActivity(events, taskId).map(a => {

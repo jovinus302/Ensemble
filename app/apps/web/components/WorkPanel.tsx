@@ -97,7 +97,7 @@ export function WorkTree({ vm, onOpen }: { vm: ViewModel; onOpen: (id: string) =
 export function TeamList({ vm, onOpen }: { vm: ViewModel; onOpen: (id: string) => void }) {
   return (
     <ul className="team-list" aria-label="팀">
-      {teamLines(vm.work, vm.members).map(({ member, row, current }) => (
+      {teamLines(vm.work, vm.members, vm).map(({ member, row, current }) => (
         <li key={member.id} className="team-row">
           <Avatar member={member} size={28} />
           <span className="team-main">
