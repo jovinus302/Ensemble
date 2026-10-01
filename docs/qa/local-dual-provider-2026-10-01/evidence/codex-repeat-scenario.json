@@ -1,0 +1,119 @@
+{
+  "code": "6a42b91",
+  "events": [
+    {
+      "at": "2026-10-01T14:06:48.589Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:06:48.603Z",
+      "clicked": 1
+    },
+    {
+      "at": "2026-10-01T14:06:50.726Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:06:50.765Z",
+      "clicked": 2
+    },
+    {
+      "at": "2026-10-01T14:11:28.388Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:11:28.405Z",
+      "clicked": 3
+    },
+    {
+      "at": "2026-10-01T14:11:30.606Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:11:30.624Z",
+      "clicked": 4
+    },
+    {
+      "at": "2026-10-01T14:11:58.588Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:11:58.615Z",
+      "clicked": 5
+    },
+    {
+      "at": "2026-10-01T14:13:37.721Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:13:37.741Z",
+      "clicked": 6
+    },
+    {
+      "at": "2026-10-01T14:16:26.537Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:16:26.547Z",
+      "clicked": 7
+    },
+    {
+      "at": "2026-10-01T14:18:25.388Z",
+      "clicked": 8
+    },
+    {
+      "at": "2026-10-01T14:18:25.404Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:18:59.409Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:18:59.440Z",
+      "clicked": 9
+    },
+    {
+      "at": "2026-10-01T14:19:41.043Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:19:41.072Z",
+      "clicked": 10
+    },
+    {
+      "at": "2026-10-01T14:20:28.737Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:20:28.755Z",
+      "clicked": 11
+    },
+    {
+      "at": "2026-10-01T14:21:20.988Z",
+      "http": "http://127.0.0.1:3427/api/scenario/next",
+      "status": 202
+    },
+    {
+      "at": "2026-10-01T14:21:21.012Z",
+      "clicked": 12
+    },
+    {
+      "at": "2026-10-01T14:21:41.263Z",
+      "scriptEnd": true
+    }
+  ],
+  "scriptEnd": true,
+  "note": "Artifact completion is independently verified by downloaded HTML browser flows, not scriptEnd."
+}

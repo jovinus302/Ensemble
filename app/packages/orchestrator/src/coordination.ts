@@ -62,7 +62,7 @@ function validConversation(value: unknown, state: ProjectState, lastHumanId?: st
     && typeof v.directedToPm === 'boolean'
     && (v.questionMessageId !== null || (!v.waitingOnMemberIds.length && !v.directedToPm));
 }
-function interpretationTool(state: ProjectState): ToolSpec {
+export function interpretationTool(state: ProjectState): ToolSpec {
   const ids = (values: string[]) => ({ type: 'string', enum: values });
   const sourceMessageIds = { type: 'array', minItems: 1, items: ids(state.messages.filter(m => state.members.get(m.authorId)?.kind === 'human').map(m => m.messageId)) };
   const taskId = ids(state.plan?.tasks.map(t => t.id) ?? []);
@@ -324,6 +324,13 @@ export class Coordinator {
     const state = project(events);
     const message = state.messages.find(m => m.messageId === messageId);
     if (!message) throw new Error(`Unknown message ${messageId}`);
+    // Keep all messages as context; a newer input from the same person owns the judgment.
+    const newerInput = (rows: readonly AnyEvent[]) => !confirmed && !events.some(e => e.type === 'message_recorded' && e.payload.messageId === messageId && e.payload.attachmentIds.length) && rows.findLast(e => e.type === 'message_recorded' && e.seq > message.seq && e.payload.authorId === message.authorId && !e.payload.attachmentIds.length);
+    const superseded = (newer: AnyEvent): NewLedgerEvent => ({ projectId: this.options.projectId, targetProductId: this.options.targetProductId,
+      actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: `coordination:${this.options.projectId}:${messageId}:pm_considered`,
+      payload: { considerationId: `superseded:${messageId}`, triggerId: messageId, whoseAction: null, alreadyKnows: 'unknown', evidence: [messageId, newer.id], decision: 'silent', reason: '뒤이어 받은 같은 사람의 입력과 함께 판단합니다. 앞선 메시지는 대화 문맥에 유지합니다.', openTopics: state.openTopics } });
+    const newer = newerInput(events);
+    if (newer) return { posts: [], events: await this.store.append([superseded(newer)]) };
     state.messages = state.messages.filter(m => m.seq <= message.seq || state.members.get(m.authorId)?.kind !== 'human');
     if (events.some(e => e.type === 'pm_considered' && e.payload.triggerId === messageId)) return { posts: [], events: [] };
     const now = (this.options.clock ?? (() => new Date()))();
@@ -709,10 +716,14 @@ export class Coordinator {
       append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:ask:assignment:${spec.id}`, text, kind: 'ask', requestId, taskIds: [spec.id] }, `ask:assignment:${spec.id}`, true));
     }
     const agentAnswers = [...new Map((interpretation?.agentAnswers ?? []).map(a => [a.questionId, a])).values()].map(a => ({ taskId: pendingAgentQuestions.find(q => q.questionId === a.questionId)!.taskId, questionId: a.questionId, text: humanMessages.filter(m => a.sourceMessageIds.includes(m.messageId)).map(m => m.text).join('\n') }));
-    const tx = await this.store.transaction<'duplicate' | 'retry' | 'applied'>(this.options.projectId, fresh => {
+    const tx = await this.store.transaction<'duplicate' | 'retry' | 'applied' | 'superseded'>(this.options.projectId, fresh => {
       if (fresh.some(e => e.idempotencyKey === `${key}:pm_considered`)) return { append: [], result: 'duplicate' };
+      const newer = newerInput(fresh as AnyEvent[]);
+      if (newer) return { append: [superseded(newer)], result: 'superseded' };
       const latest = project(fresh);
-      if ((confirmed && latest.lastSeq !== state.lastSeq) || fresh.slice(events.length).some(e => !['message_recorded', 'attachment_recorded'].includes(e.type))) {
+      // Streaming worker commentary does not change projected planning facts. Retrying
+      // both model calls for every progress update can starve a live scope change.
+      if ((confirmed && fresh.slice(events.length).some(e => e.type !== 'reply_recorded')) || fresh.slice(events.length).some(e => !['message_recorded', 'attachment_recorded', 'reply_recorded'].includes(e.type))) {
         if (retry < 2) return { append: [], result: 'retry' };
         const text = '기록이 계속 바뀌어 변경을 반영하지 못했습니다. 잠시 후 다시 말씀해 주세요.';
         judgement = { ...judgement!, whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: '최신 기록 재판단 두 번 후에도 경합이 계속됨', text };
@@ -755,7 +766,7 @@ export class Coordinator {
       return { append, result: 'applied' };
     });
     if (tx.result === 'retry') return this.consider(messageId, confirmed, requestId, retry + 1);
-    if (tx.result === 'duplicate') return { posts: [], events: [] };
+    if (tx.result === 'duplicate' || tx.result === 'superseded') return { posts: [], events: tx.appended };
     const result: CoordinationResult = { posts: post ? [post] : [], events: tx.appended, ...(agentAnswers.length ? { agentAnswers } : {}), ...(resolutions.length ? { resolutions } : {}), ...(reopens.length ? { reopens } : {}) };
     const starts = (tx.appended as AnyEvent[]).flatMap(e => e.type === 'task_start_reserved' ? [e.payload.taskId] : []);
     const requests = (tx.appended as AnyEvent[]).flatMap(e => e.type === 'decision_requested' ? [e.payload.requestId] : []);

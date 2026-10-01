@@ -288,6 +288,8 @@ it('MD2 drives the work flow through the API with the fake PM model and fake age
   const item = async (title: string) => (await view('owner')).work?.items.find(i => i.title === title);
   try {
     await app.state();
+    // Before a plan there is no work projection, so the panel keeps its roadmap fallback.
+    expect((await view('owner')).work).toBeUndefined();
     // Free start → hierarchical plan card for the decider.
     expect((await post('free/start', { me: 'owner', goal: '인터뷰 예약 서비스 시제품', deadline: '2026-12-01' })).status).toBe(200);
     const plan = (await view('owner')).cards.find(c => c.kind === 'plan_approval');

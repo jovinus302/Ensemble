@@ -1,0 +1,84 @@
+[
+  {
+    "label": "before",
+    "elapsedMs": 63940,
+    "calls": 4,
+    "modelTimings": [
+      {
+        "operation": "interpret_coordination",
+        "elapsedMs": 16710,
+        "firstResponseMs": 6021,
+        "modelMs": 16205,
+        "outcome": "completed"
+      },
+      {
+        "operation": "judge_coordination",
+        "elapsedMs": 15848,
+        "firstResponseMs": 7864,
+        "modelMs": 14942,
+        "outcome": "completed"
+      },
+      {
+        "operation": "interpret_coordination",
+        "elapsedMs": 13789,
+        "firstResponseMs": 6178,
+        "modelMs": 13163,
+        "outcome": "completed"
+      },
+      {
+        "operation": "judge_coordination",
+        "elapsedMs": 17562,
+        "firstResponseMs": 8394,
+        "modelMs": 17011,
+        "outcome": "completed"
+      }
+    ],
+    "eventTypes": [
+      "pm_considered",
+      "decision_recorded",
+      "plan_committed",
+      "change_notified",
+      "pm_spoke"
+    ],
+    "posts": [
+      {
+        "text": "정리하면: 카운터 HTML에서 감소(-1) 제외, 범위를 +1 · 초기화까지만 한정.",
+        "kind": "summary"
+      }
+    ]
+  },
+  {
+    "label": "after",
+    "elapsedMs": 29690,
+    "calls": 2,
+    "modelTimings": [
+      {
+        "operation": "interpret_coordination",
+        "elapsedMs": 13379,
+        "firstResponseMs": 5854,
+        "modelMs": 12873,
+        "outcome": "completed"
+      },
+      {
+        "operation": "judge_coordination",
+        "elapsedMs": 16305,
+        "firstResponseMs": 8626,
+        "modelMs": 15728,
+        "outcome": "completed"
+      }
+    ],
+    "eventTypes": [
+      "pm_considered",
+      "decision_recorded",
+      "plan_committed",
+      "change_notified",
+      "pm_spoke"
+    ],
+    "posts": [
+      {
+        "text": "정리하면: 카운터 HTML에서 감소(-1) 제외, 범위를 +1 · 초기화까지만 한정.",
+        "kind": "summary"
+      }
+    ]
+  }
+]

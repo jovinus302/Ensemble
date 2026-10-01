@@ -1,0 +1,22 @@
+{
+  "requests": 2,
+  "elapsedMs": 1889,
+  "tasks": [
+    {
+      "id": "research",
+      "status": "running"
+    },
+    {
+      "id": "interview",
+      "status": "reserved"
+    },
+    {
+      "id": "flow",
+      "status": "waiting"
+    },
+    {
+      "id": "prototype",
+      "status": "waiting"
+    }
+  ]
+}

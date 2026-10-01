@@ -19,6 +19,7 @@ export interface LlmRequest {
   /** Force a specific tool call, e.g. for structured judgments. */
   forceTool?: string;
   maxTokens?: number;
+  signal?: AbortSignal;
 }
 
 export interface ToolCall {
@@ -38,6 +39,7 @@ export interface LlmResponse {
 
 export interface LlmProvider {
   complete(request: LlmRequest): Promise<LlmResponse>;
+  close?(): Promise<void>;
 }
 
 export type ModelRole = "pm" | "agent";

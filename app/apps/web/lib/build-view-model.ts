@@ -245,7 +245,9 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
   const thisWeek = (id: string) => { const h = state.availabilityOverrides?.get(id)?.get(week); return h === undefined ? {} : { weeklyHoursThisWeek: h }; };
   return { mode: options.mode, project: { goal: state.goal?.text, deadline: state.goal?.deadline, ...projectTitle(state.goal?.text) }, me: options.me,
     members: [...[...state.members.values()].map(m => ({ id: m.memberId, kind: m.kind, displayName: m.displayName, role: m.role, weeklyHours: state.availability.get(m.memberId), ...thisWeek(m.memberId), busy: state.activeTurn.has(m.memberId) })), { id: 'pm', kind: 'pm', displayName: 'PM' }],
-    messages, cards, decisionCards: work.decisionCards(options.me), work: work.view(options.me), busy: options.busy, ...(options.scenario ? { scenario: options.scenario } : {}), ...(options.activity ? { activity: options.activity } : {}),
+    messages, cards, decisionCards: work.decisionCards(options.me),
+    // No plan yet means no work projection: the panel then keeps showing the roadmap (WorkPanel fallback).
+    ...(state.plan ? { work: work.view(options.me) } : {}), busy: options.busy, ...(options.scenario ? { scenario: options.scenario } : {}), ...(options.activity ? { activity: options.activity } : {}),
     roadmap: { planVersion: state.plan?.version ?? null, ...(options.mode === 'scenario' ? { clockLabel: '시연 시계' } : {}),
       tasks: (state.plan?.tasks ?? []).map(t => { const span = forecastNow?.ok ? forecastNow.tasks.find(f => f.taskId === t.id) : undefined; const h = state.estimates.get(t.id);
         return { id: t.id, title: t.title, assigneeName: name(t.assignee), status: state.tasks.get(t.id)?.status ?? 'waiting',

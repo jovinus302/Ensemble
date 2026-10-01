@@ -152,7 +152,7 @@ it('keeps the live turn and its time limit when a change has to wait', async () 
   expect(await runner.deliver(agentId, 'task', update)).toMatchObject({ sent: false });
   await vi.waitFor(async () => { await runner.flush(); expect((await store.read()).some(event => event.type === 'turn_observed' && (event.payload as { status: string }).status === 'interrupted')).toBe(true); }, { timeout: 20_000, interval: 100 });
   expect(onBlocked).toHaveBeenCalledTimes(1);
-  expect(onBlocked).toHaveBeenCalledWith(expect.objectContaining({ turnId, reason: expect.stringContaining('제한 시간') }));
+  expect(onBlocked).toHaveBeenCalledWith(expect.objectContaining({ turnId, reason: expect.stringContaining('제한 시간(1초)') }));
   const events = await store.read();
   expect(events.filter(event => event.type === 'task_started')).toHaveLength(1);
   expect(events.some(event => event.type === 'update_rejected' || event.type === 'update_sent')).toBe(false);

@@ -126,7 +126,10 @@ export function WorkPanel({ vm, tab, onTab, onOpenTask, onDecide, onDecideReques
         ))}
       </div>
       <div className="panel-body" id="panel-body" role="tabpanel" aria-labelledby={`panel-tab-${tab}`}>
-        {tab === "work" && <WorkTree vm={vm} onOpen={onOpenTask} />}
+        {tab === "work" && (vm.work ? <WorkTree vm={vm} onOpen={onOpenTask} /> : (
+          <RoadmapCard roadmap={vm.roadmap} deadline={vm.project.deadline} members={vm.members} me={vm.me}
+            onSetAvailability={onSetAvailability} onResolve={onResolve} />
+        ))}
         {tab === "team" && <TeamList vm={vm} onOpen={onOpenTask} />}
         {tab === "decisions" && (
           decisions.length === 0

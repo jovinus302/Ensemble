@@ -1,0 +1,26 @@
+[
+  {
+    "name": "claude-counter.html",
+    "sha256": "45556e451fbeca37bcfd4b501a3099397b9241436e5bc7390b2dabab259f4587"
+  },
+  {
+    "name": "claude-interview-loop-prototype.html",
+    "sha256": "6c734845b6a428c5ce1f8e09fced4a7c514922d7c0a853990bda49a3972b13c4"
+  },
+  {
+    "name": "codex-counter.html",
+    "sha256": "fb0e4ac40c9d98f3c4e1710b5f434fa667b739f4692994e080e93e51788cf698"
+  },
+  {
+    "name": "codex-interview-loop.html",
+    "sha256": "eb43ba45a55e57614ef09f127f1b88f0ca845b6596be091bf16e8c9cab8bb566"
+  },
+  {
+    "name": "repeat-claude-interview-loop-prototype.html",
+    "sha256": "1535f1db4921337c4c39660f9367b07b3a42f2e2253a325e1a1df15ebad21e27"
+  },
+  {
+    "name": "repeat-codex-interview-loop-v2.html",
+    "sha256": "d898130311d851163d36113d7f5f527dbe5030b737c354c08cf18717053e2f7e"
+  }
+]

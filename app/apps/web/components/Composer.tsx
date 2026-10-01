@@ -8,11 +8,15 @@ export function Composer({ meName, onSend }: { meName: string; onSend: (text: st
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const draft = useRef({ text, files });
+  draft.current = { text, files };
   const canSend = text.trim().length > 0 || files.length > 0;
 
   const send = async () => {
-    if (!canSend) return;
-    const sentText = text.trim(), sentFiles = files;
+    const sentText = draft.current.text.trim(), sentFiles = draft.current.files;
+    if (!sentText && !sentFiles.length) return;
+    // Consume synchronously: two Enter/click events can arrive before React renders.
+    draft.current = { text: '', files: [] };
     setText("");
     setFiles([]);
     const result = await onSend(sentText, sentFiles);

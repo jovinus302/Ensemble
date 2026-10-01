@@ -69,6 +69,7 @@ export class CodexSessionConnector implements SessionConnector {
   private readonly starting = new Map<string, { projectId: string; promise: Promise<SessionInfo> }>();
   private readonly listeners = new Set<(event: SessionEvent) => void>();
   private closed = false;
+  private readonly sandboxFailures = new Set<string>();
 
   constructor(private readonly options: CodexConnectorOptions = {}) {
     this.client = new CodexAppServerClient({ ...options.rpc, serverRequestHandler: declineServerRequest });
@@ -77,12 +78,22 @@ export class CodexSessionConnector implements SessionConnector {
       if (entry) this.started(entry[0], entry[1], turn.id);
     });
     this.client.on('item/completed', ({ threadId, turnId, item }) => {
-      if (item.type !== 'agentMessage') return;
       const entry = this.findThread(threadId);
       if (!entry) return;
       const [agentId, session] = entry;
       const taskId = session.tasks.get(turnId);
       if (!taskId) return;
+      // A sandbox launcher failure cannot be repaired by another model-generated command.
+      // Stop promptly; keep the sandbox intact and surface a recoverable blocked task.
+      if (item.type === 'commandExecution' && item.status === 'failed' && typeof item.aggregatedOutput === 'string'
+        && item.aggregatedOutput.startsWith('error building bubblewrap command:') && !this.sandboxFailures.has(turnId)) {
+        this.sandboxFailures.add(turnId);
+        this.emit({ type: 'turn', agentId, taskId, threadId, turnId, status: 'failed',
+          reason: 'Codex 실행 환경에서 샌드박스를 초기화하지 못했습니다. 환경 설정을 확인한 후 다시 맡겨 주세요.' });
+        void this.client.turnInterrupt({ threadId, turnId }).catch(() => undefined);
+        return;
+      }
+      if (item.type !== 'agentMessage' || this.sandboxFailures.has(turnId)) return;
       const context = { agentId, taskId, threadId, turnId, itemId: item.id };
       this.emit({ ...context, type: 'reply', text: item.text });
       const parsed = parseReports(item.text);
