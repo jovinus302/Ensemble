@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SqliteLedgerStore } from '@ensemble/store';
 import { continuousScenario, conditionMet, DEFAULT_TIMEOUT_MS } from '@ensemble/scenarios';
-import type { AnyEvent } from '@ensemble/core';
+import { project, type AnyEvent } from '@ensemble/core';
 
 // Observations only: the server owns all PM decisions and agent execution.
 const app = fileURLToPath(new URL('..', import.meta.url));
@@ -42,6 +42,24 @@ async function api(route: string, body?: unknown): Promise<any> {
   const response = await fetch(base + route, { ...(body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), signal: AbortSignal.timeout(21 * 60 * 1000) });
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${route}`);
   return response.json();
+}
+/** The server replaces runtime.json atomically; a read racing the rename is retried on the next poll. */
+async function runtimeMeta(): Promise<any | undefined> {
+  try { return JSON.parse(await readFile(path.join(data, 'runtime.json'), 'utf8')); } catch { return undefined; }
+}
+/**
+ * Opt-in (ENSEMBLE_DEMO_FAIL_ON_QUESTION=1): the script never answers an agent's question, so a waiting
+ * step whose agent asked one and ended its turn cannot progress; report it instead of waiting out the timeout.
+ */
+function unansweredAgentQuestion(ledger: AnyEvent[]): string | undefined {
+  if (process.env.ENSEMBLE_DEMO_FAIL_ON_QUESTION !== '1') return undefined;
+  const state = project(ledger);
+  const question = ledger.findLast(e => e.type === 'reply_recorded' && e.actor.kind === 'agent' && /:question:\d+$/.test(e.idempotencyKey ?? ''));
+  if (question?.type !== 'reply_recorded' || !question.payload.taskId) return undefined;
+  const { taskId, memberId } = question.payload;
+  const later = ledger.some(e => e.seq > question.seq && (e.type === 'message_recorded' || (e.type === 'task_started' && e.payload.taskId === taskId)));
+  const status = state.tasks.get(taskId)?.status;
+  return !later && state.activeTurn.get(memberId) !== taskId && (status === 'running' || status === 'revising') ? `Agent 질문에 답할 사람이 없습니다: ${question.payload.text}` : undefined;
 }
 async function events(): Promise<AnyEvent[]> {
   // Resolve once before playback. Concurrent reads hold a Windows file handle and
@@ -83,24 +101,28 @@ try {
       if (conditionMet(step.waitFor, ledger, meta.script?.anchors ?? {})) break;
       const blocked = ledger.findLast(e => e.type === 'task_blocked');
       if (blocked?.type === 'task_blocked') throw new Error(blocked.payload.reason);
+      const question = unansweredAgentQuestion(ledger);
+      if (question) throw new Error(question);
       if (Date.now() - begin > (step.waitFor.timeoutMs ?? DEFAULT_TIMEOUT_MS)) throw new Error(`단계 ${index + 1} 선행 조건 대기 초과: ${JSON.stringify(step.waitFor)}`);
       await pause(1000);
     }
-    // Observe while the HTTP call waits, stopping promptly on a blocked agent.
-    const request = api('scenario/next', {});
-    let finished = false;
-    const settled = request.finally(() => { finished = true; });
-    void settled.catch(() => undefined);
+    // scenario/next only accepts the step (202); the server runs it in the background and ignores another
+    // next while one is in flight. Wait until the server records this step as done, or the script stops,
+    // so the following step is never swallowed. Stop promptly on a blocked agent meanwhile.
     let error: string | undefined;
     try {
-      while (!finished) {
-        await Promise.race([settled.catch(() => undefined), pause(2000)]);
+      await api('scenario/next', {});
+      while (true) {
         await checkStop();
+        const script = (await runtimeMeta())?.script;
+        if (script?.stopped) throw new Error(script.stopped);
+        if ((script?.step ?? 0) > index) break;
         const current = await events();
         const blocked = current.findLast(e => e.type === 'task_blocked');
         if (blocked?.type === 'task_blocked') throw new Error(blocked.payload.reason);
+        if (Date.now() - begin > 21 * 60 * 1000) throw new Error(`단계 ${index + 1} 완료 대기 초과`);
+        await pause(500);
       }
-      await settled;
     } catch (cause) { error = cause instanceof Error ? cause.message : String(cause); }
     await snapshot(String(index + 1).padStart(2, '0'), begin, error);
     if (error) throw new Error(error);

@@ -35,6 +35,19 @@ const call = (input: Record<string, unknown>): ToolCall[] => [{ name: REVIEW_TOO
 const judge = (llm: FakeLlm, s = state(), resultContent: Record<string, string | null> = content) =>
   judgeHandoff({ state: s, result, resultContent, decisions, llm, model: 'fake-pm' });
 
+it('judges sourced work by what the file states: cited sources with clearly separated limits meet the condition', async () => {
+  const llm = new FakeLlm([call({ conditions: [
+    { index: 1, met: true, file: 'flow.md', quote: '가입 단계 이탈(문제 ①)을' },
+    { index: 2, met: true, file: 'flow.md', quote: '결제 화면을 추가한다.' },
+  ], decisionConflicts: [] })]);
+  await judge(llm);
+  const system = llm.requests[0]!.system ?? '';
+  expect(system).toContain('작성자가 자료를 실제로 열람했는지는 결과에서 알 수 없으므로 판단 기준이 아니다');
+  expect(system).toContain('확인 한계 표시만으로 met=false로 두지 않는다');
+  // Missing subjects, content or sources still fail the condition.
+  expect(system).toContain('요구한 대상·내용·출처가 빠졌을 때만 미충족이다');
+});
+
 it('checks structure in code first: missing file, stale result and unconfirmed update skip the model', async () => {
   const llm = new FakeLlm([]);
   expect(await judge(llm, state(), { 'flow.md': null })).toMatchObject({ ok: true, llmCalls: 0, review: { verdict: 'insufficient', missing: [expect.stringContaining('flow.md')] } });
