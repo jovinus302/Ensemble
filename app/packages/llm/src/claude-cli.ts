@@ -54,7 +54,8 @@ export class ClaudeCliProvider implements LlmProvider {
       ...(tool ? ["--json-schema", JSON.stringify(tool.inputSchema)] : []),
     ];
     const run = await runCli(this.options.executable ?? "claude", args, renderPrompt(request, { includeSystem: false }), {
-      cwd: this.options.cwd ?? tmpdir(), env: this.options.env, timeoutMs: this.options.timeoutMs ?? DEFAULT_CLI_TIMEOUT_MS, label: "Claude CLI", signal: request.signal });
+      cwd: this.options.cwd ?? tmpdir(), env: this.options.env, timeoutMs: this.options.timeoutMs ?? DEFAULT_CLI_TIMEOUT_MS, label: "Claude CLI", signal: request.signal,
+      onFirstOutput: () => request.onProgress?.('first_output') });
     const result = lastResult(run.stdout);
     if (!result || result.is_error || result.subtype !== "success") {
       const reason = result?.result || result?.subtype || run.stderr.trim() || `종료 코드 ${run.code ?? run.signal}`;

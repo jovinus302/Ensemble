@@ -5,7 +5,7 @@ import type { UpdateInstructionsInput } from '@ensemble/agents';
 import type { SessionConnector, SessionEvent } from '@ensemble/agents';
 import type { LlmProvider } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
-import { Coordinator, type CoordinationResult } from './coordination.ts';
+import { Coordinator, type CoordinationResult, type CoordinationTiming } from './coordination.ts';
 import { Dispatcher, type ResultOutcome } from './dispatch.ts';
 import { MAX_REVISIONS, pendingChangeUpdate, REFUSAL, retryKey, revisionCount, revisionUpdate, STATUS_LABEL, taskQuestions } from './context.ts';
 import type { ResultContent, SubmittedResult } from './handoff.ts';
@@ -26,7 +26,8 @@ export interface ProjectManagerOptions extends EventContext {
   readResult?: (result: SubmittedResult) => Promise<ResultContent>;
   /** Agent turns running longer than this are interrupted and their task blocked. */
   turnTimeoutMs?: number;
-  onTiming?: (timing: { queueWaitMs: number; operationMs: number; pending: number }) => void;
+  onTiming?: (timing: { projectId: string; messageId?: string; queuedAt: string; startedAt: string; queueWaitMs: number; operationMs: number; pending: number }) => void;
+  onModelTiming?: (timing: CoordinationTiming) => void;
   /** Q3: an unanswered request expires after its one reminder and its work stays paused (default), or applies the recommendation. */
   decisionSettings?: DecisionSettings;
   /** Q4: the daily digest hour (Asia/Seoul) and on/off. Default 09:00, on. */
@@ -88,20 +89,20 @@ export class ProjectManager {
         return this.sessions.startTask(agentId, input);
       }, sendUpdate: (agentId, input) => this.sessions.sendUpdate(agentId, input),
       deliver: (agentId, taskId, input) => this.sessions.deliver(agentId, taskId, input) }, readResult: result => this.readResult(result) });
-    this.coordinator = new Coordinator(options.store, options.llm, this.sessions, { ...this.context, model: options.model, clock: options.clock });
+    this.coordinator = new Coordinator(options.store, options.llm, this.sessions, { ...this.context, model: options.model, clock: options.clock, onTiming: options.onModelTiming });
     // Runner subscribes first. flush below ensures its asynchronous validation finished.
     this.unsubscribe = options.connector.onEvent(event => {
       void this.onSessionEvent(event).then(posts => { this.background.push(...posts); }).catch(error => this.failures.push(error));
     });
   }
 
-  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+  private enqueue<T>(operation: () => Promise<T>, messageId?: string): Promise<T> {
     const queuedAt = Date.now();
     this.queued++;
     const next = this.queue.then(async () => {
       const started = Date.now();
       try { return await operation(); }
-      finally { this.options.onTiming?.({ queueWaitMs: started - queuedAt, operationMs: Date.now() - started, pending: this.queued - 1 }); }
+      finally { this.options.onTiming?.({ projectId: this.context.projectId, messageId, queuedAt: new Date(queuedAt).toISOString(), startedAt: new Date(started).toISOString(), queueWaitMs: started - queuedAt, operationMs: Date.now() - started, pending: this.queued - 1 }); }
     }).finally(() => { this.queued--; });
     this.queue = next.catch(() => undefined);
     return next;
@@ -306,6 +307,7 @@ export class ProjectManager {
       const recorded: NewLedgerEvent[] = attachments.map((a, i) => ({ ...this.context, actor, type: 'attachment_recorded', payload: { attachmentId: attachmentIds[i]!, name: a.name, mimeType: a.mimeType, uri: `data:${a.mimeType};base64,${a.contentBase64 ?? Buffer.from(a.content).toString('base64')}`, ...(a.taskId ? { taskId: a.taskId } : {}) } }));
       recorded.push({ ...this.context, actor, type: 'message_recorded', payload: { messageId, authorId, text, ...(threadId ? { threadId } : {}), attachmentIds } });
       await this.options.store.append(recorded);
+      await this.coordinator.messageRecorded(messageId);
       return { messageId };
   }
 
@@ -408,7 +410,7 @@ export class ProjectManager {
       for (const [i, r] of (coordinated.reopens ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.reopen(r.taskId, authorId, r.reason, `${messageId}:${i}`, r.announcement)));
       await this.deliverPending();
       return posts;
-    });
+    }, messageId);
   }
 
   /**

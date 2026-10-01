@@ -191,6 +191,7 @@ export class WebRuntime {
     // Agent results arrive as attachments recorded from the agent's workspace; the PM reads them from the ledger.
     this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: this.pmLlm, model: this.pmModel,
       onTiming: timing => console.info('[ensemble:pm-queue]', JSON.stringify(timing)),
+      onModelTiming: timing => console.info('[ensemble:pm-coordination]', JSON.stringify({ provider: pmRuntime, model: this.pmModel, ...timing })),
       // The demo's third scene observes a change during construction; its simulated build ends after that change.
       ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' || runtime === 'claude' ? liveAgents(runtime) : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'),
         // The rule-based demo PM has no prose model, so the fake research report keeps its fixed text.

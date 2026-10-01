@@ -20,6 +20,8 @@ export interface LlmRequest {
   forceTool?: string;
   maxTokens?: number;
   signal?: AbortSignal;
+  /** Observable transport milestones, not an estimate of remote compute time. */
+  onProgress?: (milestone: 'first_response' | 'first_output') => void;
 }
 
 export interface ToolCall {
