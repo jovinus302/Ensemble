@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 
 export const HISTORICAL_BASE_SHA = 'a6bfc345bde634422421c500fad264419bc04ec9';
-// Re-pin only after the production validation change passes the offline checks.
-export const BASE_SHA = 'c5f300a73e9d4a2499285899b3952209841554e1';
+// Frozen production validation baseline: 788 offline tests, typecheck, build and browser controls passed.
+export const BASE_SHA = 'd6f1660dd7460e631445e25db141bcff99f956ec';
 /** New neutral-role experiment; never pool with legacy prototype-role pilot observations. */
 export const PROTOCOL_REVISION = 'revision-bound-validation-v3';
 export const LIMITS: Readonly<{ totalMs: number; calls: number }> = Object.freeze({ totalMs: 20 * 60_000, calls: 24 });
