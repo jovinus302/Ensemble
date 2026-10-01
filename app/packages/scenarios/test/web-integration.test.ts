@@ -51,7 +51,8 @@ it.each([false, true])('plays all three scenes through actual API handlers (defa
     await app.state();
     expect((await post('scenario/start', { name: continuousScenario.key })).status).toBe(200);
     const originalId = app.meta.projectId;
-    for (let i = 0; i < continuousScenario.steps.length; i++) {
+    const lines: (string | undefined)[] = [];
+    for (let i = 0; i < continuousScenario.steps.length; i = app.meta.script!.step) {
       if (i === 4) {
         const events = await app.store.read({ projectId: originalId });
         const state = project(events);
@@ -59,13 +60,30 @@ it.each([false, true])('plays all three scenes through actual API handlers (defa
         expect(conditionMet(continuousScenario.steps[i]!.waitFor!, events, app.meta.script!.anchors)).toBe(true);
         expect(resolveTarget(state, { assignee: 'owner' })).toBe('interview');
       }
+      // Every line offered as "다음 발언" is the one the button then posts.
+      const offered = (await app.state()).scenario?.nextLine?.text;
+      lines.push(offered);
+      const before = (await app.store.read({ projectId: originalId })).length;
       expect((await post('scenario/next')).status).toBe(202);
-      await eventually(async () => (app.meta.script!.step === i + 1 && !(await app.state()).busy) || !!app.meta.script!.stopped);
+      await eventually(async () => (app.meta.script!.step > i && !(await app.state()).busy) || !!app.meta.script!.stopped);
       expect(app.meta.script!.stopped).toBeUndefined();
       await app.pm.flush();
+      const step = continuousScenario.steps[i]!;
+      if (!['availability', 'respondToRevision'].includes(step.action ?? '')) {
+        expect((await app.store.read({ projectId: originalId }) as AnyEvent[]).slice(before).some(e => e.type === 'message_recorded' && e.payload.text === offered)).toBe(true);
+      }
     }
+    // The PM applied the exclusion itself, so the clarification line it never asked for is not offered (it would never post).
+    expect(lines).not.toContain(continuousScenario.steps.at(-1)!.text);
     const state = await app.state();
     expect(state.scenario?.done).toBe(true);
+    // Nothing people read carries a serialized structure, and result files are named after their work.
+    const recorded = await app.store.read({ projectId: originalId }) as AnyEvent[];
+    for (const e of recorded) {
+      if (e.type === 'result_submitted' || e.type === 'reply_recorded' || e.type === 'pm_spoke' || e.type === 'agent_report_recorded') expect(e.type === 'result_submitted' ? e.payload.summary : e.payload.text).not.toMatch(/\{"|"\w+":/);
+      if (e.type === 'attachment_recorded') expect(e.payload.name).not.toMatch(/-v\d+-\d+\./);
+    }
+    for (const message of state.messages) expect(message.text).not.toMatch(/\{"|"\w+":/);
     expect(state.project.title.length).toBeLessThanOrEqual(40);
     expect(state.project.title).not.toContain('시연용');
     expect(state.project.synthetic).toBe(true);
@@ -99,9 +117,9 @@ it.each([false, true])('plays all three scenes through actual API handlers (defa
     expect((await app.state()).messages.filter(m => m.authorId === 'owner')).toHaveLength(1);
     if (defaultConnector) {
       // Reusing task IDs after archiving must not lose reservations to the previous project's keys.
-      for (let step = 1; step < continuousScenario.steps.length; step++) {
+      for (let step = 1; step < continuousScenario.steps.length; step = app.meta.script!.step) {
         expect((await post('scenario/next')).status).toBe(202);
-        await eventually(async () => (app.meta.script!.step === step + 1 && !(await app.state()).busy) || !!app.meta.script!.stopped);
+        await eventually(async () => (app.meta.script!.step > step && !(await app.state()).busy) || !!app.meta.script!.stopped);
         expect(app.meta.script!.stopped).toBeUndefined();
         await app.pm.flush();
       }
@@ -320,17 +338,24 @@ it('MD2 drives the work flow through the API with the fake PM model and fake age
     const login = owner.work!.items.find(i => i.title === '로그인 화면')!;
     expect(login).toMatchObject({ ownerId: 'prototype-agent', ownerKind: 'agent', status: 'waiting_human', waitingOn: { memberId: 'owner' }, origin: { createdByName: '디자이너' } });
     const question = owner.decisionCards!.find(c => c.requestKind === 'missing_info')!;
-    expect(question.answerMode).toBe('text');
     expect(owner.messages.some(m => m.cardId === question.id && m.taskIds?.includes(login.id))).toBe(true);
-    // "추천대로 진행" (or picking 답하기) without words would strand the agent: refused, the request stays open.
-    for (const body of [{ me: 'owner', action: 'approve', optionId: question.recommendation.optionId }, { me: 'owner', action: 'choose', optionId: question.recommendation.optionId }]) {
-      const refused = await post(`decisions/${question.id}`, body);
-      expect(refused.status).toBe(400);
-      expect(await refused.json()).toMatchObject({ error: { code: 'answer_required' } });
-    }
+    // The agent's own choices are the card's options, each answering with its words; the PM recommends one, with a reason.
+    const asked = project(await app.store.read()).decisionRequests.get(question.id)!.request;
+    expect(asked.question).not.toMatch(/선택지|이메일만 \//);
+    expect(asked.options.filter(o => o.answerText).map(o => [o.label, o.answerText])).toEqual([['이메일만', '이메일만'], ['이메일과 소셜 로그인', '이메일과 소셜 로그인']]);
+    expect(question.options.map(o => o.label)).toEqual(['이메일만', '이메일과 소셜 로그인', '보류']);
+    expect(asked.options.find(o => o.optionId === asked.recommendation.optionId)?.answerText).toBe('이메일만');
+    expect(question.recommendation.rationale).toContain('이메일만');
+    expect(question.recommendation.rationale).not.toBe('답이 있어야 작업이 이어집니다.');
+    // "답하기" without words is gone: an option that is not an answer still needs words (hold is the only one left).
     expect((await view('owner')).decisionCards!.some(c => c.id === question.id)).toBe(true);
     expect((await item('로그인 화면'))?.status).toBe('waiting_human');
-    expect((await post(`decisions/${question.id}`, { me: 'owner', action: 'answer', text: '이메일 로그인만 해 주세요' })).status).toBe(200);
+    // Picking the other offered answer sends exactly its words to the agent.
+    const other = asked.options.find(o => o.answerText === '이메일과 소셜 로그인')!;
+    expect((await post(`decisions/${question.id}`, { me: 'owner', action: 'choose', optionId: other.optionId })).status).toBe(200);
+    const answered = await app.store.read() as AnyEvent[];
+    expect(answered.find(e => e.type === 'decision_resolved' && e.payload.requestId === question.id)?.payload).toMatchObject({ outcome: 'answered', optionId: other.optionId, answerText: '이메일과 소셜 로그인' });
+    expect(answered.some(e => e.type === 'change_notified' && e.payload.recipientId === 'prototype-agent' && e.payload.text === '이메일과 소셜 로그인')).toBe(true);
     // The answer resumes the work; a comment on it reaches the agent while it runs.
     expect((await item('로그인 화면'))?.status).toBe('in_progress');
     expect((await post(`tasks/${login.id}/comments`, { me: 'owner', text: '버튼 문구는 짧게 해 주세요' })).status).toBe(202);
@@ -349,8 +374,37 @@ it('MD2 drives the work flow through the API with the fake PM model and fake age
     expect((await get('tasks/missing')).status).toBe(404);
     expect((await post('tasks/missing/comments', { me: 'owner', text: '확인' })).status).toBe(404);
     expect((await post(`tasks/${login.id}/comments`, { me: 'research-agent', text: '확인' })).status).toBe(403);
+
+    // A change asked for on the finished work, by the decider: follow-up work for the same agent, built on the result,
+    // with the comment as its origin — and the PM says in the thread what it did.
+    expect((await post(`tasks/${login.id}/comments`, { me: 'owner', text: '비밀번호 찾기 링크도 넣어 주세요' })).status).toBe(202);
+    await eventually(async () => !!(await item('로그인 화면 보완')));
+    const followUp = (await item('로그인 화면 보완'))!;
+    expect(followUp).toMatchObject({ ownerId: 'prototype-agent', ownerKind: 'agent', origin: { createdByName: '사용자' } });
+    expect(project(await app.store.read()).tasks.get(followUp.id)?.spec.dependsOn).toEqual([login.id]);
+    await eventually(async () => ((await (await get(`tasks/${login.id}`)).json()) as VmTaskDetail).comments.some(c => c.authorId === 'pm'));
+    const thread = await (await get(`tasks/${login.id}`)).json() as VmTaskDetail;
+    expect(thread.comments.find(c => c.authorId === 'pm')?.text).toMatch(/후속 작업 "로그인 화면 보완".*프로토타입 Agent에게 맡겼어요/);
+    // The same ask from someone who is not the decider: no work yet, the decider gets a card with a recommendation, the thread hears so.
+    expect((await post(`tasks/${login.id}/comments`, { me: 'designer', text: '오류 문구도 바꿔 주세요' })).status).toBe(202);
+    await eventually(async () => ((await view('owner')).decisionCards ?? []).some(c => c.requestKind === 'plan_change'));
+    const ask = (await view('owner')).decisionCards!.find(c => c.requestKind === 'plan_change')!;
+    expect(ask.recommendation.rationale).toContain('디자이너');
+    expect(ask.question).not.toMatch(/follow-up-\d/);
+    await eventually(async () => ((await (await get(`tasks/${login.id}`)).json()) as VmTaskDetail).comments.filter(c => c.authorId === 'pm').length === 2);
+    expect(((await (await get(`tasks/${login.id}`)).json()) as VmTaskDetail).comments.filter(c => c.authorId === 'pm')[1]!.text).toContain('사용자님께');
+    // The PM log never calls a turn that put a card in front of someone "silent".
+    const log = (await view('owner')).pmLog;
+    expect(log.filter(l => l.spokenText?.includes('반영할까요')).every(l => l.decision === 'speak' && l.whoseAction?.includes('사용자'))).toBe(true);
+    // Nothing people read carries a serialized structure or an internal work key.
+    const final = await view('owner');
+    for (const text of [...final.messages.map(m => m.text), ...final.pmLog.flatMap(l => [l.spokenText ?? '', l.reason])]) expect(text).not.toMatch(/\{"|"\w+":|follow-up-\d|new-work-\d/);
+    for (const workItem of final.work!.items) {
+      const detail = await (await get(`tasks/${workItem.id}`)).json() as VmTaskDetail;
+      for (const entry of detail.activity) expect(entry.text).not.toMatch(/\{"|"\w+":/);
+    }
   } finally { await app.stop(); delete globalRuntime.ensembleRuntime; await rm(dir, { recursive: true, force: true }); }
-}, 20000);
+}, 30000);
 
 it('runs the stuck-work sweep and the daily digest on its timer tick only in free projects, with the digest switchable', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'ensemble-tick-'));

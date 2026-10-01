@@ -106,7 +106,12 @@ export interface TaskActivity {
   planVersion?: number; assignee?: Id; requestId?: Id; resultId?: Id;
   /** changed: the plan dropped the task. */
   cancelled?: true;
+  /** decision_resolved: the words a person's answer sent to the agent (a typed answer or the chosen option's answer). */
+  answerText?: string;
 }
+
+/** A plan change names the conversation that made it, so the work's activity links to it. */
+const changeSource = (sourceMessageIds: readonly Id[]): Pick<TaskActivity, "source"> => sourceMessageIds.length ? { source: { sourceMessageIds: [...sourceMessageIds] } } : {};
 
 /** Thread id for work comments: `message_recorded.threadId` / `pm_spoke.threadId`. */
 export const taskThreadId = (taskId: Id): Id => `task:${taskId}`;
@@ -131,14 +136,14 @@ export function taskActivity(events: readonly LedgerEvent[], taskId: Id): TaskAc
         const p = event.payload;
         const next = p.tasks.find((t) => t.id === taskId);
         if (!next) {
-          if (spec !== undefined && !cancelled) { cancelled = true; push("changed", { planVersion: p.version, text: p.reason, cancelled: true }); }
+          if (spec !== undefined && !cancelled) { cancelled = true; push("changed", { planVersion: p.version, text: p.reason, cancelled: true, ...changeSource(p.sourceMessageIds) }); }
           break;
         }
         if (spec === undefined) {
           created = { ...base, kind: "created", planVersion: p.version, assignee: next.assignee, source: { sourceMessageIds: [...p.sourceMessageIds] } };
           items.push(created);
-        } else if (next.assignee !== assignee) push("assigned", { planVersion: p.version, assignee: next.assignee });
-        else if (JSON.stringify(next) !== spec || cancelled) push("changed", { planVersion: p.version, text: p.reason });
+        } else if (next.assignee !== assignee) push("assigned", { planVersion: p.version, assignee: next.assignee, ...changeSource(p.sourceMessageIds) });
+        else if (JSON.stringify(next) !== spec || cancelled) push("changed", { planVersion: p.version, text: p.reason, ...changeSource(p.sourceMessageIds) });
         spec = JSON.stringify(next); assignee = next.assignee; cancelled = false;
         break;
       }
@@ -165,9 +170,11 @@ export function taskActivity(events: readonly LedgerEvent[], taskId: Id): TaskAc
         push("decision_requested", { requestId, text: question });
         break;
       }
-      case "decision_resolved":
-        if (requests.has(event.payload.requestId)) push("decision_resolved", { requestId: event.payload.requestId, actorId: event.payload.by, text: event.payload.outcome });
+      case "decision_resolved": {
+        const { requestId, by, outcome, answerText } = event.payload;
+        if (requests.has(requestId)) push("decision_resolved", { requestId, actorId: by, text: outcome, ...(outcome === "answered" && answerText?.trim() ? { answerText } : {}) });
         break;
+      }
       case "message_recorded":
         if (event.payload.threadId === thread) push("comment", { actorId: event.payload.authorId, messageId: event.payload.messageId, text: event.payload.text });
         break;

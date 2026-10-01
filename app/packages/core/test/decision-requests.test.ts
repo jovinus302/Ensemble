@@ -149,6 +149,39 @@ describe("answering", () => {
     expect(effects).toEqual([{ type: "answer", taskId: "a", questionId: "q" }]);
     expect(out[0]!.payload).toMatchObject({ outcome: "answered", answerText: "빨간 배너" });
   });
+
+  it("an offered answer (answerText) answers with its words when approved or chosen; a typed answer still goes", () => {
+    const { events, append } = ledger();
+    const answer = { type: "answer" as const, taskId: "a", questionId: "q" };
+    append(createDecisionRequest(project(events), request("q1", "a", {
+      kind: "missing_info", question: "로그인 방식은 무엇으로 할까요?",
+      options: [
+        { optionId: "choice-1", label: "이메일만", answerText: "이메일만", effects: [answer], tradeoff: "" },
+        { optionId: "choice-2", label: "이메일과 소셜 로그인", answerText: "이메일과 소셜 로그인", effects: [answer], tradeoff: "" },
+        { optionId: "hold", label: "보류", effects: [{ type: "none" }], tradeoff: "작업이 멈춤" },
+      ],
+      recommendation: { optionId: "choice-1", rationale: "범위가 작아 먼저 확인하기 쉬움", evidence: ["q"] },
+    }), ctx, now));
+    const state = project(events);
+    const approved = resolveDecision(state, "q1", { by: "owner", action: "approve" }, ctx);
+    expect(approved.effects).toEqual([answer]);
+    expect(approved.events[0]!.payload).toMatchObject({ outcome: "answered", optionId: "choice-1", answerText: "이메일만" });
+    expect(resolveDecision(state, "q1", { by: "owner", action: "choose", optionId: "choice-2" }, ctx).events[0]!.payload).toMatchObject({ outcome: "answered", optionId: "choice-2", answerText: "이메일과 소셜 로그인" });
+    expect(resolveDecision(state, "q1", { by: "owner", action: "answer", text: "이메일과 구글" }, ctx).events[0]!.payload).toMatchObject({ outcome: "answered", answerText: "이메일과 구글" });
+    expect(resolveDecision(state, "q1", { by: "owner", action: "choose", optionId: "hold" }, ctx).events[0]!.payload).toMatchObject({ outcome: "chose_other", optionId: "hold" });
+  });
+
+  it("refuses an answerText on an option that cannot relay it", () => {
+    const { events } = ledger();
+    const bad = request("q1", "a");
+    bad.options[0] = { ...bad.options[0]!, answerText: "디자이너" };
+    expect(() => createDecisionRequest(project(events), bad, ctx, now)).toThrow(/답 전달/);
+    const blank = request("q2", "b", { kind: "missing_info", options: [
+      { optionId: "c1", label: "빈 답", answerText: " ", effects: [{ type: "answer", taskId: "b" }], tradeoff: "" },
+      { optionId: "hold", label: "보류", effects: [{ type: "none" }], tradeoff: "" },
+    ], recommendation: { optionId: "c1", rationale: "x", evidence: [] } });
+    expect(() => createDecisionRequest(project(events), blank, ctx, now)).toThrow(/답이 비었/);
+  });
 });
 
 describe("openDecisions and bundling", () => {

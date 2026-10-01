@@ -27,11 +27,12 @@ class FakeConnector implements SessionConnector {
 }
 
 type Route = Record<string, unknown>;
-async function fixture(options: { route?: Route } = {}) {
+async function fixture(options: { route?: Route; recommend?: Route } = {}) {
   const ctx = { projectId: `decision-flow-${++n}`, targetProductId: 'product' };
   const requests: LlmRequest[] = [];
   const llm: LlmProvider = { async complete(request) {
     requests.push(request);
+    if (request.forceTool === 'recommend_answer' && options.recommend) return { text: '', model: 'fake', responseId: `r${requests.length}`, usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [{ name: 'recommend_answer', input: options.recommend }] };
     if (request.forceTool !== 'route_message') throw new Error(`Unexpected call ${request.forceTool}`);
     return { text: '', model: 'fake', responseId: `r${requests.length}`, usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [{ name: 'route_message', input: options.route ?? { kind: 'chat' } }] };
   } };
@@ -91,6 +92,9 @@ it('approve: the recommended plan ops apply through the coordinator, the request
   // The person's answer is the authority the confirmed operation carries.
   const committed = (await f.events()).findLast(e => e.type === 'plan_committed')!;
   expect(committed.type === 'plan_committed' && committed.payload.sourceMessageIds).toEqual(['decision-answer:req-move']);
+  // The answer reads short in the channel: the choice and what it changes, not the whole question again.
+  const said = (await f.events()).find(e => e.type === 'message_recorded' && e.payload.messageId === 'decision-answer:req-move')!;
+  expect(said.type === 'message_recorded' && said.payload.text).toBe('추천대로 진행(프로토타입 Agent에게 맡기기) · "예약 서비스 대안 조사" 담당 변경');
   // A repeated click is a no-op.
   expect(await f.pm.decideRequest('req-move', { by: 'owner', action: 'approve' })).toEqual([]);
   expect((await f.state()).plan!.version).toBe(2);
@@ -260,4 +264,46 @@ it('work the coordinator reserved while handling a chat message is started by th
   await f.pm.postMessage('owner', '조사 작업 바로 시작해 주세요');
   expect((await f.state()).tasks.get('research')?.status).toBe('running');
   expect(f.connector.starts.map(s => s.input.taskId)).toEqual(['research']);
+});
+
+it('an agent question with choices: each choice is an option answering with its words, the PM recommends one with a reason, and choosing relays the words verbatim', async () => {
+  const f = await fixture({ recommend: { optionIndex: 1, rationale: '확정된 범위가 비교표라 두 서비스를 함께 보는 편이 맞아요.', decisionIds: [] } });
+  await f.pm['dispatcher'].startReady('kickoff');
+  const asked = await f.pm['dispatcher'].onQuestion('research', '비교표는 몇 개 서비스까지 볼까요?', { choices: ['2개', '3개 이상'] });
+  const requestId = questionRequestId(asked.questionId);
+  const request = (await f.state()).decisionRequests.get(requestId)!.request;
+  // A clean question: the choices are options, not part of the title.
+  expect(request.question).toBe('조사 Agent가 "예약 서비스 대안 조사" 작업에서 묻습니다: 비교표는 몇 개 서비스까지 볼까요?');
+  expect(request.options.map(o => [o.label, o.answerText])).toEqual([['2개', '2개'], ['3개 이상', '3개 이상'], ['보류', undefined]]);
+  expect(request.options.slice(0, 2).every(o => o.effects.some(e => e.type === 'answer'))).toBe(true);
+  expect(request.recommendation).toEqual({ optionId: request.options[1]!.optionId, rationale: '확정된 범위가 비교표라 두 서비스를 함께 보는 편이 맞아요.', evidence: [asked.questionId] });
+  const recommend = f.requests.find(r => r.forceTool === 'recommend_answer')!;
+  expect(JSON.parse(recommend.messages[0]!.content).facts).toMatchObject({ question: '비교표는 몇 개 서비스까지 볼까요?', options: ['2개', '3개 이상'], task: { title: '예약 서비스 대안 조사' } });
+
+  await f.pm.decideRequest(requestId, { by: 'owner', action: 'choose', optionId: request.options[0]!.optionId });
+
+  const after = await f.state();
+  expect(after.decisionRequests.get(requestId)).toMatchObject({ status: 'answered', resolution: { outcome: 'answered', optionId: 'choice-1', answerText: '2개' } });
+  expect(workStatus(after.tasks.get('research')!, after)).toBe('in_progress');
+  const notified = (await f.events()).findLast(e => e.type === 'change_notified')!;
+  expect(notified.type === 'change_notified' && notified.payload).toMatchObject({ recipientId: 'research-agent', text: '2개' });
+  expect(f.connector.updates.at(-1)?.input.change.join(' ')).toContain('에 대한 답: 2개');
+});
+
+it('approving the recommendation of an agent question answers with that option; a model that cannot pick still leaves a reasoned recommendation', async () => {
+  const f = await fixture();
+  await f.pm['dispatcher'].startReady('kickoff');
+  const asked = await f.pm['dispatcher'].onQuestion('research', '로그인 방식은 이메일만 둘까요, 소셜 로그인도 넣을까요?', { choices: ['이메일만', '이메일과 소셜 로그인'] });
+  const requestId = questionRequestId(asked.questionId);
+  const request = (await f.state()).decisionRequests.get(requestId)!.request;
+  expect(request.recommendation.optionId).toBe('choice-1');
+  expect(request.recommendation.rationale).toMatch(/근거|먼저 제시한/);
+
+  await f.pm.decideRequest(requestId, { by: 'owner', action: 'approve' });
+
+  expect((await f.state()).decisionRequests.get(requestId)).toMatchObject({ status: 'answered', resolution: { answerText: '이메일만' } });
+  expect(f.connector.updates.at(-1)?.input.change.join(' ')).toContain('이메일만');
+  // The activity names the answer that went out.
+  const { taskActivity } = await import('@ensemble/core');
+  expect(taskActivity(await f.events(), 'research').find(a => a.kind === 'decision_resolved')).toMatchObject({ answerText: '이메일만' });
 });

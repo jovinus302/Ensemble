@@ -40,12 +40,20 @@ export type DecisionEffect =
   /** missing_info: the answer text goes to the agent through the existing answer path. */
   | { type: "answer"; taskId: Id; questionId?: Id }
   | { type: "none" };
-export interface DecisionOption { optionId: Id; label: string; effects: DecisionEffect[]; tradeoff: string }
+export interface DecisionOption {
+  optionId: Id; label: string; effects: DecisionEffect[]; tradeoff: string;
+  /**
+   * missing_info: the answer this option gives, verbatim (an agent's own choice such as "이메일만").
+   * Choosing the option counts as answering with this text; only an option carrying an `answer` effect may hold it.
+   */
+  answerText?: string;
+}
 export interface EventPayloads {
   judgement_failed: { triggerId: Id; stage: "interpretation" | "judgement"; reason: string };
   member_joined: { memberId: Id; kind: "human" | "agent"; displayName: string; role?: string };
   goal_set: { text: string; deadline?: string; decider: Id; delegation: { pmMayApply: ChangeKind[] } };
-  plan_proposed: { proposalId: Id; version: number; tasks: TaskSpec[]; estimates: { taskId: Id; hours: { min: number; max: number } }[]; reason: string; forMemberId: Id };
+  /** sourceMessageIds: the conversation the draft came from (the decider's goal message). Optional for older ledgers. */
+  plan_proposed: { proposalId: Id; version: number; tasks: TaskSpec[]; estimates: { taskId: Id; hours: { min: number; max: number } }[]; reason: string; forMemberId: Id; sourceMessageIds?: Id[] };
   plan_decided: { proposalId: Id; memberId: Id; approved: boolean };
   plan_committed: { version: number; basedOn: number | null; tasks: TaskSpec[]; reason: string; approvedBy: Id; sourceMessageIds: Id[] };
   availability_updated: { memberId: Id; weeklyHours: number; weekStart?: string };

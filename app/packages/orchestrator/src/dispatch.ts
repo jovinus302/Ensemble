@@ -3,7 +3,7 @@ import { channelText, particle, taskName } from './channel-text.ts';
 // task exactly once — agents through the session boundary, people through a channel sentence the
 // caller posts. Relays agent questions to people and routes the answers back to the agent.
 import {
-  AUTOMATION_LIMIT, automationGate, createDecisionRequest, decisionRequestProblems, DEFAULT_DECISION_SETTINGS, isStaleResult, limitReachedEvent, pausedTaskIds, planStarts, project, resolveDecision,
+  AUTOMATION_LIMIT, automationGate, createDecisionRequest, decisionRequestProblems, DEFAULT_DECISION_SETTINGS, isStaleResult, limitReachedEvent, MAX_DECISION_OPTIONS, pausedTaskIds, planStarts, project, resolveDecision,
   type AnyEvent, type DecisionSettings, type DecisionRequestInput, type EventContext, type EventPayloads, type EventType, type Id, type LedgerEvent, type NewLedgerEvent, type ProjectState,
 } from '@ensemble/core';
 import type { LedgerStore } from '@ensemble/store';
@@ -312,11 +312,14 @@ export class Dispatcher {
       const questionId = questionMessageId(taskId, taskQuestions(events, taskId).length + 1);
       const agent = this.name(state, task.spec.assignee);
       const title = task.spec.title;
-      const choices = options.choices?.length ? ` 선택지: ${options.choices.map((choice) => humanizeRefs(choice, events)).join(' / ')}` : '';
+      const offered = [...new Set((options.choices ?? []).map((choice) => humanizeRefs(choice, events).trim()).filter(Boolean))].slice(0, MAX_DECISION_OPTIONS - 1);
+      const choices = offered.length ? ` 선택지: ${offered.join(' / ')}` : '';
       const lead = `@${this.name(state, to)} "${title}" 작업을 맡은 ${agent}${particle(agent, '이/가')} 묻습니다.`;
       const text = channelText(`${lead} ${humanizeRefs(question, events)}${choices}`, state, 12);
-      // B7: the same question as a missing_info decision request, so the work shows as waiting on this person.
-      const request = this.questionRequest(state, taskId, questionId, to, `${humanizeRefs(question, events)}${choices}`);
+      // B7: the same question as a missing_info decision request, so the work shows as waiting on this person: the
+      // agent's own choices are the card's options, each answering with its words, and the PM recommends one.
+      const recommended = offered.length ? await this.recommendAnswer(state, taskId, humanizeRefs(question, events), offered, questionId) : undefined;
+      const request = this.questionRequest(state, taskId, questionId, to, humanizeRefs(question, events), offered, recommended);
       await this.options.store.append([
         this.event('pm_considered', { considerationId: `consider:${questionId}`, triggerId: questionId, whoseAction: to, alreadyKnows: 'no',
           evidence: [`"${title}" 담당 ${agent}${particle(agent, '이/가')} 질문하고 멈춤`], decision: 'speak', reason: '답이 있어야 작업이 이어진다', openTopics: [...state.openTopics] }, options.routeKey ?? `consider:${questionId}`),
@@ -329,22 +332,57 @@ export class Dispatcher {
   }
 
   /**
-   * A `missing_info` request for an agent question: the person answers in words (forwarded verbatim) or holds.
-   * Undefined when it cannot be opened — the person is not a human member, or the task already waits on an
-   * open request (one per task); the channel question still goes out either way.
+   * The PM's pick among an agent's offered answers, with its reason (§2.7: every request carries a recommendation).
+   * The model reads the goal, the work's conditions and scope, and the confirmed decisions; an invalid or failed
+   * answer falls back to the agent's first choice, saying the records gave no ground to prefer another.
    */
-  private questionRequest(state: ProjectState, taskId: Id, questionId: Id, to: Id, question: string): NewLedgerEvent | undefined {
+  private async recommendAnswer(state: ProjectState, taskId: Id, question: string, offered: readonly string[], questionId: Id): Promise<{ index: number; rationale: string; evidence: Id[] }> {
+    const task = state.tasks.get(taskId)!;
+    const decisions = relevantDecisions(state, taskId);
+    const tool = { name: 'recommend_answer', description: 'Agent 질문의 선택지 중 PM이 추천할 하나와 근거', inputSchema: { type: 'object', additionalProperties: false, required: ['optionIndex', 'rationale'], properties: {
+      optionIndex: { type: 'integer', minimum: 0, maximum: offered.length - 1, description: 'options 배열의 0부터 시작하는 번호' },
+      rationale: { type: 'string', minLength: 1, description: '사람이 읽는 한국어 한 문장. 목표·작업 조건·범위·확정 결정에서만 근거를 든다' },
+      decisionIds: { type: 'array', items: { type: 'string', enum: decisions.map((d) => d.decisionId) }, description: '근거로 쓴 확정 결정 ID(없으면 [])' },
+    } } };
+    const facts = { goal: state.goal?.text, deadline: state.goal?.deadline, task: { title: task.spec.title, handoffConditions: task.spec.handoffConditions, exclusions: task.spec.exclusions ?? [], limits: task.spec.limits ?? [] },
+      decisions: decisions.map((d) => ({ decisionId: d.decisionId, summary: d.summary })), question, options: offered };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await this.options.llm.complete({ model: this.options.model, forceTool: tool.name, tools: [tool], messages: [{ role: 'user', content: JSON.stringify({ facts, attempt }) }],
+          system: '당신은 팀의 PM입니다. 작업 중인 Agent가 사람에게 묻는 질문의 선택지 중 하나를 추천하세요. 목표, 작업의 인계 조건과 제외·한정 범위, 확정된 결정에 가장 맞는 선택지를 고르고, 근거가 부족하면 범위가 작고 나중에 넓히기 쉬운 쪽을 고르세요. 근거는 한국어 한 문장으로, 제공된 사실만 쓰고 내부 ID는 쓰지 마세요. 사람이 다른 답을 직접 적을 수 있으니 단정하지 마세요.' });
+        const input = response.toolCalls.find((call) => call.name === tool.name)?.input as Record<string, unknown> | undefined;
+        const index = input?.optionIndex;
+        if (typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < offered.length && typeof input?.rationale === 'string' && input.rationale.trim()) {
+          const cited = Array.isArray(input.decisionIds) ? input.decisionIds.filter((id): id is string => typeof id === 'string' && decisions.some((d) => d.decisionId === id)) : [];
+          return { index, rationale: input.rationale.trim(), evidence: [questionId, ...cited] };
+        }
+      } catch { /* Retry once, then the fallback below. */ }
+    }
+    return { index: 0, rationale: '기록된 목표와 결정만으로는 어느 쪽이 나은지 가릴 근거가 없어, Agent가 먼저 제시한 안을 추천해요.', evidence: [questionId] };
+  }
+
+  /**
+   * A `missing_info` request for an agent question. With the agent's own choices, each is an option that answers
+   * with its words (forwarded verbatim) and the PM recommends one; without them the person answers in words.
+   * Either way a typed answer still goes through, and the person may hold. Undefined when it cannot be opened — the
+   * person is not a human member, or the task already waits on an open request (one per task); the channel
+   * question still goes out either way.
+   */
+  private questionRequest(state: ProjectState, taskId: Id, questionId: Id, to: Id, question: string, offered: readonly string[] = [], recommended?: { index: number; rationale: string; evidence: Id[] }): NewLedgerEvent | undefined {
     const task = state.tasks.get(taskId);
     if (!task || state.members.get(to)?.kind !== 'human') return undefined;
     const agent = this.name(state, task.spec.assignee);
+    const answer = { type: 'answer' as const, taskId, questionId };
+    const hold = { optionId: 'hold', label: '보류', effects: [{ type: 'none' as const }], tradeoff: '답이 올 때까지 이 작업은 멈춰 있습니다.' };
+    const choices = offered.map((label, i) => ({ optionId: `choice-${i + 1}`, label, answerText: label, effects: [answer], tradeoff: `"${label}"${particle(label, '으로/로')} 답해 Agent가 바로 이어서 진행합니다.` }));
+    const pick = recommended && choices[recommended.index] ? recommended : undefined;
     const input: DecisionRequestInput = {
       requestId: questionRequestId(questionId), kind: 'missing_info', targetMemberId: to,
       question: `${agent}${particle(agent, '이/가')} "${task.spec.title}" 작업에서 묻습니다: ${question}`,
-      options: [
-        { optionId: 'answer', label: '답하기', effects: [{ type: 'answer', taskId, questionId }], tradeoff: '답을 그대로 전달해 Agent가 바로 이어서 진행합니다.' },
-        { optionId: 'hold', label: '보류', effects: [{ type: 'none' }], tradeoff: '답이 올 때까지 이 작업은 멈춰 있습니다.' },
-      ],
-      recommendation: { optionId: 'answer', rationale: '답이 있어야 작업이 이어집니다.', evidence: [questionId] },
+      options: choices.length && pick ? [...choices, hold]
+        : [{ optionId: 'answer', label: '답하기', effects: [answer], tradeoff: '답을 그대로 전달해 Agent가 바로 이어서 진행합니다.' }, hold],
+      recommendation: choices.length && pick ? { optionId: choices[pick.index]!.optionId, rationale: pick.rationale, evidence: pick.evidence }
+        : { optionId: 'answer', rationale: '답이 있어야 작업이 이어집니다.', evidence: [questionId] },
       impact: { taskIds: [taskId], blockedTaskIds: [taskId] }, sourceMessageIds: [],
     };
     if (decisionRequestProblems(state, input).length) return undefined;
