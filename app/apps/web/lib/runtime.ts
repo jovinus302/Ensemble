@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { readFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { SqliteLedgerStore, type LedgerStore } from '@ensemble/store';
-import { AnthropicProvider, loadEnv, modelFor, type LlmProvider } from '@ensemble/llm';
+import { loadEnv, modelFor, pmRuntimeFromEnv, type LlmProvider } from '@ensemble/llm';
 import { ClaudeSessionConnector, CodexSessionConnector, CodexLlmProvider, codexSettingsFromEnv, type SessionConnector } from '@ensemble/agents';
 import { ProjectManager, type FreeStartResult } from '@ensemble/orchestrator';
 import { project, type AnyEvent, type LedgerEvent } from '@ensemble/core';
@@ -119,16 +119,17 @@ export class WebRuntime {
     catch { console.info('[ensemble] 재시작 후 대기 중인 변경 전달을 마치지 못했습니다. 작업 상태를 확인하세요.'); }
     await this.save();
   }
+  /** ENSEMBLE_PM_RUNTIME picks the PM backend (api, codex, or claude); an injected provider wins. */
   private createPm() {
     const runtime = process.env.ENSEMBLE_AGENT_RUNTIME ?? 'fake';
     if (!['fake', 'codex', 'claude'].includes(runtime)) throw new Error('ENSEMBLE_AGENT_RUNTIME must be fake, codex, or claude');
-    const pmRuntime = process.env.ENSEMBLE_PM_RUNTIME ?? 'anthropic';
-    if (pmRuntime !== 'anthropic' && pmRuntime !== 'codex') throw new Error('ENSEMBLE_PM_RUNTIME must be anthropic or codex');
-    const timeoutMs = Number(process.env.ENSEMBLE_PM_TIMEOUT_MS ?? 90_000);
+    const pmRuntime = process.env.ENSEMBLE_PM_RUNTIME?.trim() || 'api';
+    if (!['api', 'codex', 'claude'].includes(pmRuntime)) throw new Error('ENSEMBLE_PM_RUNTIME must be api, codex, or claude');
+    const timeoutMs = process.env.ENSEMBLE_PM_TIMEOUT_MS ? Number(process.env.ENSEMBLE_PM_TIMEOUT_MS) : Number(process.env.ENSEMBLE_PM_TIMEOUT_MINUTES ?? 1.5) * 60_000;
     this.pmLlm = this.options.llm ?? (pmRuntime === 'codex'
       ? new CodexLlmProvider({ timeoutMs, onTiming: timing => console.info('[ensemble:pm-model]', JSON.stringify(timing)) })
-      : new AnthropicProvider());
-    this.pmModel = modelFor('pm', pmRuntime);
+      : pmRuntimeFromEnv().llm);
+    this.pmModel = modelFor('pm', pmRuntime === 'codex' ? 'codex' : 'anthropic');
     // Agent results arrive as attachments recorded from the agent's workspace; the PM reads them from the ledger.
     this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: this.pmLlm, model: this.pmModel,
       onTiming: timing => console.info('[ensemble:pm-queue]', JSON.stringify(timing)),

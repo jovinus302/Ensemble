@@ -21,6 +21,7 @@
 - Node SDK(`@anthropic-ai/sdk`)는 추가 TLS 설정 없이 proxy에 연결된다. `npm run smoke:llm`이 한국어 텍스트와 강제 tool 호출을 확인한다.
 - **proxy가 응답을 캐시한다.** 같은 요청을 다시 보내면 같은 응답 ID가 돌아온다. 요청은 Vertex(`msg_vrtx_…`)와 Bedrock(`msg_bdrk_…`)으로 나뉘어 간다. 첫 스모크에서 텍스트가 한 번 빈 문자열로 왔고 재현되지 않았다. 재시도는 같은 요청을 다시 보내는 방식으로는 의미가 없을 수 있으므로, 빈 응답·재시도 처리는 M2에서 정한다.
 - 기본 모델은 `claude-sonnet-5`. 역할별로 `ENSEMBLE_MODEL_PM`, `ENSEMBLE_MODEL_AGENT`로 바꾼다.
+- PM 백엔드는 `ENSEMBLE_PM_RUNTIME`으로 고른다: `api`(기본, 위 proxy의 Messages API), `codex`(`codex exec` 읽기 전용·`--output-schema`), `claude`(`claude -p --output-format json`·도구/설정 없음·`--json-schema`). CLI 런타임은 `ENSEMBLE_MODEL_PM`이 있을 때만 모델을 지정하고, `ENSEMBLE_PM_EFFORT`(기본 medium)와 `ENSEMBLE_PM_TIMEOUT_MINUTES`(기본 5)를 따른다. 실제 호출 확인은 `npm run smoke:pm`.
 
 ## 3. 디렉토리 구조
 
