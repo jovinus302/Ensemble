@@ -15,6 +15,7 @@
     "smoke:llm": "tsx packages/llm/scripts/smoke.ts",
     "smoke:codex": "tsx packages/agents/scripts/smoke-codex.ts",
     "live:pm": "tsx packages/orchestrator/scripts/live-coordination.ts",
+    "smoke:pm": "tsx packages/orchestrator/scripts/smoke-pm-runtime.ts",
     "live:http": "tsx scripts/live-http.ts",
     "demo:full": "tsx scripts/demo-full.ts"
   },

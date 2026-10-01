@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { readFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { SqliteLedgerStore, type LedgerStore } from '@ensemble/store';
-import { AnthropicProvider, loadEnv, modelFor, type LlmProvider } from '@ensemble/llm';
+import { loadEnv, modelFor, pmRuntimeFromEnv, type LlmProvider } from '@ensemble/llm';
 import { ClaudeSessionConnector, CodexSessionConnector, codexSettingsFromEnv, type SessionConnector } from '@ensemble/agents';
 import { ProjectManager, type FreeStartResult } from '@ensemble/orchestrator';
 import { project, type AnyEvent, type LedgerEvent } from '@ensemble/core';
@@ -81,6 +81,7 @@ export class WebRuntime {
   private activityKind: Activity['kind'] = 'idle';
   private ready: Promise<void>;
   private readonly metaFile: string;
+  private pmProvider?: LlmProvider;
 
   constructor(private readonly options: { dataDir?: string; store?: LedgerStore; llm?: LlmProvider; connector?: SessionConnector; generateRevision?: RevisionGenerator } = {}) {
     loadEnv();
@@ -117,13 +118,15 @@ export class WebRuntime {
     catch { console.info('[ensemble] 재시작 후 대기 중인 변경 전달을 마치지 못했습니다. 작업 상태를 확인하세요.'); }
     await this.save();
   }
+  /** ENSEMBLE_PM_RUNTIME picks the PM backend (api, codex, or claude); an injected provider wins. */
+  private pmLlm() { return this.options.llm ?? (this.pmProvider ??= pmRuntimeFromEnv().llm); }
   private createPm() {
     const runtime = process.env.ENSEMBLE_AGENT_RUNTIME ?? 'fake';
     if (!['fake', 'codex', 'claude'].includes(runtime)) throw new Error('ENSEMBLE_AGENT_RUNTIME must be fake, codex, or claude');
     // Agent results arrive as attachments recorded from the agent's workspace; the PM reads them from the ledger.
-    this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: this.options.llm ?? new AnthropicProvider(), model: modelFor('pm'),
+    this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: this.pmLlm(), model: modelFor('pm'),
       // The demo's third scene observes a change during construction; its simulated build ends after that change.
-      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' || runtime === 'claude' ? liveAgents(runtime) : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'), this.options.generateRevision ?? createRevisionGenerator(this.options.llm ?? new AnthropicProvider(), modelFor('pm')), (agentId, version) => this.meta.mode !== 'scenario' || agentId !== 'prototype-agent' || version > 1, 2000,
+      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' || runtime === 'claude' ? liveAgents(runtime) : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'), this.options.generateRevision ?? createRevisionGenerator(this.pmLlm(), modelFor('pm')), (agentId, version) => this.meta.mode !== 'scenario' || agentId !== 'prototype-agent' || version > 1, 2000,
         async taskId => project(await this.store.read({ projectId: this.meta.projectId })).tasks.get(taskId)?.spec) }),
       // Live scenario inputs and PM/agent replies share the store's wall clock.
       clock: () => new Date(),
@@ -299,7 +302,7 @@ export class WebRuntime {
           const messageId = `script:${this.meta.projectId}:${step}:human`;
           await this.store.append([{ ...this.context(), actor: { kind: 'human', id: authorId }, type: 'message_recorded', idempotencyKey: messageId, payload: { messageId, authorId, text, attachmentIds: [] } }]);
         },
-        generateRevision: input => (this.options?.generateRevision ?? createRevisionGenerator(this.options?.llm ?? new AnthropicProvider(), modelFor('pm')))(input),
+        generateRevision: input => (this.options?.generateRevision ?? createRevisionGenerator(this.pmLlm(), modelFor('pm')))(input),
         read: () => this.store.read({ projectId: this.meta.projectId }),
         recordStop: async reason => { await this.store.append([{ ...this.context(), actor: { kind: 'system', id: 'scenario' }, type: 'scenario_stopped', payload: { scenario: continuousScenario.key, step: this.meta.script!.step, reason } }]); },
       }, continuousScenario.steps, this.meta.script, continuousScenario.completion);
