@@ -31,6 +31,18 @@ it('registers Korean research and prototype roles with their reporting rules', (
   for (const role of [researchAgentRole, prototypeAgentRole]) expect(role.systemPrompt).toMatch(/보완을 요청하면 acknowledge_update/);
 });
 
+it('keeps every role from spending model rounds on denied tools, workarounds, subagents or placeholder calls', () => {
+  for (const role of [researchAgentRole, prototypeAgentRole]) {
+    expect(role.systemPrompt).toMatch(/보고 블록\(acknowledge_update, result_report, question\)은 답변 본문에 그대로 씁니다/);
+    expect(role.systemPrompt).toMatch(/echo 같은 자리 표시 명령/);
+    expect(role.systemPrompt).toMatch(/권한이 거부됐거나 없는 도구는 다시 시도하지 않고.*우회하지도 않습니다/);
+    expect(role.systemPrompt).toMatch(/하위 Agent나 백그라운드 Agent를 띄우지 않고/);
+  }
+  // Without web access the research agent writes from what it knows, says so, and submits instead of asking.
+  expect(researchAgentRole.systemPrompt).toMatch(/권한이 거부되면 다시 시도하지 말고 이미 알고 있는 지식으로 쓰며.*limitations에 밝힌 뒤 그대로 제출합니다/);
+  expect(researchAgentRole.systemPrompt).toMatch(/웹을 쓸 수 없다는 이유만으로 question을 쓰거나 작업을 멈추지 않습니다/);
+});
+
 it('reads workspace root and turn limit from the environment, defaulting to 20 minutes under home', () => {
   expect(codexSettingsFromEnv({})).toEqual({ workspaceRoot: path.join(homedir(), 'ensemble-agent-workspaces'), turnTimeoutMs: 20 * 60_000 });
   expect(codexSettingsFromEnv({ ENSEMBLE_AGENT_TURN_TIMEOUT_MINUTES: '0.5', ENSEMBLE_AGENT_WORKSPACE_ROOT: 'C:/agents' }))
