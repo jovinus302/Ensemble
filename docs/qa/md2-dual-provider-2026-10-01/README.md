@@ -1,6 +1,6 @@
 # MD2 local browser QA — 2026-10-01
 
-Follow-up: [the two remaining items are now closed with actual Claude delivery evidence and focused queue analysis/fixes](remaining-items.md). It also corrects the full-log maximum queue wait to 511.111 seconds; earlier values below describe individual observations.
+Follow-up: [completed Claude delivery and obsolete-judgement fixes, validation, and commit-pinned evidence are recorded in issue #46](https://github.com/jovinus302/Ensemble/issues/46). [Remaining provider response/queue latency is tracked separately in open issue #47](https://github.com/jovinus302/Ensemble/issues/47). The full-log maximum queue wait is 511.111 seconds; earlier values below describe individual observations.
 
 Baseline: `726c54e` (PR #36). Narrow fix: `5e72839`; integrated with main through `776e374` (PR #38) at `31ca433`.
 
