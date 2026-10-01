@@ -28,7 +28,7 @@ Make `parentId` optional and explain when it is appropriate. Preserve all existi
 
 Completed text alone was not treated as artifact validation. Final HTML was downloaded through the UI and opened as a local file; screenshots and action logs show interactive behavior.
 
-The Codex task comment was recorded, sent to the active worker, and explicitly acknowledged with both requested changes. The Claude comment was recorded after that worker completed; that sample does **not** prove delivery to an active Claude worker.
+The Codex task comment was recorded, sent to the active worker, and explicitly acknowledged with both requested changes. The Claude comment was recorded, but that sample does **not** prove delivery to an active Claude worker.
 
 ## Known overlapping fixes and boundaries
 
@@ -58,6 +58,29 @@ Codex's long revised-counter path included a genuine **240.045 s model timeout**
 - `npm run build`: passed.
 - GitHub at inspection: no required status checks/reviews configured; main protection endpoint reports unprotected, rulesets empty. This is configuration evidence, not a claim that remote CI ran.
 
-Remaining web-follow-up regression and final review/merge status will be recorded separately as those steps complete.
+The final integration results below supersede the web-follow-up pending status.
 
 Evidence: [Codex counter](codex-counter-complete.png), [Claude counter](claude-counter-complete.png), [Codex reservation completion](codex-scenario-artifact-complete.png), [Claude reservation completion](claude-scenario-artifact-complete.png), [Codex mobile hierarchy](codex-work-mobile.png), [Claude mobile hierarchy](claude-work-mobile.png), [captured validation failure](claude-create-diagnostic.json), [test result](fixed-tests.txt). The neighbouring JSON files contain browser action observations and card POST counts.
+
+## Final integration: PR #40 + PR #39
+
+PR #40 merged at 16:15:53 UTC (`6c1e6f9`), and PR #39 merged at 16:20:09 UTC (`b05b684`). The final merge therefore also contained Orca's UI changes; the earlier 640-test result alone was not treated as final-main validation. Rebuilt `b05b684`: **651 tests / 73 files**, typecheck and production build passed.
+
+Fresh, separately isolated actual Codex and Claude projects then both passed:
+
+- Plan approval card renders two nested children.
+- A real worker question has no invalid recommended-approve action; empty answer is disabled and another member receives 403.
+- Double answer produces one POST; a second browser tab's open drawer updates from waiting for a decision to in progress without closing/reopening.
+- Task comment is recorded and routed. Codex delivers through steering; Claude records `next_turn` because its live CLI turn cannot accept steering.
+- With a real worker still running: project replacement Escape and Cancel preserve the project; double archive/start and double Next produce one POST each. New project IDs differ and no old-worker messages/attachments appear after the switch.
+- Existing real artifacts are downloaded and clicked again from the final UI; desktop/mobile hierarchy and SSE disconnect/reconnect pass again without additional model inputs.
+
+See `codex-final-ui.json`, `claude-final-ui.json`, the final screenshots, and comment-delivery ledgers. The switch observations (8.235 s Codex, 5.241 s Claude) include an intentional 4-second post-switch observation and the Next click; they are **not** pure cancellation latency.
+
+The Codex final ordinary approval also passed with exactly one POST and one added task, after its original queued request recovered. That request had two model timeouts, 240.032 s and 240.042 s, first responses at 6.084 s and 7.284 s, and a later maximum queue wait of **442.489 s**. No new input was submitted to obtain the recovered card. Long model/queue latency remains an observed limitation.
+
+The final cancellation test intentionally stopped Claude before its queued comment's next turn, so real Claude acknowledgement was not observed. A new deterministic regression reproduces the captured `sendUpdate: false` behavior, finishes the current turn, and verifies one next-turn delivery and no duplicate on another pending-delivery pass. It is explicitly a mocked connector regression, not a claim of an additional real-model run.
+
+The final evidence follow-up changes only tests/documentation; production code remains the rebuilt `b05b684` version. GitHub has no configured required checks/reviews; local check logs are supplied rather than claiming remote CI ran.
+
+After adding the queued-comment regression: **652 tests / 73 files passed**, final typecheck passed. The production build result is unchanged because the follow-up only changes a test and QA evidence.

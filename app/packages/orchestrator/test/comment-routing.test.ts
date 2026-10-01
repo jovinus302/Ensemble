@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { project, taskActivity, type AnyEvent } from '@ensemble/core';
 import type { LlmProvider } from '@ensemble/llm';
-import type { ContinueTaskInput, SessionConnector, SessionEvent, TaskInstructionsInput, UpdateInstructionsInput } from '@ensemble/agents';
+import type { ContinueTaskInput, SendUpdateResult, SessionConnector, SessionEvent, TaskInstructionsInput, UpdateInstructionsInput } from '@ensemble/agents';
 import { MemoryLedgerStore } from '@ensemble/store';
 import { ProjectManager } from '../src/pm.ts';
 
@@ -18,7 +18,7 @@ class FakeConnector implements SessionConnector {
   private turns = 0;
   async startSession(agentId: string) { return { threadId: `thread-${agentId}`, workspace: `/workspace/${agentId}` }; }
   async startTask(agentId: string, input: TaskInstructionsInput) { this.starts.push({ agentId, input }); return `turn-${++this.turns}`; }
-  async sendUpdate(agentId: string, input: UpdateInstructionsInput) { this.updates.push({ agentId, input }); return { sent: true as const }; }
+  async sendUpdate(agentId: string, input: UpdateInstructionsInput): Promise<SendUpdateResult> { this.updates.push({ agentId, input }); return { sent: true }; }
   async continueTask(agentId: string, input: ContinueTaskInput) { this.continued.push({ agentId, input }); return `turn-${++this.turns}`; }
   onEvent(_handler: (event: SessionEvent) => void) { return () => undefined; }
   async stop() { /* nothing to stop */ }
@@ -94,6 +94,23 @@ it('a comment on a person\'s work item is not forwarded to anyone', async () => 
   expect(f.connector.continued).toHaveLength(0);
   expect(events.findLast(e => e.type === 'message_recorded')).toMatchObject({ payload: { threadId: 'task:interview' } });
   expect(f.coordinated).toHaveBeenCalledTimes(1);
+});
+
+it('carries a comment once after a connector that cannot steer finishes its active turn', async () => {
+  const f = await fixture();
+  await f.pm['dispatcher'].startReady('kickoff');
+  // Captured Claude CLI behavior: a live turn cannot accept steering.
+  vi.spyOn(f.connector, 'sendUpdate').mockResolvedValue({ sent: false, reason: 'Active turn cannot accept steering' });
+  const comment = 'Mark the comparison as fictional at the start of the document.';
+  await f.pm.postComment('research', 'owner', comment);
+  expect(notices(await f.events())).toEqual([expect.objectContaining({ via: 'next_turn' })]);
+  expect(f.connector.continued).toHaveLength(0);
+  f.pm.sessions['runs'].get('research-agent')!.finished = true;
+  await f.pm.deliverPendingChanges();
+  expect(f.connector.continued).toHaveLength(1);
+  expect(f.connector.continued[0]!.input.update.change[0]).toContain(comment);
+  await f.pm.deliverPendingChanges();
+  expect(f.connector.continued).toHaveLength(1);
 });
 
 it('a comment on unknown work is refused', async () => {

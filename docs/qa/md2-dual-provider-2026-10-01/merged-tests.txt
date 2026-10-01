@@ -1,0 +1,17 @@
+
+> test
+> vitest run
+
+
+ RUN  v5.0.2 <qa-workspace>/ensemble-md2-qa/app
+
+
+ Test Files  73 passed (73)
+      Tests  651 passed (651)
+   Start at  01:23:17
+   Duration  13.78s (tests 49%, transform 30%, import 20%, worker 1%)
+
+  Transform  transforming modules took 44.03s 쨌 30% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+
