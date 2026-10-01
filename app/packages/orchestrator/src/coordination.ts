@@ -514,7 +514,9 @@ export class Coordinator {
       const newer = newerInput(fresh as AnyEvent[]);
       if (newer) return { append: [superseded(newer)], result: 'superseded' };
       const latest = project(fresh);
-      if ((confirmed && latest.lastSeq !== state.lastSeq) || fresh.slice(events.length).some(e => !['message_recorded', 'attachment_recorded'].includes(e.type))) {
+      // Streaming worker commentary does not change projected planning facts. Retrying
+      // both model calls for every progress update can starve a live scope change.
+      if ((confirmed && fresh.slice(events.length).some(e => e.type !== 'reply_recorded')) || fresh.slice(events.length).some(e => !['message_recorded', 'attachment_recorded', 'reply_recorded'].includes(e.type))) {
         if (retry < 2) return { append: [], result: 'retry' };
         const text = '기록이 계속 바뀌어 변경을 반영하지 못했습니다. 잠시 후 다시 말씀해 주세요.';
         judgement = { ...judgement!, whoseAction: message.authorId, alreadyKnows: 'no', evidence: [`msg:${messageId}`], decision: 'speak', reason: '최신 기록 재판단 두 번 후에도 경합이 계속됨', text };

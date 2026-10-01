@@ -21,9 +21,28 @@ interface ClaudeResult {
  * forced tool becomes `--json-schema` structured output. `maxTokens` has no CLI flag and is not sent.
  */
 export class ClaudeCliProvider implements LlmProvider {
+  private readonly active = new Map<AbortController, Promise<LlmResponse>>();
+  private closed = false;
   constructor(private readonly options: CliProviderOptions = {}) {}
 
-  async complete(request: LlmRequest): Promise<LlmResponse> {
+  complete(request: LlmRequest): Promise<LlmResponse> {
+    if (this.closed) return Promise.reject(new CliError('Claude CLI closed'));
+    const controller = new AbortController();
+    const signal = request.signal ? AbortSignal.any([request.signal, controller.signal]) : controller.signal;
+    const promise = this.run({ ...request, signal });
+    this.active.set(controller, promise);
+    void promise.finally(() => this.active.delete(controller)).catch(() => undefined);
+    return promise;
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+    const pending = [...this.active.values()];
+    for (const controller of this.active.keys()) controller.abort();
+    await Promise.allSettled(pending);
+  }
+
+  private async run(request: LlmRequest): Promise<LlmResponse> {
     const tool = forcedTool(request);
     const args = [
       ...(this.options.executableArgs ?? []),
@@ -35,7 +54,7 @@ export class ClaudeCliProvider implements LlmProvider {
       ...(tool ? ["--json-schema", JSON.stringify(tool.inputSchema)] : []),
     ];
     const run = await runCli(this.options.executable ?? "claude", args, renderPrompt(request, { includeSystem: false }), {
-      cwd: this.options.cwd ?? tmpdir(), env: this.options.env, timeoutMs: this.options.timeoutMs ?? DEFAULT_CLI_TIMEOUT_MS, label: "Claude CLI" });
+      cwd: this.options.cwd ?? tmpdir(), env: this.options.env, timeoutMs: this.options.timeoutMs ?? DEFAULT_CLI_TIMEOUT_MS, label: "Claude CLI", signal: request.signal });
     const result = lastResult(run.stdout);
     if (!result || result.is_error || result.subtype !== "success") {
       const reason = result?.result || result?.subtype || run.stderr.trim() || `종료 코드 ${run.code ?? run.signal}`;

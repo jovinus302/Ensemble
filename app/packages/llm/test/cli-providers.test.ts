@@ -30,6 +30,14 @@ function setup(kind: 'codex' | 'claude', modes: string, outputs: unknown[] = [{ 
 }
 
 describe.each(['codex', 'claude'] as const)('%s CLI provider', kind => {
+  it('cancels a live call without waiting for the model timeout', async () => {
+    const f = setup(kind, 'hang');
+    const controller = new AbortController();
+    const pending = f.llm.complete({ ...request, signal: controller.signal });
+    const assertion = expect(pending).rejects.toThrow(/cancelled/);
+    setTimeout(() => controller.abort(), 150);
+    await assertion;
+  });
   it('returns the forced tool call from structured output', async () => {
     const f = setup(kind, 'normal');
     const response = await f.llm.complete(request);
@@ -72,6 +80,15 @@ describe.each(['codex', 'claude'] as const)('%s CLI provider', kind => {
     const f = setup(kind, 'hang', undefined, 500);
     await expect(f.llm.complete(request)).rejects.toThrow(/초 안에 끝나지 않았습니다/);
   });
+});
+
+it('claude close cancels pending PM work and rejects later calls', async () => {
+  const f = setup('claude', 'hang');
+  const pending = f.llm.complete(request);
+  const assertion = expect(pending).rejects.toThrow(/cancelled/);
+  await (f.llm as ClaudeCliProvider).close();
+  await assertion;
+  await expect(f.llm.complete(request)).rejects.toThrow(/closed/);
 });
 
 it('claude: a result record with is_error is a failure even with a success subtype', async () => {

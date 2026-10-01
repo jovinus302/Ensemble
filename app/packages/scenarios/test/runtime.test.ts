@@ -12,6 +12,27 @@ function runtime() {
   });
   return { app, store, ctx: { projectId: app.meta.projectId, targetProductId: 'ensemble-demo' } };
 }
+it('times PM work independently from an older active worker and scenario wait', async () => {
+  const { app, store, ctx } = runtime();
+  const workerStart = '2026-10-01T10:00:00.000Z';
+  const pmStart = '2026-10-01T10:05:00.000Z';
+  await store.append(sceneEvents(3, ctx));
+  await store.append([{ ...ctx, actor: { kind: 'system', id: 'test' }, at: workerStart,
+    type: 'task_start_reserved', payload: { taskId: 'prototype', specVersion: 1, trigger: 'approval' } }]);
+  await store.append([{ ...ctx, actor: { kind: 'agent', id: 'prototype-agent' }, at: workerStart,
+    type: 'task_started', payload: { taskId: 'prototype', turnId: 'live-turn' } }]);
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse(pmStart));
+  try {
+    Object.assign(app, { busy: true, activityKind: 'agent_working', activitySince: workerStart,
+      waiting: { condition: { kind: 'agentTurnFinished', agentId: 'prototype-agent' },
+        since: Date.parse(workerStart) + 1000, quietSince: Date.parse(workerStart), seq: 0, stalled: false } });
+    expect((await app.state()).activity).toMatchObject({ kind: 'pm_thinking', since: pmStart });
+    app.busy = false;
+    expect((await app.state()).activity).toMatchObject({ kind: 'scenario_waiting', since: '2026-10-01T10:00:01.000Z' });
+    Object.assign(app, { waiting: undefined });
+    expect((await app.state()).activity).toMatchObject({ kind: 'agent_working', since: workerStart });
+  } finally { clock.mockRestore(); }
+});
 it('starts a scenario with team facts only, never a committed fixture plan', async () => {
   const { app, store } = runtime();
   await app.startScenario('scene-1-3-continuous', true);

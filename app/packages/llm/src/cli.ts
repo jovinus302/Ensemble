@@ -34,8 +34,9 @@ export class CliError extends Error {
 }
 
 /** Runs the CLI without a shell, writes `input` to stdin and resolves on exit; kills it on timeout. */
-export function runCli(command: string, args: string[], input: string, options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs: number; label: string }): Promise<CliRun> {
+export function runCli(command: string, args: string[], input: string, options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs: number; label: string; signal?: AbortSignal }): Promise<CliRun> {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) { reject(new CliError(`${options.label} cancelled`)); return; }
     let child;
     try {
       child = spawn(command, args, { cwd: options.cwd, env: options.env ?? process.env, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
@@ -47,7 +48,9 @@ export function runCli(command: string, args: string[], input: string, options: 
     let stderr = "";
     let settled = false;
     let timedOut = false;
-    const settle = (fn: () => void) => { if (!settled) { settled = true; clearTimeout(timer); fn(); } };
+    let cancelled = false;
+    const settle = (fn: () => void) => { if (!settled) { settled = true; clearTimeout(timer); options.signal?.removeEventListener('abort', cancel); fn(); } };
+    const cancel = () => { cancelled = true; child.kill(); };
     const timeout = () => new CliError(`${options.label} 응답이 ${Math.round(options.timeoutMs / 1000)}초 안에 끝나지 않았습니다`, { code: null, signal: null, stdout, stderr });
     // The rejection waits for the exit (bounded) so the caller's cleanup never races a live process.
     const timer = setTimeout(() => {
@@ -60,7 +63,9 @@ export function runCli(command: string, args: string[], input: string, options: 
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => { stderr = (stderr + chunk).slice(-2000); });
     child.once("error", error => settle(() => reject(new CliError(`${options.label}를 실행하지 못했습니다: ${error.message}`))));
-    child.once("close", (code, signal) => settle(() => (timedOut ? reject(timeout()) : resolve({ code, signal, stdout, stderr }))));
+    child.once("close", (code, signal) => settle(() => (cancelled ? reject(new CliError(`${options.label} cancelled`)) : timedOut ? reject(timeout()) : resolve({ code, signal, stdout, stderr }))));
+    options.signal?.addEventListener('abort', cancel, { once: true });
+    if (options.signal?.aborted) cancel();
     child.stdin.on("error", () => { /* A dead process closes stdin; the exit reports the failure. */ });
     child.stdin.end(input);
   });

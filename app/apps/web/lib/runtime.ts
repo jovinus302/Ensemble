@@ -218,7 +218,10 @@ export class WebRuntime {
     const limit = ['codex', 'claude'].includes(process.env.ENSEMBLE_AGENT_RUNTIME ?? '') ? codexSettingsFromEnv().turnTimeoutMs : 120_000;
     const agentStalled = starts.find(t => now - t.progress >= limit);
     const blocked = [...state.tasks.values()].find(t => t.status === 'blocked' && t.blocked);
-    const since = this.waiting ? new Date(this.waiting.since).toISOString() : starts.length ? new Date(Math.min(...starts.map(t => t.start))).toISOString() : this.activitySince;
+    const since = kind === 'pm_thinking' ? this.activitySince
+      : kind === 'scenario_waiting' && this.waiting ? new Date(this.waiting.since).toISOString()
+      : kind === 'agent_working' && starts.length ? new Date(Math.min(...starts.map(t => t.start))).toISOString()
+      : this.activitySince;
     const condition = this.waiting?.condition;
     const who = condition?.kind === 'taskOf' ? state.members.get(condition.assignee)?.displayName ?? '담당자' : undefined;
     const target = who ? `${who} 작업 상태를` : '다음 단계 조건을';

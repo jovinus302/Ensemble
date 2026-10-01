@@ -319,6 +319,20 @@ it('cannot relabel a human commitment as a delegated reorder', async () => {
   expect(project(await f.read()).availability.get('designer')).toBe(10);
 });
 
+it('does not restart a scope judgement for worker progress commentary', async () => {
+  const f = await fixture([interpret({ ops: exclusions() }), judge()]);
+  let calls = 0;
+  const llm: LlmProvider = { async complete(request) {
+    calls++;
+    await f.add('reply_recorded', { memberId: 'agent', taskId: 'prototype', turnId: 'turn-1', text: 'Implementation is progressing.' });
+    return { text: '', model: 'fake', responseId: 'r', usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [{ name: request.forceTool!, input: (request.forceTool === 'interpret_coordination' ? interpret({ ops: exclusions() }) : judge()) as unknown as Record<string, unknown> }] };
+  } };
+  const result = await new Coordinator(f.store, llm, f.connector, ctx).onMessage('m1');
+  expect(calls).toBe(2);
+  expect(result.events.some(e => e.type === 'plan_committed')).toBe(true);
+  expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
+});
+
 it('retries a changing snapshot twice, then explains the failure without stale writes or delivery', async () => {
   const f = await fixture([interpret({ ops: exclusions() }), judge()]);
   let judgements = 0;

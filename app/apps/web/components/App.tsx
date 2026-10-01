@@ -165,7 +165,7 @@ export function App() {
                       <span className="next-text" title={vm.scenario.nextLine?.text}>{vm.scenario.nextLine?.text ?? "남은 발언이 없어요"}</span>
                     </div>
                     <div className="next-action">
-                      <button type="button" className="btn-tonal" disabled={!!stepBlocked || !vm.scenario.nextLine} aria-describedby={stepBlocked ? "next-reason" : undefined} onClick={() => void stepNext()}>
+                      <button type="button" className="btn-tonal" disabled={!!stepBlocked || !vm.scenario.nextLine} aria-describedby={stepBlocked ? "next-reason" : undefined} onClick={event => { if (event.detail < 2) void stepNext(); }}>
                         {stepBlocked?.label ?? "다음 발언"}
                       </button>
                       {stepBlocked && <span id="next-reason" className="next-reason">{stepBlocked.reason}</span>}
