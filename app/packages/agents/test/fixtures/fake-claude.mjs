@@ -1,5 +1,5 @@
 // Fake `claude -p --output-format stream-json` CLI for ClaudeSessionConnector tests.
-// ENSEMBLE_FAKE_CLAUDE selects the behavior: normal (default), errors, fail, hang, api-error, late, ask.
+// ENSEMBLE_FAKE_CLAUDE selects the behavior: normal (default), errors, fail, hang, api-error, late, ask, argv.
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
@@ -48,6 +48,9 @@ if (mode === 'hang') {
   const tail = line(reply(normal())) + JSON.stringify(success);
   spawn(process.execPath, ['-e', `setTimeout(() => process.stdout.write(${JSON.stringify(tail)}), 400)`], { stdio: ['ignore', 'inherit', 'ignore'], detached: true, windowsHide: true }); // Detached: it outlives this process.
   process.exit(0);
+} else if (mode === 'argv') {
+  out(reply([JSON.stringify(args)]));
+  out(success);
 } else if (mode === 'ask' && !updateId) {
   // A slow first turn that ends on a question, leaving the task running; a turn carrying an update finishes it.
   await new Promise(resolve => setTimeout(resolve, Number(process.env.ENSEMBLE_FAKE_CLAUDE_DELAY_MS ?? 1000)));

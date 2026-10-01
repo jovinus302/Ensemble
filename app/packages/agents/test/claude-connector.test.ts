@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, expect, it } from 'vitest';
-import { ClaudeSessionConnector } from '../src/claude/connector.ts';
+import { ClaudeSessionConnector, type ClaudeConnectorOptions } from '../src/claude/connector.ts';
 import type { SessionEvent } from '../src/session.ts';
 import type { ContinueTaskInput, TaskInstructionsInput, UpdateInstructionsInput } from '../src/protocol.ts';
 
@@ -14,11 +14,11 @@ const update: UpdateInstructionsInput = { updateId: 'u1', fromVersion: 1, toVers
 const continuation: ContinueTaskInput = { taskId: 'task', planVersion: 2, update, task };
 
 const connectors: ClaudeSessionConnector[] = [];
-function fixture(mode = 'normal') {
+function fixture(mode = 'normal', options: Partial<ClaudeConnectorOptions> = {}) {
   process.env.ENSEMBLE_FAKE_CLAUDE = mode;
   const connector = new ClaudeSessionConnector({ executable: process.execPath,
     executableArgs: [fileURLToPath(new URL('./fixtures/fake-claude.mjs', import.meta.url))],
-    workspaceRoot: mkdtempSync(path.join(tmpdir(), 'claude-connector-')) });
+    workspaceRoot: mkdtempSync(path.join(tmpdir(), 'claude-connector-')), ...options });
   connectors.push(connector);
   const events: SessionEvent[] = []; connector.onEvent(event => events.push(event));
   return { connector, events, agentId: `test-${randomUUID()}` };
@@ -119,4 +119,34 @@ it('completes a turn whose final result reaches stdout after the process exited,
   const turnId = await connector.startTask(agentId, task);
   expect(await turnEnded(events, turnId)).toMatchObject({ status: 'completed' });
   expect(events).toContainEqual(expect.objectContaining({ type: 'report', report: expect.objectContaining({ type: 'result_report' }) }));
+}, 30_000);
+
+async function argv(options: Partial<ClaudeConnectorOptions> = {}): Promise<string[]> {
+  const { connector, events, agentId } = fixture('argv', options);
+  await connector.startSession(agentId, 'claude-tests');
+  await turnEnded(events, await connector.startTask(agentId, task));
+  const reply = events.find(e => e.type === 'reply');
+  // The fake replies with its session marker line, then its argv as JSON.
+  return JSON.parse(reply?.type === 'reply' ? reply.text.slice(reply.text.indexOf('\n') + 1) : '[]') as string[];
+}
+const flag = (args: string[], name: string) => args.includes(name) ? args[args.indexOf(name) + 1] : undefined;
+
+it('allows web research, denies subagents, sets a moderate effort and isolates turns from user settings by default', async () => {
+  const args = await argv();
+  expect(flag(args, '--allowedTools')).toBe('WebSearch,WebFetch');
+  expect(flag(args, '--disallowedTools')).toBe('Agent,Task');
+  expect(flag(args, '--effort')).toBe('medium');
+  expect(flag(args, '--setting-sources')).toBe('project');
+  expect(args).toContain('--strict-mcp-config');
+  expect(args).not.toContain('--model');
+}, 30_000);
+
+it('takes model, effort, tool lists and user settings from options', async () => {
+  const args = await argv({ model: 'haiku', effort: 'low', allowedTools: ['WebFetch'], disallowedTools: [], inheritUserSettings: true });
+  expect(flag(args, '--model')).toBe('haiku');
+  expect(flag(args, '--effort')).toBe('low');
+  expect(flag(args, '--allowedTools')).toBe('WebFetch');
+  expect(args).not.toContain('--disallowedTools');
+  expect(args).not.toContain('--setting-sources');
+  expect(args).not.toContain('--strict-mcp-config');
 }, 30_000);

@@ -19,8 +19,16 @@ interface AgentSession extends SessionInfo {
 }
 
 export interface ClaudeConnectorOptions {
-  /** Omitted: the user's Claude Code default model. */
+  /** Omitted: the CLI's default model (user settings are not read unless inheritUserSettings). */
   model?: string;
+  /** `--effort` level; defaults to medium rather than whatever the user's own settings choose. */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** Tools allowed without a prompt on top of acceptEdits; defaults to web research. */
+  allowedTools?: readonly string[];
+  /** Tools the agent may not use; defaults to the subagent tool, so an agent never spawns its own agents. */
+  disallowedTools?: readonly string[];
+  /** Load the user's ~/.claude settings, hooks and MCP servers into agent turns. Defaults to false. */
+  inheritUserSettings?: boolean;
   /** Defaults to ~/ensemble-agent-workspaces; keep it outside any repository. */
   workspaceRoot?: string;
   /** System prompt appended to an agent's session; defaults to the built-in role's prompt. */
@@ -30,6 +38,9 @@ export interface ClaudeConnectorOptions {
   /** Prepended to the CLI arguments; lets tests run a Node script as the executable. */
   executableArgs?: string[];
 }
+
+const DEFAULT_ALLOWED_TOOLS = ['WebSearch', 'WebFetch'];
+const DEFAULT_DISALLOWED_TOOLS = ['Agent', 'Task'];
 
 const component = (value: string) => {
   if (!/^[a-zA-Z0-9_-]+$/.test(value)) throw new Error('Project and agent IDs must contain only letters, numbers, underscores, or hyphens');
@@ -129,10 +140,17 @@ export class ClaudeSessionConnector implements SessionConnector {
     }
     const sessionArgs = session.lastSessionId ? ['--resume', session.lastSessionId] : ['--session-id', (session.lastSessionId = session.threadId)];
     const systemPrompt = (this.options.instructionsFor ?? (id => roleFor(id)?.systemPrompt))(agentId);
+    const { allowedTools = DEFAULT_ALLOWED_TOOLS, disallowedTools = DEFAULT_DISALLOWED_TOOLS } = this.options;
     const args = [
       ...(this.options.executableArgs ?? []),
       '-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
       ...sessionArgs,
+      // Joined into one value: the flags are variadic and would swallow the arguments after them.
+      ...(allowedTools.length ? ['--allowedTools', allowedTools.join(',')] : []),
+      ...(disallowedTools.length ? ['--disallowedTools', disallowedTools.join(',')] : []),
+      '--effort', this.options.effort ?? 'medium',
+      // Project settings only (none in the agent workspace): no user hooks, plugins or MCP servers.
+      ...(this.options.inheritUserSettings ? [] : ['--setting-sources', 'project', '--strict-mcp-config']),
       ...(this.options.model ? ['--model', this.options.model] : []),
       ...(systemPrompt ? ['--append-system-prompt', systemPrompt] : []),
     ];
