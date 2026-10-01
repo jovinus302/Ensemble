@@ -1,4 +1,4 @@
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, access } from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -6,12 +6,15 @@ import { createHash } from 'node:crypto';
 import { approval, BASE_SHA, LIMITS, plan, RUBRIC, RUBRIC_HASH } from '../src/protocol.ts';
 import { APP_ROOT, localServices, PACKAGE_ROOT, treeHash } from '../src/local.ts';
 import { runCell, type Report } from '../src/harness.ts';
+import { pendingCells } from '../src/resume.ts';
 
 const args = process.argv.slice(2);
 const value = (flag: string) => { const i = args.indexOf(flag); return i < 0 ? undefined : args[i + 1]; };
 const live = args.includes('--live');
 const fixture = args.includes('--fixture');
+const resume = args.includes('--resume');
 if (live && fixture) throw new Error('Choose exactly one mode');
+if (resume && !live) throw new Error('Resume is only for an approved live batch');
 const starterHash = await treeHash(path.join(PACKAGE_ROOT, 'starter'));
 const evaluatorHash = await treeHash(path.join(PACKAGE_ROOT, 'browser'));
 const implementationHash = createHash('sha256').update(await treeHash(path.join(PACKAGE_ROOT, 'src')))
@@ -21,10 +24,12 @@ if (!live && !fixture) {
   console.log(JSON.stringify({ mode: 'plan-only', ...manifest }, null, 2));
 } else {
   let config: Record<string, { model: string; effort: string }> = {};
+  let authorization: Record<string, unknown> = {};
   if (live) {
     const file = value('--approval-file');
     if (!file) throw new Error('Live approval missing; no provider imported or called');
-    approval(JSON.parse(await readFile(path.resolve(file), 'utf8')), { starterHash, evaluatorHash, implementationHash });
+    authorization = JSON.parse(await readFile(path.resolve(file), 'utf8'));
+    approval(authorization, { starterHash, evaluatorHash, implementationHash });
     const git = promisify(execFile);
     const actualBase = (await git('git', ['merge-base', 'HEAD', BASE_SHA], { cwd: APP_ROOT, windowsHide: true })).stdout.trim();
     if (actualBase !== BASE_SHA) throw new Error('Checkout is not based on pinned main');
@@ -39,13 +44,38 @@ if (!live && !fixture) {
     }
   }
   const outputRoot = path.resolve(value('--output') ?? path.join(PACKAGE_ROOT, '.local', `${fixture ? 'fixture' : 'live'}-${Date.now()}`));
-  // Never reuse an output directory: accidental reruns cannot replace failed evidence.
-  await mkdir(path.dirname(outputRoot), { recursive: true });
-  await mkdir(outputRoot, { recursive: false });
-  await writeFile(path.join(outputRoot, 'manifest.json'), JSON.stringify({ ...manifest, mode: fixture ? 'fixture' : 'live', config }, null, 2));
-  process.env.BENCH_APP_ROOT = APP_ROOT;
   const reports: Report[] = [];
-  for (const cell of plan()) {
+  let cells = plan();
+  if (resume) {
+    if (!value('--output')) throw new Error('Resume requires the exact previous output directory');
+    const previous = JSON.parse(await readFile(path.join(outputRoot, 'manifest.json'), 'utf8'));
+    for (const key of ['baseSha', 'rubricHash', 'starterHash', 'evaluatorHash'] as const) {
+      if (previous[key] !== manifest[key]) throw new Error(`Resume changed frozen ${key}`);
+    }
+    if (previous.mode !== 'live' || JSON.stringify(previous.config) !== JSON.stringify(config)) throw new Error('Resume changed mode or model config');
+    if (previous.implementationHash !== implementationHash && authorization.resumeFromImplementationHash !== previous.implementationHash) {
+      throw new Error('Infrastructure amendment must explicitly identify the preserved implementation hash');
+    }
+    for (const cell of plan()) {
+      try { reports.push(JSON.parse(await readFile(path.join(outputRoot, 'reports', `${cell.id}.json`), 'utf8'))); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        const hasTrace = await access(path.join(outputRoot, 'reports', `${cell.id}.events.jsonl`)).then(() => true, () => false);
+        if (hasTrace) throw new Error(`Ambiguous prior attempt ${cell.id}; never replay a cell with an unfinished trace`);
+      }
+    }
+    cells = pendingCells(reports, starterHash, config);
+    if (!cells.length) throw new Error('All eight cells already recorded; no further calls authorized');
+    await writeFile(path.join(outputRoot, `resume-${Date.now()}.json`), JSON.stringify({ previousImplementationHash: previous.implementationHash,
+      implementationHash, remaining: cells.map(c => c.id), reason: authorization.amendmentReason, originalObservationsPreserved: true }, null, 2));
+  } else {
+    // Never silently replace an existing attempt directory.
+    await mkdir(path.dirname(outputRoot), { recursive: true });
+    await mkdir(outputRoot, { recursive: false });
+    await writeFile(path.join(outputRoot, 'manifest.json'), JSON.stringify({ ...manifest, mode: fixture ? 'fixture' : 'live', config }, null, 2));
+  }
+  process.env.BENCH_APP_ROOT = APP_ROOT;
+  for (const cell of cells) {
     process.env.BENCH_TASK = cell.task;
     const selected = config[cell.provider] ?? { model: 'fixture-reference', effort: 'none' };
     const report = await runCell(cell, localServices(cell, { mode: fixture ? 'fixture' : 'live', outputRoot, ...selected }), {

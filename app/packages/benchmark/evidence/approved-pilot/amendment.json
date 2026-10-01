@@ -1,0 +1,10 @@
+{
+  "interpretation": "Timing is descriptive only; no isolated causal performance claim",
+  "otherIssue": 47,
+  "resumeImplementationHash": "276ff55ca58f7acb1a3918425bc2fa4b665d9a130f94ff3a3dee232fa972f188",
+  "originalImplementationHash": "6f165c1a491f9d8dff086348b411d81cc552c3197e53ec456e11c1b01200005e",
+  "noticeReceivedUtc": "2026-10-01T21:53:23Z",
+  "resumedSegment": "Cells03-08 may overlap issue47 work on shared host/providers; exact external run timings/resource consumption unavailable",
+  "firstSegment": "First two benchmark cells completed before notice receipt; absence of other load not proven",
+  "baselineUnchanged": "a6bfc345bde634422421c500fad264419bc04ec9"
+}

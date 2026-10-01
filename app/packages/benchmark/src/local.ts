@@ -8,6 +8,18 @@ import { type Cell, type Mode } from './protocol.ts';
 
 export const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const APP_ROOT = path.resolve(PACKAGE_ROOT, '../..');
+/** Register immediately after spawn so cleanup cannot miss an earlier close event. */
+export function trackOwnedChild(child: ChildProcess): { child: ChildProcess; closed: Promise<void> } {
+  return { child, closed: new Promise<void>(resolve => {
+    if (child.exitCode !== null || child.signalCode !== null) resolve();
+    else child.once('close', () => resolve());
+  }) };
+}
+export async function stopOwnedChildren(owned: Iterable<ReturnType<typeof trackOwnedChild>>): Promise<void> {
+  const snapshot = [...owned];
+  for (const { child } of snapshot) if (child.exitCode === null && child.signalCode === null) child.kill();
+  await Promise.all(snapshot.map(entry => entry.closed));
+}
 export async function treeHash(root: string): Promise<string> {
   const hash = createHash('sha256');
   async function visit(dir: string, relative = '') {
@@ -32,13 +44,13 @@ export function localServices(cell: Cell, options: {
   let workspace = runRoot;
   let server: ChildProcess | undefined;
   let url: string | undefined;
-  const children = new Set<ChildProcess>();
+  const children = new Map<ChildProcess, ReturnType<typeof trackOwnedChild>>();
   const env = { ...process.env, BENCH_APP_ROOT: APP_ROOT, BENCH_TASK: cell.task, PORT: '0' };
   async function command(file: string, signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
     await new Promise<void>((resolve, reject) => {
       const child = spawn(process.execPath, [file], { cwd: workspace, env, windowsHide: true, signal, stdio: ['ignore', 'pipe', 'pipe'] });
-      children.add(child); let output = '';
+      children.set(child, trackOwnedChild(child)); let output = '';
       child.stdout?.on('data', chunk => { output = (output + chunk).slice(-8000); });
       child.stderr?.on('data', chunk => { output = (output + chunk).slice(-8000); });
       child.on('error', reject); child.on('close', code => { children.delete(child); code === 0 ? resolve() : reject(new Error(`build exited ${code}: ${output}`)); });
@@ -49,7 +61,7 @@ export function localServices(cell: Cell, options: {
     signal.throwIfAborted();
     return new Promise((resolve, reject) => {
       server = spawn(process.execPath, ['server.mjs'], { cwd: workspace, env, windowsHide: true, signal, stdio: ['ignore', 'pipe', 'pipe'] });
-      children.add(server); let output = '';
+      children.set(server, trackOwnedChild(server)); let output = '';
       server.on('error', reject); server.on('exit', code => reject(new Error(`fixture server exited ${code}`)));
       server.stdout!.on('data', chunk => {
         output += String(chunk); const match = /http:\/\/127\.0\.0\.1:\d+/.exec(output);
@@ -105,8 +117,7 @@ export function localServices(cell: Cell, options: {
       await writeFile(path.join(target, 'REVIEW.json'), JSON.stringify({ blindId, task: cell.task, artifactHash }, null, 2));
     },
     async cleanup() {
-      for (const child of children) if (child.exitCode === null) child.kill();
-      await Promise.all([...children].map(child => child.exitCode !== null ? Promise.resolve() : new Promise<void>(resolve => child.once('close', () => resolve()))));
+      await stopOwnedChildren(children.values());
       children.clear(); server = undefined; url = undefined;
     },
   };
