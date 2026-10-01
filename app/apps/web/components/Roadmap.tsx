@@ -115,10 +115,15 @@ function TaskRow({ task, onResolve }: { task: VmRoadmapTask; onResolve?: Resolve
   );
 }
 
-export function RoadmapCard({ roadmap, deadline, members, me, onSetAvailability, onResolve }: {
+/**
+ * 작업 패널의 "일정" 탭. 작업 항목(work)이 있으면 작업 목록은 "작업" 탭 트리가 맡으므로 showTasks=false로 숨기고,
+ * 예상 종료·일정 막대·막힌 작업·가용 시간만 보인다.
+ */
+export function RoadmapCard({ roadmap, deadline, members, me, onSetAvailability, onResolve, showTasks = true }: {
   roadmap: VmRoadmap; deadline?: string; members: VmMember[]; me: string;
   onSetAvailability: (memberId: string, weeklyHours: number) => Promise<ActionResult>;
   onResolve?: ResolveTask;
+  showTasks?: boolean;
 }) {
   const f = roadmap.forecast;
   const late = f?.ok === true && (f.lateDaysMax ?? 0) > 0;
@@ -161,13 +166,20 @@ export function RoadmapCard({ roadmap, deadline, members, me, onSetAvailability,
         )}
       </section>
 
-      <section aria-label="작업 목록">
-        <h3 className="section-label">작업</h3>
-        <ul className="task-list">
-          {roadmap.tasks.map(t => <TaskRow key={t.id} task={t} onResolve={onResolve} />)}
-        </ul>
-        <ScheduleBars roadmap={roadmap} />
-      </section>
+      {showTasks ? (
+        <section aria-label="작업 목록">
+          <h3 className="section-label">작업</h3>
+          <ul className="task-list">
+            {roadmap.tasks.map(t => <TaskRow key={t.id} task={t} onResolve={onResolve} />)}
+          </ul>
+          <ScheduleBars roadmap={roadmap} />
+        </section>
+      ) : (
+        <section aria-label="일정 막대">
+          <h3 className="section-label">일정</h3>
+          <ScheduleBars roadmap={roadmap} />
+        </section>
+      )}
 
       {roadmap.blocked.length > 0 && (
         <section aria-label="막힌 작업">

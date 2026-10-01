@@ -1,8 +1,9 @@
 import { availabilityWeek, formatKstDate, scopeItem, scopeMentions, remainingScopeOps, type ForecastResult } from '@ensemble/core';
 import { channelText, taskName, shortTaskName, numericFacts, hasGroundedNumbers } from './channel-text.ts';
 import { affectedMembers, automationGate, diffPlans, forecastFromState, withoutStopped, isAutomationAction, limitReachedEvent, project, applyOps, opAuthority } from '@ensemble/core';
+import { createDecisionRequest, planOpProblems, planOpsProblems, planStarts, routeTask, taskMetaFromOps, PRIORITIES, ROUTING_REASONS } from '@ensemble/core';
 import { createHash } from 'node:crypto';
-import type { AnyEvent, EventContext, EventPayloads, EventType, LedgerEvent, NewLedgerEvent, PlanOp, ProjectState } from '@ensemble/core';
+import type { AnyEvent, ChangeKind, EventContext, EventPayloads, EventType, LedgerEvent, NewLedgerEvent, PlanOp, ProjectState, TaskDraft, TaskSpec } from '@ensemble/core';
 import type { SessionConnector, UpdateInstructionsInput } from '@ensemble/agents';
 import type { LlmProvider, ToolSpec } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
@@ -43,6 +44,10 @@ export interface CoordinationResult {
   agentAnswers?: { taskId: string; questionId: string; text: string }[];
   resolutions?: { taskId: string; action: 'accept' | 'retry' | 'recheck'; note?: string }[];
   reopens?: { taskId: string; reason: string; announcement?: string }[];
+  /** New work reserved to start in this handling; the PM starts each with `Dispatcher.startReserved`. */
+  starts?: string[];
+  /** Decision requests opened for work changes the speaker could not make alone. */
+  requests?: string[];
 }
 export interface CoordinatorOptions extends EventContext { model?: string; clock?: () => Date }
 const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string' && x.length > 0);
@@ -78,14 +83,89 @@ function interpretationTool(state: ProjectState): ToolSpec {
       op('set_deadline', { date: { type: 'string' } }), op('change_goal', { text: { type: 'string', minLength: 1 } }),
       op('resolve_task', { taskId, action: { enum: ['accept', 'retry', 'recheck'] }, note: { type: 'string', description: '사람이 요청한 보완 내용 또는 수락 사유. 없으면 빈 문자열' } }),
       op('reopen_task', { taskId, reason: { type: 'string', minLength: 1 } }),
+      op('create_task', { ...workDraft(state), parentId: taskId }),
+      op('split_task', { taskId, children: { type: 'array', minItems: 1, items: { type: 'object', additionalProperties: false, required: Object.keys(workDraft(state)), properties: workDraft(state) } } }),
+      op('cancel_task', { taskId, reason: { type: 'string', minLength: 1 } }),
+      op('set_priority', { taskId, priority: { enum: [...PRIORITIES] } }),
     ] } },
   } } };
+}
+/** The fields the model drafts for new work. Routing is a proposal; brief ids are chosen from enums. */
+function workDraft(state: ProjectState): Record<string, unknown> {
+  const ids = (values: string[]) => values.length ? { type: 'array', items: { type: 'string', enum: values } } : { type: 'array', maxItems: 0, items: { type: 'string' } };
+  return {
+    tempId: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,39}$', description: '새 작업 ID. 기존 작업 ID와 겹치지 않는 짧은 영문 소문자(예: login-screen). 같은 응답의 다른 연산이 dependsOn·parentId로 참조할 수 있다' },
+    title: { type: 'string', minLength: 1 }, assignee: { type: 'string', enum: [...state.members.keys()], description: '제안 담당. Agent 배정은 코드가 역할로 다시 고른다' },
+    handoffConditions: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'string', minLength: 1 } },
+    dependsOn: { type: 'array', items: { type: 'string' } }, priority: { enum: [...PRIORITIES] },
+    routing: { type: 'object', additionalProperties: false, required: ['executor', 'reason', 'note'], properties: { executor: { enum: ['agent', 'human'] }, reason: { enum: [...ROUTING_REASONS] }, note: { type: 'string', description: '누가 왜 하는지 한 문장' } } },
+    brief: { type: 'object', additionalProperties: false, required: ['why', 'decisionIds', 'attachmentIds', 'constraints'], properties: {
+      why: { type: 'string', minLength: 1, description: '목표 → 상위 작업 → 이 작업으로 이어지는 이유 1~2문장' },
+      decisionIds: ids([...state.decisions.keys()]), attachmentIds: stringArray, constraints: { ...stringArray, description: '대화에서 확정된 제약만' },
+    } },
+  };
+}
+const WORK_OPS = ['create_task', 'split_task', 'cancel_task', 'set_priority'] as const;
+type WorkOp = Extract<PlanOp, { type: typeof WORK_OPS[number] }>;
+const isWorkOp = (op: CoordinationOp): op is WorkOp => (WORK_OPS as readonly string[]).includes(op.type);
+/** New work from one message beyond this goes to the decider as one bundled request (§3). */
+export const MAX_TASKS_PER_MESSAGE = 5;
+const newTaskIds = (ops: readonly CoordinationOp[]): string[] => ops.flatMap(op => op.type === 'create_task' ? [op.tempId] : op.type === 'split_task' ? op.children.map(c => c.tempId) : []);
+const DRAFT_FIELDS = ['tempId', 'title', 'assignee', 'handoffConditions', 'dependsOn', 'priority', 'routing', 'brief'];
+
+/**
+ * Code finishes what the model drafted: routing picks the assignee (§2.5), and the brief gets the
+ * source conversation and its attachments (§2.6). Unknown ids stay in so validation rejects them.
+ */
+function finishDraft(state: ProjectState, events: readonly AnyEvent[], raw: Record<string, unknown>, sourceMessageIds: string[]): { draft?: TaskDraft; problems: string[] } {
+  if (!raw || typeof raw !== 'object') return { problems: ['새 작업 초안이 객체가 아닙니다.'] };
+  const label = typeof raw.tempId === 'string' ? raw.tempId : '새 작업';
+  if (Object.keys(raw).some(k => !DRAFT_FIELDS.includes(k))) return { problems: [`${label}: 새 작업 필드는 ${DRAFT_FIELDS.join(', ')}만 허용합니다.`] };
+  const routing = raw.routing as Record<string, unknown> | undefined;
+  const brief = raw.brief as Record<string, unknown> | undefined;
+  if (!routing || typeof routing !== 'object' || !brief || typeof brief !== 'object') return { problems: [`${label}: routing과 brief가 필요합니다.`] };
+  const routed = routeTask(state, { executor: routing.executor as 'agent' | 'human', reason: String(routing.reason), note: typeof routing.note === 'string' ? routing.note : '', ...(typeof raw.assignee === 'string' ? { assignee: raw.assignee } : {}) });
+  if (!routed.ok) return { problems: [`${label}: ${routed.reason}`] };
+  if (routed.assignee === undefined) return { problems: [`${label}: 맡을 사람이 없습니다.`] };
+  const messageAttachments = events.flatMap(e => e.type === 'message_recorded' && sourceMessageIds.includes(e.payload.messageId) ? e.payload.attachmentIds : []);
+  const known = new Set(events.flatMap(e => e.type === 'attachment_recorded' ? [e.payload.attachmentId] : []));
+  const attachmentIds = Array.isArray(brief.attachmentIds) ? brief.attachmentIds.filter((id): id is string => typeof id === 'string') : [];
+  const unknown = attachmentIds.filter(id => !known.has(id));
+  if (unknown.length) return { problems: [`${label}: 없는 자료 ${unknown.join(', ')}`] };
+  return { problems: [], draft: {
+    ...(raw as unknown as TaskDraft), assignee: routed.assignee, routing: routed.routing,
+    brief: { why: String(brief.why ?? ''), sourceMessageIds: [...sourceMessageIds], decisionIds: Array.isArray(brief.decisionIds) ? brief.decisionIds as string[] : [], attachmentIds: [...new Set([...attachmentIds, ...messageAttachments.filter(id => known.has(id))])], constraints: Array.isArray(brief.constraints) ? brief.constraints as string[] : [] },
+  } };
+}
+
+/** Model output → recorded ops: work drafts finished by code, then the whole batch validated in order. */
+function prepareOps(state: ProjectState, events: readonly AnyEvent[], raw: readonly CoordinationOp[]): { ops: CoordinationOp[]; problems: string[] } {
+  const problems: string[] = [];
+  const ops = raw.map(op => {
+    if (op.type === 'create_task') {
+      const { parentId, sourceMessageIds, type, ...draft } = op as unknown as Record<string, unknown> & { sourceMessageIds: string[] };
+      const done = finishDraft(state, events, draft, sourceMessageIds);
+      problems.push(...done.problems);
+      return done.draft ? { type, sourceMessageIds, ...(parentId !== undefined ? { parentId } : {}), ...done.draft } as PlanOp : op;
+    }
+    if (op.type === 'split_task' && Array.isArray(op.children)) {
+      const children = op.children.map(child => {
+        const done = finishDraft(state, events, child as unknown as Record<string, unknown>, op.sourceMessageIds);
+        problems.push(...done.problems);
+        return done.draft ?? child;
+      });
+      return { ...op, children };
+    }
+    return op;
+  });
+  if (!problems.length) problems.push(...planOpsProblems(state, ops.filter((op): op is PlanOp => !isRecoveryOp(op))));
+  return { ops, problems };
 }
 function validCoordinationOp(value: unknown, state: ProjectState): value is CoordinationOp {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   if (!strings(v.sourceMessageIds) || !v.sourceMessageIds.length || !v.sourceMessageIds.every(id => state.messages.some(m => m.messageId === id && state.members.get(m.authorId)?.kind === 'human'))) return false;
-  const fields: Record<string, string[]> = { set_availability: ['memberId', 'weeklyHours', 'weekStart', 'period'], exclude_scope: ['taskId', 'item'], limit_scope: ['taskId', 'items'], handoff_early: ['taskId'], reassign: ['taskId', 'assignee'], set_deadline: ['date'], change_goal: ['text'], resolve_task: ['taskId', 'action', 'note'], reopen_task: ['taskId', 'reason'] };
+  const fields: Record<string, string[]> = { set_availability: ['memberId', 'weeklyHours', 'weekStart', 'period'], exclude_scope: ['taskId', 'item'], limit_scope: ['taskId', 'items'], handoff_early: ['taskId'], reassign: ['taskId', 'assignee'], set_deadline: ['date'], change_goal: ['text'], resolve_task: ['taskId', 'action', 'note'], reopen_task: ['taskId', 'reason'], create_task: [...DRAFT_FIELDS, 'parentId'], split_task: ['taskId', 'children'], cancel_task: ['taskId', 'reason'], set_priority: ['taskId', 'priority'] };
   const allowed = fields[String(v.type)];
   if (!allowed || Object.keys(v).some(k => !['type', 'sourceMessageIds', ...allowed].includes(k))) return false;
   if (allowed.includes('taskId') && !state.plan?.tasks.some(t => t.id === v.taskId)) return false;
@@ -99,6 +179,11 @@ function validCoordinationOp(value: unknown, state: ProjectState): value is Coor
     case 'reassign': return state.members.has(String(v.assignee));
     case 'set_deadline': return typeof v.date === 'string' && Number.isFinite(Date.parse(v.date));
     case 'change_goal': return typeof v.text === 'string' && !!v.text.trim();
+    // Work ops: shape only here. Drafts are finished and the batch is checked by `prepareOps`/`planOpsProblems`.
+    case 'create_task': return typeof v.tempId === 'string' && typeof v.title === 'string' && (v.parentId === undefined || typeof v.parentId === 'string');
+    case 'split_task': return Array.isArray(v.children) && v.children.length > 0;
+    case 'cancel_task': return typeof v.reason === 'string' && !!v.reason.trim();
+    case 'set_priority': return PRIORITIES.includes(v.priority as never);
     default: return false;
   }
 }
@@ -231,20 +316,29 @@ export class Coordinator {
     const humanMessages = state.messages.filter(m => state.members.get(m.authorId)?.kind === 'human');
     const lastHuman = humanMessages.at(-1);
     const pendingAgentQuestions = [...state.tasks.values()].filter(t => state.members.get(t.spec.assignee)?.kind === 'agent').flatMap(t => taskQuestions(events, t.spec.id).filter(q => !q.answer).map(q => ({ ...q, taskId: t.spec.id })));
-    const facts = { messageId, planVersion: version, now, messages: state.messages, knownFacts, pendingAgentQuestions, plan: state.plan, taskStates: [...state.tasks.values()], members: [...state.members.values()], activeTurns: [...state.activeTurn], availability: [...state.availability], availabilityOverrides: [...state.availabilityOverrides].map(([id, weeks]) => [id, [...weeks]]), estimates: [...state.estimates], goal: state.goal, currentForecast: calendarForecast(current), forecastInputIds: forecastInputs, decisions: [...state.decisions.values()], pendingAuthority: [...state.pendingAuthority.values()], previousSpeech: prior, openTopics: state.openTopics };
-    if (confirmed && (!confirmed.every(op => validOp(op, state) && opAuthority(state, op).allowed))) throw new Error('Invalid or unauthorized confirmed operation');
-    const interpretation = confirmed ? { category: 'authority', summary: '기록된 변경 승인', ops: confirmed, conflicts: [] } : !state.plan ? undefined : await this.call<CoordinationInterpretation>(interpretationTool(state), facts, v => {
+    const facts = { messageId, planVersion: version, now, messages: state.messages, knownFacts, pendingAgentQuestions, plan: state.plan, taskStates: [...state.tasks.values()], members: [...state.members.values()], activeTurns: [...state.activeTurn], availability: [...state.availability], availabilityOverrides: [...state.availabilityOverrides].map(([id, weeks]) => [id, [...weeks]]), estimates: [...state.estimates], goal: state.goal, currentForecast: calendarForecast(current), forecastInputIds: forecastInputs, decisions: [...state.decisions.values()], pendingAuthority: [...state.pendingAuthority.values()], previousSpeech: prior, openTopics: state.openTopics, attachments: events.flatMap(e => e.type === 'attachment_recorded' ? [e.payload] : []) };
+    // A decision request answered on its card: the target's answer message carries the authority the original talk lacked.
+    const decisionRequest = confirmed && requestId ? state.decisionRequests.get(requestId) : undefined;
+    if (decisionRequest && (decisionRequest.request.targetMemberId !== message.authorId || ['rejected', 'withdrawn', 'expired'].includes(decisionRequest.status))) throw new Error('Operation answer is not from the decision request target');
+    const confirmedOps = decisionRequest ? confirmed!.map(op => op.sourceMessageIds.includes(messageId) ? op : { ...op, sourceMessageIds: [...op.sourceMessageIds, messageId] }) : confirmed;
+    if (confirmedOps && (!confirmedOps.every(op => validOp(op, state) && opAuthority(state, op).allowed) || (confirmedOps.some(isWorkOp) && planOpsProblems(state, confirmedOps).length))) throw new Error('Invalid or unauthorized confirmed operation');
+    const interpretation = confirmedOps ? { category: 'authority', summary: '기록된 변경 승인', ops: confirmedOps, conflicts: [] } : !state.plan ? undefined : await this.call<CoordinationInterpretation>(interpretationTool(state), facts, v => {
       const errors: string[] = [];
       if (!Object.keys(v).every(k => ['category', 'summary', 'ops', 'conflicts', 'conversation', 'factMentions', 'agentAnswers'].includes(k))) errors.push('최상위 필드는 category, summary, ops, conflicts, conversation, factMentions, agentAnswers만 허용합니다.');
       if (typeof v.category !== 'string' || typeof v.summary !== 'string') errors.push('category와 summary는 문자열이어야 합니다.');
       if (!Array.isArray(v.ops) || !v.ops.every(op => validCoordinationOp(op, state))) errors.push('ops: 허용된 연산 필드·작업/담당자 ID·실제 사람 sourceMessageIds만 사용하세요.');
+      else {
+        const problems = prepareOps(state, events, v.ops as CoordinationOp[]).problems;
+        if (problems.length) errors.push(`ops: 작업 변경이 규칙에 맞지 않습니다. ${problems.join(' ')}`);
+      }
       if (!strings(v.conflicts) || !v.conflicts.every(id => state.decisions.has(id))) errors.push(`conflicts: 기존 결정의 decisionId만 허용합니다. 허용 ID=${JSON.stringify([...state.decisions.keys()])}. 작업/계획 이벤트/메시지 ID는 결정 ID가 아닙니다.${state.decisions.size ? '' : ' 기존 결정이 없으므로 conflicts는 반드시 []입니다.'}`);
       if (!(v.agentAnswers === undefined || (Array.isArray(v.agentAnswers) && v.agentAnswers.every(a => a && typeof a === 'object' && pendingAgentQuestions.some(q => q.questionId === a.questionId) && strings(a.sourceMessageIds) && a.sourceMessageIds.includes(messageId) && a.sourceMessageIds.every((id: string) => humanMessages.some(m => m.messageId === id)))))) errors.push('agentAnswers: 미해결 질문 ID와 현재 메시지를 포함한 사람 sourceMessageIds만 허용합니다.');
       if (!validConversation(v.conversation, state, lastHuman?.messageId)) errors.push(`conversation: questionMessageId는 ${lastHuman?.messageId} 또는 null이며, waitingOnMemberIds는 질문자를 제외한 사람 ID 배열입니다. 질문이 없으면 null/[]/false를 쓰세요.`);
       if (!Array.isArray(v.factMentions) || !v.factMentions.every(mention => mention && typeof mention === 'object' && humanMessages.some(m => m.messageId === mention.messageId) && strings(mention.factIds) && mention.factIds.every((id: string) => knownFacts.some(f => f.id === id)))) errors.push('factMentions: 실제 사람 messageId와 knownFacts의 id만 배열로 사용하세요.');
       return errors;
     });
-    const planOps = (interpretation?.ops ?? []).filter((op): op is PlanOp => !isRecoveryOp(op)).map(op => {
+    if (interpretation && !confirmedOps) interpretation.ops = prepareOps(state, events, interpretation.ops).ops;
+    const planOps =(interpretation?.ops ?? []).filter((op): op is PlanOp => !isRecoveryOp(op)).map(op => {
       if (op.type !== 'set_availability') return op;
       const sources = humanMessages.filter(m => op.sourceMessageIds.includes(m.messageId) && m.authorId === op.memberId);
       const explicitWeek = sources.some(m => /이번\s*주/.test(m.text)) && !sources.some(m => /매주|앞으로도|계속/.test(m.text));
@@ -279,20 +373,30 @@ export class Coordinator {
       if (op.type === 'set_deadline' && candidate.goal) candidate.goal.deadline = op.date;
     }
     const proposed = forecastFromState(candidate, now);
-    const assessed = ops.map(op => ({ op, ...opAuthority(state, op) }));
-    const applied = assessed.filter(a => a.allowed).map(a => a.op).filter(op => {
+    // More new work than one message should make goes to the decider as one bundled request.
+    const bundled = !confirmedOps && newTaskIds(ops).length > MAX_TASKS_PER_MESSAGE;
+    const assessed: { op: PlanOp; kind: ChangeKind; personId?: string; allowed: boolean }[] = ops.map(op => bundled && isWorkOp(op) ? { op, kind: 'scope_add', personId: state.goal?.decider, allowed: false } : { op, ...opAuthority(state, op) });
+    const allowedOps = assessed.filter(a => a.allowed).map(a => a.op).filter(op => {
       if (op.type === 'set_availability') return (op.weekStart ? state.availabilityOverrides.get(op.memberId)?.get(op.weekStart) : state.availability.get(op.memberId)) !== op.weeklyHours;
       // A question/proposal awaiting a person is not a confirmed plan change,
       // even when its author would have authority to make that change.
       if (openHumanQuestion && op.sourceMessageIds.includes(conversation.questionMessageId!)) return false;
       if (op.type === 'set_deadline') return state.goal?.deadline !== op.date;
       if (op.type === 'change_goal') return state.goal?.text !== op.text;
+      if (op.type === 'set_priority') return (state.tasks.get(op.taskId)?.meta?.priority ?? 'normal') !== op.priority;
       return JSON.stringify(applyOps(state.plan?.tasks ?? [], [op])) !== JSON.stringify(state.plan?.tasks ?? []);
     });
-    const pending = assessed.filter(a => !a.allowed);
+    // Work that leans on work still waiting for a person (a subtask of a new task the decider has not approved) waits with it.
+    const applied: PlanOp[] = [], deferred: PlanOp[] = [];
+    let appliedPlan: TaskSpec[] = state.plan?.tasks ?? [];
+    for (const op of allowedOps) {
+      if (isWorkOp(op) && planOpProblems(state, op, appliedPlan).length) { deferred.push(op); continue; }
+      applied.push(op); appliedPlan = applyOps(appliedPlan, [op]);
+    }
+    const pending = [...assessed.filter(a => !a.allowed), ...deferred.map(op => ({ op, kind: 'scope_add' as ChangeKind, personId: state.goal?.decider, allowed: false }))];
     const tasks = applyOps(state.plan?.tasks ?? [], applied);
     const diff = diffPlans(state.plan?.tasks, tasks);
-    const planChanged = diff.changed.length > 0;
+    const planChanged = diff.changed.length > 0 || diff.added.length > 0 || diff.removed.length > 0;
     const reopened = diff.changed.filter(c => state.tasks.get(c.taskId)?.status === 'checked' || state.tasks.get(c.taskId)?.blocked?.prevStatus === 'checked');
     const dependsOnRework = (id: string, seen = new Set<string>()): boolean => {
       if (seen.has(id)) return false;
@@ -301,7 +405,8 @@ export class Coordinator {
     };
     const reworkDependents = [...state.tasks.values()].filter(t => ['running', 'reserved'].includes(t.status) && dependsOnRework(t.spec.id));
     const reworkText = reopened.length ? `${reopened.map(c => c.next.title).join(' · ')} 작업의 명세가 바뀌어 다시 확인이 필요합니다` : '';
-    const affected = [...new Set([...affectedMembers(state, diff), ...reworkDependents.map(t => t.spec.assignee)])];
+    // New work reaches its assignee as a start (or their own acceptance), not as a change to other work.
+    const affected = [...new Set([...affectedMembers(state, { ...diff, added: [] }), ...reworkDependents.map(t => t.spec.assignee)])];
     const participants = new Set(state.messages.filter(m => state.members.get(m.authorId)?.kind === 'human').map(m => m.authorId));
     const absent = affected.filter(id => !participants.has(id) || reworkDependents.some(t => t.spec.assignee === id) || reopened.some(c => c.next.assignee === id));
     const impact = { current, proposed, deltaDays: current.ok && proposed.ok ? { min: proposed.days.min - current.days.min, max: proposed.days.max - current.days.max } : null, diff, affected, absent, operations: assessed, conflicts: interpretation?.conflicts ?? [] };
@@ -408,7 +513,8 @@ export class Coordinator {
     judgement.text = channelText(judgement.text, state);
     let post: CoordinationResult['posts'][number] | undefined = judgement.decision === 'speak' ? { text: judgement.text, kind: 'answer' } : undefined;
     const append: NewLedgerEvent[] = [];
-    if (confirmed && requestId) {
+    // A decision request is closed by its own `decision_resolved` (decision flow), not by an authority grant.
+    if (confirmed && requestId && !decisionRequest) {
       const request = state.pendingAuthority.get(requestId);
       if (!request) return { posts: [], events: [] };
       if (request.personId !== message.authorId || !confirmed.every(op => operationKey(op) === request.operationKey)) throw new Error('Operation does not match authority request');
@@ -429,10 +535,41 @@ export class Coordinator {
     const sourceMessageIds = [...new Set(applied.flatMap(op => op.sourceMessageIds))];
     const dropFor = (taskId: string) => applied.filter((op): op is Extract<PlanOp, { type: 'exclude_scope' }> => op.type === 'exclude_scope' && op.taskId === taskId).map(op => op.item);
     for (const [index, a] of pending.entries()) {
+      if (isWorkOp(a.op)) continue;
       if (judgement.decision !== 'speak' || !a.personId) continue;
       const text = channelText(`${state.members.get(a.personId)?.displayName ?? '담당자'}님, ${describeOp(a.op, state)} 변경을 승인하시겠어요?`, state);
       append.push(make('authority_requested', { requestId: `${changeId}:${index}:${a.personId}`, operationKey: operationKey(a.op), personId: a.personId, changeKinds: [a.kind], text }, `authority:${index}`));
       append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:ask:${index}`, text, kind: 'ask' }, `ask:${index}`, true));
+      post = undefined;
+    }
+    // Work changes outside the speaker's authority become one decision request per person, recommending exactly those ops (§2.3).
+    const workAsks = new Map<string, typeof pending>();
+    for (const a of pending) if (isWorkOp(a.op) && a.personId) workAsks.set(a.personId, [...(workAsks.get(a.personId) ?? []), a]);
+    if (validJudgement && !confirmedOps) for (const [personId, asks] of workAsks) {
+      const askOps = asks.map(a => a.op);
+      const name = (id: string) => state.members.get(id)?.displayName ?? '담당자';
+      const created = newTaskIds(askOps);
+      const existing = [...new Set(askOps.flatMap(op => 'taskId' in op ? [op.taskId] : []))];
+      const assignment = asks.every(a => a.kind === 'human_commitment');
+      const list = askOps.map(op => describeOp(op, state)).join(', ');
+      const question = `${name(personId)}님, ${bundled ? `${name(message.authorId)}님 말씀에서 작업 ${created.length}개가 나왔어요(${list}). 한 번에 반영할까요?`
+        : assignment ? `${list}을 맡아 주시겠어요?` : `${name(message.authorId)}님 요청: ${list}. 반영할까요?`}`;
+      const sourceMessageIds = [...new Set(askOps.flatMap(op => op.sourceMessageIds))];
+      const requestId = `${key}:decision:${personId}`;
+      try {
+        append.push(createDecisionRequest(state, {
+          requestId, kind: assignment ? 'assignment' : 'plan_change', targetMemberId: personId, question: channelText(question, state),
+          options: [
+            { optionId: 'apply', label: assignment ? '맡기' : '반영', effects: [{ type: 'plan_ops', ops: askOps }], tradeoff: '작업이 바로 생기고 Agent가 맡은 작업은 자동으로 시작돼요' },
+            { optionId: 'hold', label: '보류', effects: [{ type: 'none' }], tradeoff: '지금은 만들지 않고 열린 주제로 남겨요' },
+          ],
+          recommendation: { optionId: 'apply', rationale: `${name(message.authorId)}님이 대화에서 요청한 일이에요`, evidence: sourceMessageIds },
+          impact: { taskIds: [...created, ...existing], blockedTaskIds: [] },
+          editable: askOps.length === 1 && askOps[0]!.type === 'create_task' ? ['title', 'priority'] : ['priority'],
+          sourceMessageIds,
+        }, { projectId: this.options.projectId, targetProductId: this.options.targetProductId }, now));
+      } catch { continue; } // One open request per task: the earlier request still covers it.
+      append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:ask:decision:${personId}`, text: channelText(question, state), kind: 'ask', requestId, ...(existing.length ? { taskIds: existing } : {}) }, `ask:decision:${personId}`, true));
       post = undefined;
     }
     if ((validJudgement || exclusionConclusion) && applied.length && state.goal && state.plan) {
@@ -488,9 +625,19 @@ export class Coordinator {
         append.push(make('decision_recorded', { decisionId: changeId, summary, sourceMessageIds, approvedBy: 'pm', changeKinds: [...new Set(applied.map(op => opAuthority(state, op).kind))] }));
         if (planChanged) append.push(make('plan_committed', { version: version + 1, basedOn: version, tasks, reason: summary, approvedBy: 'pm', sourceMessageIds }, 'plan_committed', true));
       }
+      // Origin, brief, routing and priority of new work, in the same transaction as its plan version.
+      for (const [index, op] of applied.entries()) {
+        if (!isWorkOp(op)) continue;
+        const creator = decisionRequest ? humanMessages.find(m => decisionRequest.request.sourceMessageIds.includes(m.messageId))?.authorId ?? message.authorId
+          : op.sourceMessageIds.includes(messageId) ? message.authorId : humanMessages.find(m => op.sourceMessageIds.includes(m.messageId))?.authorId ?? 'pm';
+        for (const meta of taskMetaFromOps([op], { planVersion: planChanged ? version + 1 : version, createdBy: creator, ...(decisionRequest ? { decisionRequestId: requestId! } : {}) })) {
+          append.push(make('task_meta_set', meta, `meta:${index}:${meta.taskId}`));
+        }
+      }
       for (const id of absent.filter(id => state.members.get(id)?.kind === 'human')) {
         if (reopens.some(r => r.announcement && state.tasks.get(r.taskId)?.spec.assignee === id)) continue;
         const details = diff.changed.filter(c => c.prev.assignee === id || c.next.assignee === id).map(c => `${c.next.title}: ${c.next.assignee === id ? c.next.handoffConditions.join(', ') : '담당 작업에서 제외'}`);
+        details.push(...diff.removed.filter(t => t.assignee === id).map(t => `${t.title}: 작업 취소`));
         if (reworkDependents.some(t => t.spec.assignee === id) || reopened.some(c => c.next.assignee === id)) details.push(reworkText);
         const text = channelText(`${state.members.get(id)?.displayName ?? '담당자'}님, 계획 v${version + 1}: ${details.join('; ')}`, state);
         append.push(make('change_notified', { changeId, planVersion: version + 1, recipientId: id, text, via: 'channel' }, `notify:${id}`));
@@ -501,8 +648,9 @@ export class Coordinator {
       }
       for (const [agentId, taskId] of state.activeTurn) {
         const predecessorRework = reworkDependents.some(t => t.spec.id === taskId);
-        if (!diff.changed.some(c => c.taskId === taskId) && !predecessorRework) continue;
-        deliveries.push({ agentId, taskId, input: { updateId: `${changeId}:${agentId}`, fromVersion: version, toVersion: version + 1, keep: diff.unchanged.filter(t => t.assignee === agentId).map(t => t.title), change: [...diff.changed.filter(c => c.taskId === taskId).map(c => JSON.stringify(c.next)), ...(predecessorRework ? [reworkText] : [])], drop: dropFor(taskId), reason: summary } });
+        const cancelled = diff.removed.find(t => t.id === taskId);
+        if (!diff.changed.some(c => c.taskId === taskId) && !predecessorRework && !cancelled) continue;
+        deliveries.push({ agentId, taskId, input: { updateId: `${changeId}:${agentId}`, fromVersion: version, toVersion: version + 1, keep: diff.unchanged.filter(t => t.assignee === agentId).map(t => t.title), change: [...diff.changed.filter(c => c.taskId === taskId).map(c => JSON.stringify(c.next)), ...(predecessorRework ? [reworkText] : [])], drop: cancelled ? [cancelled.title] : dropFor(taskId), reason: summary } });
       }
     }
     const agentAnswers = [...new Map((interpretation?.agentAnswers ?? []).map(a => [a.questionId, a])).values()].map(a => ({ taskId: pendingAgentQuestions.find(q => q.questionId === a.questionId)!.taskId, questionId: a.questionId, text: humanMessages.filter(m => a.sourceMessageIds.includes(m.messageId)).map(m => m.text).join('\n') }));
@@ -541,11 +689,23 @@ export class Coordinator {
         // Preserve grounded deterministic answers, while still disclosing the failed model judgement.
         if (post?.text !== JUDGEMENT_FAILURE_TEXT) append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:failure`, text: JUDGEMENT_FAILURE_TEXT, kind: 'ask' }, 'failure-notice'));
       }
+      // New work goes straight to work: reserve its start in the same transaction (§3 B3). Only the new tasks;
+      // the dispatcher's own triggers keep starting everything else.
+      const created = new Set(newTaskIds(applied));
+      if (created.size && append.some(e => e.type === 'plan_committed')) {
+        const after = project([...fresh, ...append.map((e, i) => ({ ...e, id: `pending:${i}`, seq: latest.lastSeq + i + 1, at: e.at ?? now.toISOString() }))]);
+        append.push(...planStarts(after, key, { projectId: this.options.projectId, targetProductId: this.options.targetProductId })
+          .filter(e => created.has((e.payload as EventPayloads['task_start_reserved']).taskId)));
+      }
       return { append, result: 'applied' };
     });
     if (tx.result === 'retry') return this.consider(messageId, confirmed, requestId, retry + 1);
     if (tx.result === 'duplicate') return { posts: [], events: [] };
     const result: CoordinationResult = { posts: post ? [post] : [], events: tx.appended, ...(agentAnswers.length ? { agentAnswers } : {}), ...(resolutions.length ? { resolutions } : {}), ...(reopens.length ? { reopens } : {}) };
+    const starts = (tx.appended as AnyEvent[]).flatMap(e => e.type === 'task_start_reserved' ? [e.payload.taskId] : []);
+    const requests = (tx.appended as AnyEvent[]).flatMap(e => e.type === 'decision_requested' ? [e.payload.requestId] : []);
+    if (starts.length) result.starts = starts;
+    if (requests.length) result.requests = requests;
     for (const e of tx.appended as AnyEvent[]) if (e.type === 'pm_spoke' && e.idempotencyKey === `${key}:failure-notice`) result.posts.push({ text: e.payload.text, kind: 'ask' });
     for (const e of tx.appended as AnyEvent[]) if (e.type === 'change_notified' && e.payload.via === 'channel') result.posts.push({ text: e.payload.text, kind: 'nudge' });
     for (const e of tx.appended as AnyEvent[]) if (e.type === 'pm_spoke' && e.idempotencyKey?.startsWith(`${key}:ask:`)) result.posts.push({ text: e.payload.text, kind: 'ask' });

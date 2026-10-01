@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { VmCard, VmDecisionCard } from "../lib/view-model";
 import { ActivityLine } from "./Activity";
 import { Archives } from "./Archives";
 import { DecisionCard } from "./Cards";
@@ -11,18 +12,24 @@ import { FreeStart } from "./FreeStart";
 import { MemberList } from "./Members";
 import { MessageItem } from "./Message";
 import { PmLogPanel } from "./PmLog";
-import { RoadmapCard } from "./Roadmap";
 import { useViewModel } from "./use-view-model";
+import { WorkItemDetail } from "./WorkItemDetail";
+import { WorkPanel, type PanelTab } from "./WorkPanel";
 
 const REPLACE_WARNING = "진행 중인 프로젝트는 보관되고 화면에서 사라집니다.";
 type Pending = { kind: "scenario" } | { kind: "free"; goal: string; deadline?: string };
+/** 좁은 화면의 탭. 넓은 화면은 채널과 작업 패널을 함께 보이므로 이 값은 CSS가 좁은 화면에서만 쓴다. */
+type MobileView = "channel" | "work" | "decisions";
 
 export function App() {
   const { vm, error, connectionLost, pending, actions } = useViewModel();
   const [logOpen, setLogOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(false);
-  const [roadmapOpen, setRoadmapOpen] = useState(false);
+  const [panelTab, setPanelTab] = useState<PanelTab>("work");
+  const [mobileView, setMobileView] = useState<MobileView>("channel");
+  const [openTask, setOpenTask] = useState<string | null>(null);
+  const [jumpTo, setJumpTo] = useState<string | null>(null);
   const [freeForm, setFreeForm] = useState(false);
   const [confirm, setConfirm] = useState<{ action: Pending; message: string } | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
@@ -31,6 +38,18 @@ export function App() {
   const messageCount = vm?.messages.length ?? 0;
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messageCount]);
+  // 작업 상세의 "이 대화에서 생김": 서랍을 닫고 채널로 돌아가 그 메시지로 이동해 잠깐 강조한다.
+  useEffect(() => {
+    if (!jumpTo) return;
+    const el = document.getElementById(`msg-${jumpTo}`);
+    if (!el) { setJumpTo(null); return; }
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.classList.add("msg-highlight");
+    const timer = setTimeout(() => setJumpTo(null), 2000);
+    return () => { clearTimeout(timer); el.classList.remove("msg-highlight"); };
+  }, [jumpTo]);
+  const closeTask = useCallback(() => setOpenTask(null), []);
+  const jumpToMessage = useCallback((messageId: string) => { setOpenTask(null); setMobileView("channel"); setJumpTo(messageId); }, []);
 
   if (!vm) {
     return (
@@ -71,8 +90,15 @@ export function App() {
     try { await actions.scenarioNext(); } finally { setStepping(false); }
   };
   // 카드가 보이는 사람에게는 카드를 안내하는 PM 발언 대신 카드를 그 자리에 둔다(같은 내용을 두 번 보이지 않게).
-  const visibleCards = new Map(vm.cards.map(c => [c.id, c]));
+  const visibleCards = new Map<string, VmCard | VmDecisionCard>([...vm.cards, ...(vm.decisionCards ?? [])].map(c => [c.id, c]));
   const linkedCards = new Set(vm.messages.flatMap(m => (m.cardId && visibleCards.has(m.cardId) ? [m.cardId] : [])));
+  const workTitles = new Map((vm.work?.items ?? []).map(i => [i.id, i.title]));
+  const decisionCount = (vm.decisionCards?.length ?? 0) + vm.cards.length;
+  const showMobile = (view: MobileView) => {
+    setMobileView(view);
+    if (view === "decisions") setPanelTab("decisions");
+    else if (view === "work" && panelTab === "decisions") setPanelTab("work");
+  };
   const confirmReplace = async () => {
     if (!confirm) return;
     setConfirmPending(true);
@@ -120,17 +146,18 @@ export function App() {
           onCancel={vm.mode === "free" && !vm.project.goal ? undefined : () => setFreeForm(false)}
         />
       ) : (
-        <div className="workspace">
-          <aside className={`roadmap-card card${roadmapOpen ? " open" : ""}`} aria-label="로드맵">
-            <button type="button" className="roadmap-toggle" aria-expanded={roadmapOpen} onClick={() => setRoadmapOpen(v => !v)}>
-              <span>📌 로드맵</span>
-              <span className="muted small">{roadmapOpen ? "접기" : "펼치기"}</span>
+        <>
+        <nav className="mobile-tabs" aria-label="보기">
+          {([["channel", "채널"], ["work", "작업"], ["decisions", "내 결정"]] as const).map(([key, label]) => (
+            <button key={key} type="button" aria-pressed={mobileView === key} onClick={() => showMobile(key)}>
+              {label}{key === "decisions" && decisionCount > 0 && <span className="tab-count num">{decisionCount}</span>}
             </button>
-            <h2 className="roadmap-heading">📌 로드맵</h2>
-            <div className="roadmap-body">
-              <RoadmapCard roadmap={vm.roadmap} deadline={vm.project.deadline} members={vm.members} me={vm.me} onSetAvailability={actions.setAvailability} onResolve={actions.resolveTask} />
-            </div>
-          </aside>
+          ))}
+        </nav>
+        <div className="workspace" data-view={mobileView === "channel" ? "channel" : "panel"}>
+          <WorkPanel vm={vm} tab={panelTab} onTab={t => { setPanelTab(t); if (mobileView !== "channel") setMobileView(t === "decisions" ? "decisions" : "work"); }}
+            onOpenTask={setOpenTask} onDecide={actions.decideCard} onDecideRequest={actions.decide}
+            onSetAvailability={actions.setAvailability} onResolve={actions.resolveTask} />
 
           <main className="channel">
             <div className="channel-head">
@@ -140,12 +167,13 @@ export function App() {
 
             <div className="timeline" aria-live="polite">
               {vm.messages.map((m, i) => {
-                if (m.cardId && linkedCards.has(m.cardId)) return <DecisionCard key={m.id} card={visibleCards.get(m.cardId)!} onDecide={actions.decideCard} />;
+                if (m.cardId && linkedCards.has(m.cardId)) return <DecisionCard key={m.id} card={visibleCards.get(m.cardId)!} members={vm.members} onDecide={actions.decideCard} onDecideRequest={actions.decide} />;
                 const prev = vm.messages[i - 1];
                 const grouped = !!prev && !(prev.cardId && linkedCards.has(prev.cardId)) && prev.authorId === m.authorId && prev.kind === m.kind && m.kind !== "system" && !prev.local === !m.local;
-                return <MessageItem key={m.id} message={m} author={vm.members.find(x => x.id === m.authorId)} grouped={grouped} />;
+                return <MessageItem key={m.id} message={m} author={vm.members.find(x => x.id === m.authorId)} grouped={grouped} workTitles={workTitles} onOpenTask={setOpenTask} />;
               })}
               {vm.cards.filter(c => !linkedCards.has(c.id)).map(c => <DecisionCard key={c.id} card={c} onDecide={actions.decideCard} />)}
+              {(vm.decisionCards ?? []).filter(c => !linkedCards.has(c.id)).map(c => <DecisionCard key={c.id} card={c} members={vm.members} onDecide={actions.decideCard} onDecideRequest={actions.decide} />)}
               <div ref={endRef} />
             </div>
 
@@ -174,6 +202,13 @@ export function App() {
             <Composer meName={meMember?.displayName ?? vm.me} onSend={actions.sendMessage} />
           </main>
         </div>
+        </>
+      )}
+
+      {openTask && (
+        <WorkItemDetail taskId={openTask} items={vm.work?.items ?? []} members={vm.members} me={vm.me} messages={vm.messages}
+          onClose={closeTask} onLoad={actions.loadTask} onComment={actions.comment} onOpenTask={setOpenTask}
+          onJumpToMessage={jumpToMessage} onResolve={actions.resolveTask} />
       )}
 
       {logOpen && <PmLogPanel log={vm.pmLog} messages={vm.messages} members={vm.members} onClose={() => setLogOpen(false)} />}
