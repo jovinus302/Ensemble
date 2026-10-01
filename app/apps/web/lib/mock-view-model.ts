@@ -67,6 +67,8 @@ const allCards: VmCard[] = [
     tasks: [
       { id: "design", title: "흐름 초안", assigneeName: "디자이너", dependsOn: [], hours: { min: 6, max: 10 }, expectedEnd: { min: "2026-09-30T00:00:00Z", max: "2026-10-01T00:00:00Z" }, handoffConditions: ["가입 정상 흐름과 오류 흐름이 모두 있음"] },
       { id: "prototype", title: "프로토타입(가입 흐름)", assigneeName: "프로토타입 Agent", dependsOn: ["design"], hours: { min: 4, max: 8 }, expectedEnd: { min: "2026-10-03T00:00:00Z", max: "2026-10-06T00:00:00Z" } },
+      { id: "prototype-signup", parentId: "prototype", title: "가입 화면", assigneeName: "프로토타입 Agent", dependsOn: [], hours: { min: 2, max: 4 } },
+      { id: "prototype-payment", parentId: "prototype", title: "결제 화면", assigneeName: "프로토타입 Agent", dependsOn: ["prototype-signup"], hours: { min: 2, max: 4 } },
       { id: "review", title: "사용자 검토", assigneeName: "검토자", dependsOn: ["prototype"], hours: { min: 3, max: 5 }, expectedEnd: { min: "2026-10-08T00:00:00Z", max: "2026-10-10T00:00:00Z" } },
       { id: "detail", title: "상세 설계(다음 주)", assigneeName: "디자이너", dependsOn: [], hours: { min: 8, max: 12.5 } },
     ],

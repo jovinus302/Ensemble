@@ -83,7 +83,11 @@ export function WorkTree({ vm, onOpen }: { vm: ViewModel; onOpen: (id: string) =
         </span>
       </div>
       {groups.length === 0
-        ? <p className="muted">아직 작업 항목이 없어요. PM이 대화에서 작업을 정리하면 여기에 보여요.</p>
+        ? <p className="muted">{vm.work
+          ? "아직 작업 항목이 없어요. PM이 대화에서 작업을 정리하면 여기에 보여요."
+          : vm.cards.some(c => c.kind === "plan_approval")
+            ? "계획이 승인되면 작업이 여기에 보여요. 내 결정 탭에서 계획을 확인해 주세요."
+            : "아직 승인된 계획이 없어요. PM이 계획을 제안하고 승인되면 작업이 여기에 보여요."}</p>
         : groups.map(g => <GroupSection key={g.key} group={g} members={vm.members} me={vm.me} onOpen={onOpen} />)}
     </div>
   );
@@ -126,7 +130,9 @@ export function WorkPanel({ vm, tab, onTab, onOpenTask, onDecide, onDecideReques
         ))}
       </div>
       <div className="panel-body" id="panel-body" role="tabpanel" aria-labelledby={`panel-tab-${tab}`}>
-        {tab === "work" && (vm.work ? <WorkTree vm={vm} onOpen={onOpenTask} /> : (
+        {/* 작업 항목(work)은 계획 승인 뒤에 생긴다. 그 전에는 일정 내용을 빌려 오지 않고 작업 탭의 빈 상태를 보인다.
+            작업 항목 없이 계획 작업만 오는 경우(예전 서버)에만 일정 카드의 작업 목록으로 대신한다. */}
+        {tab === "work" && (vm.work || vm.roadmap.tasks.length === 0 ? <WorkTree vm={vm} onOpen={onOpenTask} /> : (
           <RoadmapCard roadmap={vm.roadmap} deadline={vm.project.deadline} members={vm.members} me={vm.me}
             onSetAvailability={onSetAvailability} onResolve={onResolve} />
         ))}

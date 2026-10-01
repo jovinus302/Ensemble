@@ -238,3 +238,12 @@ describe("문구 보정 함수", () => {
     expect(vm.messages.some(m => m.record?.kind === "plan_decision")).toBe(true);
   });
 });
+it('plan approval card carries parentId so the card can render the plan hierarchy', () => {
+  const pending = started();
+  const nested = tasks.map((t, i) => i === 1 ? { ...t, parentId: tasks[0]!.id } : t);
+  pending.emit('plan_proposed', { proposalId: 'nested-plan', version: 2, tasks: nested, estimates, reason: '하위 작업', forMemberId: 'owner' });
+  const card = buildViewModel(pending.events, { me: 'owner', mode: 'free', busy: false, now: NOW }).cards.find(c => c.id === 'nested-plan');
+  if (card?.kind !== 'plan_approval') throw new Error('plan card missing');
+  expect(card.tasks[1]!.parentId).toBe(tasks[0]!.id);
+  expect(card.tasks[0]!.parentId).toBeUndefined();
+});
