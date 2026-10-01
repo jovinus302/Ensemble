@@ -1,0 +1,16 @@
+
+> test
+> vitest run
+
+
+ RUN  v5.0.2 <qa-workspace>/ensemble-md2-qa/app
+
+
+ Test Files  73 passed (73)
+      Tests  640 passed (640)
+   Start at  01:15:29
+   Duration  12.60s (tests 52%, transform 24%, import 23%, worker 1%)
+
+    Isolate  73 workers spawned 쨌 ~579ms startup each (spawn + environment, per file)
+             at least ~785ms faster with isolate: false ??reuses workers across files instead of one per file
+

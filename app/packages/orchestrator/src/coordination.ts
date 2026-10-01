@@ -62,7 +62,7 @@ export function interpretationTool(state: ProjectState): ToolSpec {
   const sourceMessageIds = { type: 'array', minItems: 1, items: ids(state.messages.filter(m => state.members.get(m.authorId)?.kind === 'human').map(m => m.messageId)) };
   const taskId = ids(state.plan?.tasks.map(t => t.id) ?? []);
   const memberId = ids([...state.members.keys()]);
-  const op = (type: string, properties: Record<string, unknown>) => ({ type: 'object', additionalProperties: false, required: ['type', 'sourceMessageIds', ...Object.keys(properties)], properties: { type: { const: type }, sourceMessageIds, ...properties } });
+  const op = (type: string, properties: Record<string, unknown>, optional: string[] = []) => ({ type: 'object', additionalProperties: false, required: ['type', 'sourceMessageIds', ...Object.keys(properties).filter(key => !optional.includes(key))], properties: { type: { const: type }, sourceMessageIds, ...properties } });
   return { name: 'interpret_coordination', description: '발언에서 근거가 있는 변경 연산과 대화 상대, 사실 언급을 추출한다. 결론과 권한은 코드가 판단한다.', inputSchema: { type: 'object', additionalProperties: false, required: ['category', 'summary', 'ops', 'conflicts', 'conversation', 'factMentions'], properties: {
     category: { type: 'string' }, summary: { type: 'string' }, conflicts: {
       type: 'array', description: '기존 decision_recorded 결정과 충돌할 때 그 decisionId만 선택. 작업 ID, 계획 이벤트 ID, 메시지 ID는 금지. 기존 결정이 없으면 반드시 [].',
@@ -79,7 +79,7 @@ export function interpretationTool(state: ProjectState): ToolSpec {
       op('set_deadline', { date: { type: 'string' } }), op('change_goal', { text: { type: 'string', minLength: 1 } }),
       op('resolve_task', { taskId, action: { enum: ['accept', 'retry', 'recheck'] }, note: { type: 'string', description: '사람이 요청한 보완 내용 또는 수락 사유. 없으면 빈 문자열' } }),
       op('reopen_task', { taskId, reason: { type: 'string', minLength: 1 } }),
-      op('create_task', { ...workDraft(state), parentId: taskId }),
+      op('create_task', { ...workDraft(state), parentId: { ...taskId, description: 'Omit for independent, top-level work. Set only when splitting an existing waiting or ready task.' } }, ['parentId']),
       op('split_task', { taskId, children: { type: 'array', minItems: 1, items: { type: 'object', additionalProperties: false, required: Object.keys(workDraft(state)), properties: workDraft(state) } } }),
       op('cancel_task', { taskId, reason: { type: 'string', minLength: 1 } }),
       op('set_priority', { taskId, priority: { enum: [...PRIORITIES] } }),
