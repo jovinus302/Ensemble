@@ -3,8 +3,8 @@ import { channelText, particle, taskName } from './channel-text.ts';
 // task exactly once — agents through the session boundary, people through a channel sentence the
 // caller posts. Relays agent questions to people and routes the answers back to the agent.
 import {
-  AUTOMATION_LIMIT, automationGate, isStaleResult, limitReachedEvent, planStarts, project,
-  type AnyEvent, type EventContext, type EventPayloads, type EventType, type Id, type LedgerEvent, type NewLedgerEvent, type ProjectState,
+  AUTOMATION_LIMIT, automationGate, createDecisionRequest, decisionRequestProblems, isStaleResult, limitReachedEvent, planStarts, project, resolveDecision,
+  type AnyEvent, type DecisionRequestInput, type EventContext, type EventPayloads, type EventType, type Id, type LedgerEvent, type NewLedgerEvent, type ProjectState,
 } from '@ensemble/core';
 import type { LedgerStore } from '@ensemble/store';
 import type { LlmProvider } from '@ensemble/llm';
@@ -29,7 +29,12 @@ export interface DispatcherOptions {
   context: EventContext;
   /** Loads the result files named by artifactIds; a missing file maps to null. */
   readResult(result: SubmittedResult): Promise<ResultContent>;
+  /** Ledger time for decision requests (their reminder is due 24 hours later). */
+  clock?: () => Date;
 }
+
+/** The decision request that carries an agent question to the person who answers it (B7). */
+export const questionRequestId = (questionId: Id) => `missing-info:${questionId}`;
 
 export interface StartedTask { taskId: Id; agentId: Id; turnId: Id }
 export type ResultOutcome =
@@ -297,13 +302,63 @@ export class Dispatcher {
       const choices = options.choices?.length ? ` 선택지: ${options.choices.map((choice) => humanizeRefs(choice, events)).join(' / ')}` : '';
       const lead = `@${this.name(state, to)} "${title}" 작업을 맡은 ${agent}${particle(agent, '이/가')} 묻습니다.`;
       const text = channelText(`${lead} ${humanizeRefs(question, events)}${choices}`, state, 12);
+      // B7: the same question as a missing_info decision request, so the work shows as waiting on this person.
+      const request = this.questionRequest(state, taskId, questionId, to, `${humanizeRefs(question, events)}${choices}`);
       await this.options.store.append([
         this.event('pm_considered', { considerationId: `consider:${questionId}`, triggerId: questionId, whoseAction: to, alreadyKnows: 'no',
           evidence: [`"${title}" 담당 ${agent}${particle(agent, '이/가')} 질문하고 멈춤`], decision: 'speak', reason: '답이 있어야 작업이 이어진다', openTopics: [...state.openTopics] }, options.routeKey ?? `consider:${questionId}`),
-        this.event('pm_spoke', { considerationId: `consider:${questionId}`, messageId: questionId, text, kind: 'ask' }, `spoke:${questionId}`),
+        ...(request ? [request] : []),
+        this.event('pm_spoke', { considerationId: `consider:${questionId}`, messageId: questionId, text, kind: 'ask', taskIds: [taskId],
+          ...(request ? { requestId: questionRequestId(questionId) } : {}) }, `spoke:${questionId}`),
       ]);
       return { questionId, to, text };
     });
+  }
+
+  /**
+   * A `missing_info` request for an agent question: the person answers in words (forwarded verbatim) or holds.
+   * Undefined when it cannot be opened — the person is not a human member, or the task already waits on an
+   * open request (one per task); the channel question still goes out either way.
+   */
+  private questionRequest(state: ProjectState, taskId: Id, questionId: Id, to: Id, question: string): NewLedgerEvent | undefined {
+    const task = state.tasks.get(taskId);
+    if (!task || state.members.get(to)?.kind !== 'human') return undefined;
+    const agent = this.name(state, task.spec.assignee);
+    const input: DecisionRequestInput = {
+      requestId: questionRequestId(questionId), kind: 'missing_info', targetMemberId: to,
+      question: `${agent}${particle(agent, '이/가')} "${task.spec.title}" 작업에서 묻습니다: ${question}`,
+      options: [
+        { optionId: 'answer', label: '답하기', effects: [{ type: 'answer', taskId, questionId }], tradeoff: '답을 그대로 전달해 Agent가 바로 이어서 진행합니다.' },
+        { optionId: 'hold', label: '보류', effects: [{ type: 'none' }], tradeoff: '답이 올 때까지 이 작업은 멈춰 있습니다.' },
+      ],
+      recommendation: { optionId: 'answer', rationale: '답이 있어야 작업이 이어집니다.', evidence: [questionId] },
+      impact: { taskIds: [taskId], blockedTaskIds: [taskId] }, sourceMessageIds: [],
+    };
+    if (decisionRequestProblems(state, input).length) return undefined;
+    return createDecisionRequest(state, input, this.options.context, (this.options.clock ?? (() => new Date()))());
+  }
+
+  /**
+   * The open missing_info request for a task's question closes once its answer went out by another way (the
+   * channel, a coordinator-read answer): answered when the person it asked replied, otherwise withdrawn by the PM.
+   * The next unanswered question of the task, if any, gets its own request.
+   */
+  private questionFollowUp(events: readonly LedgerEvent[], taskId: Id, by: Id | undefined, answerText: string): NewLedgerEvent[] {
+    const state = project(events);
+    const append: NewLedgerEvent[] = [];
+    for (const entry of state.decisionRequests.values()) {
+      if (entry.status !== 'open' || entry.request.kind !== 'missing_info' || !entry.request.impact.blockedTaskIds.includes(taskId)) continue;
+      const answered = by === entry.request.targetMemberId && state.members.get(by)?.kind === 'human' && !!answerText.trim();
+      try { append.push(...resolveDecision(state, entry.request.requestId, answered ? { by: by!, action: 'answer', text: answerText } : { by: 'pm', action: 'withdraw', note: '다른 경로로 답이 전달됐습니다' }, this.options.context).events); }
+      catch { /* A request the rules no longer let close stays as it is. */ }
+    }
+    const next = taskQuestions(events, taskId).find((q) => !q.answer);
+    if (!next) return append;
+    const after = project(withPending(events, append));
+    const considered = typed(events).find((e): e is Extract<AnyEvent, { type: 'pm_considered' }> => e.type === 'pm_considered' && e.payload.considerationId === `consider:${next.questionId}`);
+    const asked = considered?.payload.whoseAction;
+    const request = asked ? this.questionRequest(after, taskId, next.questionId, asked, next.text.replace(/^@[^\n]*?묻습니다\.\s*/, '')) : undefined;
+    return request ? [...append, request] : append;
   }
 
   /**
@@ -312,7 +367,7 @@ export class Dispatcher {
    * carries the answer and the task resumes (`resumed`). Without that capability the answer waits
    * for the task's next turn input.
    */
-  onAnswer(taskId: Id, answerText: string): Promise<{ via: 'steer' | 'next_turn'; questionId?: Id; resumed?: true }> {
+  onAnswer(taskId: Id, answerText: string, options: { by?: Id } = {}): Promise<{ via: 'steer' | 'next_turn'; questionId?: Id; resumed?: true }> {
     return this.enqueue(async () => {
       const { events, state } = await this.ledger();
       const task = state.tasks.get(taskId);
@@ -333,6 +388,8 @@ export class Dispatcher {
       }
       await this.options.store.append([this.event('change_notified', { changeId, planVersion: state.plan.version, recipientId: agentId, text: answerText, via },
         `notify:${changeId}:${agentId}`)]);
+      const followUp = this.questionFollowUp(await this.options.store.read({ projectId: this.options.context.projectId }), taskId, options.by, answerText);
+      if (followUp.length) await this.options.store.append(followUp);
       return { via, ...(open ? { questionId: open.questionId } : {}), ...(resumed ? { resumed: true as const } : {}) };
     });
   }

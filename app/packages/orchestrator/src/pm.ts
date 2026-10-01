@@ -1,6 +1,7 @@
 import { channelText, particle } from './channel-text.ts';
 import { randomUUID } from 'node:crypto';
-import { automationGate, project, type AnyEvent, type EventContext, type NewLedgerEvent, type ProjectState, type TaskState } from '@ensemble/core';
+import { automationGate, project, taskThreadId, type AnyEvent, type DecisionAnswer, type DecisionSettings, type DigestSettings, type EventContext, type NewLedgerEvent, type ProjectState, type TaskState } from '@ensemble/core';
+import type { UpdateInstructionsInput } from '@ensemble/agents';
 import type { SessionConnector, SessionEvent } from '@ensemble/agents';
 import type { LlmProvider } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
@@ -11,6 +12,9 @@ import type { ResultContent, SubmittedResult } from './handoff.ts';
 import { SessionRunner, type BlockedTurn } from './session-runner.ts';
 import { startFreeProject, decidePlan } from './planning.ts';
 import { decideAuthority } from './authority-flow.ts';
+import { decideRequest, type DecideExtra, type DecisionFlowOptions } from './decision-flow.ts';
+import { runSweep } from './sweep.ts';
+import { runDigest } from './digest.ts';
 
 export interface MessageAttachment { name: string; mimeType: string; content: string; contentBase64?: string; taskId?: string }
 export interface ProjectManagerOptions extends EventContext {
@@ -23,6 +27,12 @@ export interface ProjectManagerOptions extends EventContext {
   /** Agent turns running longer than this are interrupted and their task blocked. */
   turnTimeoutMs?: number;
   onTiming?: (timing: { queueWaitMs: number; operationMs: number; pending: number }) => void;
+  /** Q3: an unanswered request expires after its one reminder and its work stays paused (default), or applies the recommendation. */
+  decisionSettings?: DecisionSettings;
+  /** Q4: the daily digest hour (Asia/Seoul) and on/off. Default 09:00, on. */
+  digestSettings?: DigestSettings;
+  /** Q2: work for a person goes through that person's acceptance card. Default true (`HUMAN_ASSIGNMENT_NEEDS_ACCEPTANCE`). */
+  humanAssignmentNeedsAcceptance?: boolean;
 }
 export type PmPost = CoordinationResult['posts'][number];
 
@@ -72,7 +82,7 @@ export class ProjectManager {
     this.context = { projectId: options.projectId, targetProductId: options.targetProductId };
     this.sessions = new SessionRunner(options.connector, options.store, this.context, { turnTimeoutMs: options.turnTimeoutMs,
       onBlocked: blocked => { void this.enqueue(() => this.blockedNotice(blocked)).then(posts => { this.background.push(...posts); }).catch(error => this.failures.push(error)); } });
-    this.dispatcher = new Dispatcher({ store: options.store, llm: options.llm, model: options.model, context: this.context,
+    this.dispatcher = new Dispatcher({ store: options.store, llm: options.llm, model: options.model, context: this.context, clock: options.clock,
       connector: { startTask: async (agentId, input) => {
         await this.sessions.startSession(agentId);
         return this.sessions.startTask(agentId, input);
@@ -104,15 +114,66 @@ export class ProjectManager {
     return this.enqueue(() => this.thenDeliver(decidePlan({ store: this.options.store, context: this.context, dispatcher: this.dispatcher }, proposalId, memberId, approve)));
   }
   decideAuthority(requestId: string, memberId: string, granted: boolean): Promise<PmPost[]> {
-    return this.enqueue(() => this.thenDeliver(decideAuthority({ store: this.options.store, context: this.context, coordinator: this.coordinator }, requestId, memberId, granted)));
+    return this.enqueue(() => this.thenDeliver(this.authorityAnswer(requestId, memberId, granted)));
+  }
+  /** A legacy authority card answer; work its approved ops reserved starts right after. */
+  private async authorityAnswer(requestId: string, memberId: string, granted: boolean): Promise<PmPost[]> {
+    const before = (await this.read()).at(-1)?.seq ?? 0;
+    const posts = await decideAuthority({ store: this.options.store, context: this.context, coordinator: this.coordinator }, requestId, memberId, granted);
+    const reserved = (await this.read() as AnyEvent[]).flatMap(e => e.seq > before && e.type === 'task_start_reserved' ? [e.payload.taskId] : []);
+    return [...posts, ...await this.startNew(reserved, `authority-answer:${requestId}`, memberId)];
+  }
+  /**
+   * Starts work the coordinator reserved while applying a change (new or split work routed to an agent):
+   * agents through the session boundary, people through a channel line, recorded under one consideration.
+   */
+  private async startNew(taskIds: readonly string[], trigger: string, whoseAction: string | null): Promise<PmPost[]> {
+    const lines: string[] = [];
+    for (const taskId of new Set(taskIds)) {
+      const started = await this.dispatcher.startReserved(taskId);
+      lines.push(...started.notices, ...started.failures);
+    }
+    const state = project(await this.read());
+    return this.speak(`start:${trigger}`, trigger, whoseAction, '변경으로 생긴 작업을 시작했다', lines.map(text => ({ kind: 'ask' as const, text: channelText(text, state, 3) })));
   }
   decideCard(cardId: string, memberId: string, approve: boolean): Promise<PmPost[]> {
     return this.enqueue(async () => {
       const events = await this.read() as AnyEvent[];
+      // Decision requests share the card API: approve = the recommendation, otherwise reject.
+      if (project(events).decisionRequests.has(cardId)) return this.thenDeliver(decideRequest(this.decisionFlow(), cardId, { by: memberId, action: approve ? 'approve' : 'reject' }));
       if (events.some(e => e.type === 'plan_proposed' && e.payload.proposalId === cardId)) return this.thenDeliver(decidePlan({ store: this.options.store, context: this.context, dispatcher: this.dispatcher }, cardId, memberId, approve));
-      return this.thenDeliver(decideAuthority({ store: this.options.store, context: this.context, coordinator: this.coordinator }, cardId, memberId, approve));
+      return this.thenDeliver(this.authorityAnswer(cardId, memberId, approve));
     });
   }
+  /**
+   * A person's answer to a decision request (approve / choose / edit / reject / answer): the effects run through
+   * the existing paths and the request closes. Refusals throw `DecisionRequestError` (Korean, with an HTTP status).
+   */
+  decideRequest(requestId: string, answer: DecisionAnswer): Promise<PmPost[]> {
+    return this.enqueue(() => this.thenDeliver(decideRequest(this.decisionFlow(), requestId, answer)));
+  }
+  private decisionFlow(): DecisionFlowOptions {
+    return { store: this.options.store, context: this.context, coordinator: this.coordinator, dispatcher: this.dispatcher, settings: this.options.decisionSettings,
+      // Already inside the PM queue: the private resolution, with a refusal said in the channel instead of failing the answer.
+      resolveTask: (taskId, input, trigger) => this.fromChat(trigger, () => this.resolve(taskId, input, trigger)),
+      startReserved: (taskIds, trigger, by) => this.startNew(taskIds, trigger, by) };
+  }
+  private now(): Date { return (this.options.clock ?? (() => new Date()))(); }
+
+  /**
+   * One stuck-work sweep (B8) at `now`: decision requests for long-blocked or unassigned work, one reminder,
+   * expiry, a check on a person's overdue work. Never restarts or reassigns anything. Safe to call repeatedly.
+   */
+  sweep(now: Date = this.now()): Promise<PmPost[]> {
+    return this.enqueue(() => this.thenDeliver(runSweep({ store: this.options.store, context: this.context,
+      humanAssignmentNeedsAcceptance: this.options.humanAssignmentNeedsAcceptance,
+      decide: (requestId: string, answer: DecisionAnswer, extra: DecideExtra) => decideRequest(this.decisionFlow(), requestId, answer, extra) }, now)));
+  }
+  /** The daily digest (B9) when it is due at `now`: at most once a day, and only when something changed. */
+  digest(now: Date = this.now()): Promise<PmPost[]> {
+    return this.enqueue(() => runDigest({ store: this.options.store, context: this.context, settings: this.options.digestSettings }, now));
+  }
+
   private async thenDeliver<T>(operation: Promise<T>): Promise<T> {
     const result = await operation;
     await this.deliverPending();
@@ -130,14 +191,38 @@ export class ProjectManager {
    * channel. Each goes out only while it is still the task's oldest open question (so an answer the
    * message routing already delivered is never sent twice) and within the automation cap.
    */
-  private async deliverAgentAnswers(answers: NonNullable<CoordinationResult['agentAnswers']>): Promise<void> {
+  private async deliverAgentAnswers(answers: NonNullable<CoordinationResult['agentAnswers']>, by?: string): Promise<void> {
     for (const answer of answers) {
       const events = await this.read();
       if (!automationGate(project(events)).allowed) return;
       const oldest = taskQuestions(events, answer.taskId).find(q => !q.answer);
       if (oldest?.questionId !== answer.questionId || !answer.text.trim()) continue;
-      await this.dispatcher.onAnswer(answer.taskId, answer.text);
+      await this.dispatcher.onAnswer(answer.taskId, answer.text, { by });
     }
+  }
+
+  /**
+   * B6: a person's comment on an agent's work item reaches that agent verbatim — steered into its live turn or
+   * carried by a new turn — and is recorded as `change_notified`. Comments on a person's work are not forwarded
+   * (the person reads the thread). Idempotent per message; the coordinator still considers the comment afterwards.
+   */
+  private async forwardComment(message: { messageId: string; authorId: string; text: string; threadId?: string }, state: ProjectState): Promise<void> {
+    const taskId = message.threadId?.startsWith('task:') ? message.threadId.slice('task:'.length) : undefined;
+    const task = taskId ? state.tasks.get(taskId) : undefined;
+    if (!task || !state.plan || task.status === 'checked' || task.status === 'cancelled') return;
+    const agentId = task.spec.assignee;
+    if (state.members.get(agentId)?.kind !== 'agent' || !message.text.trim()) return;
+    const changeId = `comment:${message.messageId}`;
+    if ((await this.read() as AnyEvent[]).some(e => e.type === 'change_notified' && e.payload.changeId === changeId)) return;
+    const version = state.plan.version;
+    const author = state.members.get(message.authorId)?.displayName ?? message.authorId;
+    // Same id and content deliverPendingChanges rebuilds from the record (a JSON update), so it never goes out twice.
+    const update: UpdateInstructionsInput = { updateId: `${changeId}:${agentId}:turn`, fromVersion: version, toVersion: version, keep: [], drop: [],
+      change: [`${author}의 댓글: ${message.text}`], reason: `${author}${particle(author, '이/가')} 맡은 작업에 댓글을 남겼습니다. 반영할 것이 있으면 반영하고 이어서 진행하세요` };
+    let via: 'steer' | 'next_turn' = 'next_turn';
+    try { const sent = await this.sessions.deliver(agentId, task.spec.id, update); if (sent.sent) via = sent.via; } catch (error) { this.failures.push(error); }
+    await this.options.store.append([{ ...this.context, actor: { kind: 'pm', id: 'pm' }, type: 'change_notified', idempotencyKey: `notify:${changeId}:${agentId}`,
+      payload: { changeId, planVersion: version, recipientId: agentId, text: JSON.stringify(update), via } }]);
   }
 
   deliverPendingChanges(): Promise<void> { return this.enqueue(() => this.deliverPending()); }
@@ -202,7 +287,16 @@ export class ProjectManager {
     return contents;
   }
 
-  async recordMessage(authorId: string, text: string, attachments: MessageAttachment[] = []): Promise<{ messageId: string }> {
+  /** A person's comment on a work item: a thread message (`task:<id>`), then the usual message handling (B6). */
+  async postComment(taskId: string, authorId: string, text: string): Promise<PmPost[]> {
+    const state = project(await this.read());
+    if (!state.tasks.has(taskId)) throw new TaskResolutionError('not_found', '작업을 찾지 못했습니다.');
+    if (!text.trim()) throw new TaskResolutionError('invalid_input', '댓글 내용이 비었습니다.');
+    const { messageId } = await this.recordMessage(authorId, text, [], taskThreadId(taskId));
+    return this.processRecordedMessage(messageId);
+  }
+
+  async recordMessage(authorId: string, text: string, attachments: MessageAttachment[] = [], threadId?: string): Promise<{ messageId: string }> {
       const before = await this.read();
       const state = project(before);
       if (state.members.get(authorId)?.kind !== 'human') throw new Error('메시지를 보낸 사람을 이 프로젝트 멤버에서 찾지 못했습니다');
@@ -210,7 +304,7 @@ export class ProjectManager {
       const attachmentIds = attachments.map(() => randomUUID());
       const actor = { kind: 'human' as const, id: authorId };
       const recorded: NewLedgerEvent[] = attachments.map((a, i) => ({ ...this.context, actor, type: 'attachment_recorded', payload: { attachmentId: attachmentIds[i]!, name: a.name, mimeType: a.mimeType, uri: `data:${a.mimeType};base64,${a.contentBase64 ?? Buffer.from(a.content).toString('base64')}`, ...(a.taskId ? { taskId: a.taskId } : {}) } }));
-      recorded.push({ ...this.context, actor, type: 'message_recorded', payload: { messageId, authorId, text, attachmentIds } });
+      recorded.push({ ...this.context, actor, type: 'message_recorded', payload: { messageId, authorId, text, ...(threadId ? { threadId } : {}), attachmentIds } });
       await this.options.store.append(recorded);
       return { messageId };
   }
@@ -228,6 +322,7 @@ export class ProjectManager {
       const message = (before as AnyEvent[]).find((e): e is Extract<AnyEvent, { type: 'message_recorded' }> => e.type === 'message_recorded' && e.payload.messageId === messageId);
       if (!message) throw new Error('기록된 사람 메시지를 찾을 수 없습니다');
       const { authorId, text, attachmentIds } = message.payload;
+      await this.forwardComment(message.payload, state);
       const actor = { kind: 'human' as const, id: authorId };
       const attachments: MessageAttachment[] = (before as AnyEvent[]).flatMap(e => {
         if (e.type !== 'attachment_recorded' || !attachmentIds.includes(e.payload.attachmentId)) return [];
@@ -302,11 +397,11 @@ export class ProjectManager {
       if (route.kind === 'answer' && route.taskId) {
         // Dispatcher answers the oldest open question; never silently route to another one.
         const oldest = taskQuestions(before, route.taskId).find(q => !q.answer);
-        if (oldest?.questionId === route.questionId) { await this.dispatcher.onAnswer(route.taskId, text); await markProcessed(); await this.deliverPending(); return []; }
+        if (oldest?.questionId === route.questionId) { await this.dispatcher.onAnswer(route.taskId, text, { by: authorId }); await markProcessed(); await this.deliverPending(); return []; }
       }
       const coordinated = await this.coordinator.onMessage(messageId) as CoordinationResult & { resolutions?: Resolution[]; reopens?: Reopen[] };
-      await this.deliverAgentAnswers(coordinated.agentAnswers ?? []);
-      const posts = [...coordinated.posts];
+      await this.deliverAgentAnswers(coordinated.agentAnswers ?? [], authorId);
+      const posts = [...coordinated.posts, ...await this.startNew(coordinated.starts ?? [], messageId, authorId)];
       // The coordinator reads what the person asked for; the PM carries it out under the same checks as the buttons.
       for (const [i, r] of (coordinated.resolutions ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.resolve(r.taskId, { action: r.action, by: authorId, ...(r.note ? { note: r.note } : {}) }, `${messageId}:${i}`)));
       for (const [i, r] of (coordinated.reopens ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.reopen(r.taskId, authorId, r.reason, `${messageId}:${i}`, r.announcement)));
