@@ -2,7 +2,7 @@ import { availabilityWeek, formatKstDate, scopeItem, scopeMentions, remainingSco
 import { channelText, taskName, shortTaskName, numericFacts, hasGroundedNumbers, particle } from './channel-text.ts';
 import { affectedMembers, automationGate, diffPlans, forecastFromState, withoutStopped, isAutomationAction, limitReachedEvent, project, applyOps, opAuthority } from '@ensemble/core';
 import { createDecisionRequest, isParentTask, planOpProblems, planOpsProblems, planStarts, routeTask, taskMetaFromOps, PRIORITIES, ROUTING_REASONS } from '@ensemble/core';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { AnyEvent, ChangeKind, EventContext, EventPayloads, EventType, LedgerEvent, NewLedgerEvent, PlanOp, ProjectState, TaskDraft, TaskSpec } from '@ensemble/core';
 import type { SessionConnector, UpdateInstructionsInput } from '@ensemble/agents';
 import type { LlmProvider, ToolSpec } from '@ensemble/llm';
@@ -45,7 +45,11 @@ export interface CoordinationResult {
   /** Decision requests opened for work changes the speaker could not make alone. */
   requests?: string[];
 }
-export interface CoordinatorOptions extends EventContext { model?: string; clock?: () => Date }
+export interface CoordinationTiming {
+  projectId: string; messageId?: string; callId: string; operation: string; attempt: number;
+  at: string; elapsedMs: number; phase: string; retryReason?: string;
+}
+export interface CoordinatorOptions extends EventContext { model?: string; clock?: () => Date; onTiming?: (timing: CoordinationTiming) => void }
 const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string' && x.length > 0);
 const stringArray = { type: 'array', items: { type: 'string' } };
 const JUDGEMENT_FAILURE_TEXT = '제가 이 요청을 판단하지 못했어요. 무엇을 바꾸길 원하는지 한 문장으로 다시 알려 주세요';
@@ -317,12 +321,36 @@ function forecastRouted(state: ProjectState, now: Date): ForecastResult {
 /** Fixed operations preserve task identity; authority and calculations stay in code. */
 export class Coordinator {
   private queue: Promise<unknown> = Promise.resolve();
+  private active?: { messageId: string; controller: AbortController };
   constructor(private store: LedgerStore, private llm: LlmProvider, private connector: Pick<SessionConnector, 'sendUpdate'>, private options: CoordinatorOptions) {}
 
   onMessage(messageId: string): Promise<CoordinationResult> {
-    const next = this.queue.then(() => this.consider(messageId));
+    const next = this.queue.then(async () => {
+      const active = { messageId, controller: new AbortController() };
+      this.active = active;
+      try { return await this.consider(messageId); }
+      catch (error) {
+        if (!active.controller.signal.aborted) throw error;
+        // The replacement is already durable. Re-enter the ledger-first supersession check.
+        this.active = undefined;
+        return await this.consider(messageId);
+      } finally { this.active = undefined; }
+    });
     this.queue = next.catch(() => undefined);
     return next;
+  }
+
+  /** Called only after durable intake; never preempt cards, attachments or task comments. */
+  async messageRecorded(messageId: string): Promise<void> {
+    const active = this.active;
+    if (!active) return;
+    const rows = await this.store.read({ projectId: this.options.projectId }) as AnyEvent[];
+    const old = rows.find(e => e.type === 'message_recorded' && e.payload.messageId === active.messageId);
+    const newer = rows.find(e => e.type === 'message_recorded' && e.payload.messageId === messageId);
+    if (this.active === active && old?.type === 'message_recorded' && newer?.type === 'message_recorded'
+      && newer.seq > old.seq && newer.payload.authorId === old.payload.authorId
+      && !old.payload.attachmentIds.length && !newer.payload.attachmentIds.length
+      && !old.payload.threadId && !newer.payload.threadId) active.controller.abort();
   }
 
   /** Card answers supply exact recorded operations, while sharing normal application and delivery. */
@@ -333,15 +361,40 @@ export class Coordinator {
   }
 
   private async call<T>(tool: ToolSpec, facts: unknown, valid: (v: Record<string, unknown>) => boolean | string[]): Promise<T | undefined> {
+    const signal = this.active?.controller.signal;
     let validationError: string | undefined;
+    let retryReason: string | undefined;
     for (let attempt = 0; attempt < 2; attempt++) {
+      const started = Date.now(), callId = randomUUID();
+      const messageId = this.active?.messageId, previousFailure = retryReason;
+      const emit = (phase: string) => this.options.onTiming?.({ projectId: this.options.projectId,
+        messageId, callId, operation: tool.name, attempt,
+        at: new Date().toISOString(), elapsedMs: Date.now() - started, phase, retryReason: previousFailure });
       try {
-        const response = await this.llm.complete({ model: this.options.model ?? 'pm', system: PM_SYSTEM_PROMPT, forceTool: tool.name, tools: [tool], messages: [{ role: 'user', content: JSON.stringify({ facts, attempt, ...(validationError ? { validationError } : {}) }) }] });
+        signal?.throwIfAborted();
+        emit('started');
+        let abort: (() => void) | undefined;
+        const cancelled = new Promise<never>((_, reject) => {
+          abort = () => reject(signal?.reason);
+          signal?.addEventListener('abort', abort, { once: true });
+        });
+        let response;
+        try {
+          response = await Promise.race([cancelled, this.llm.complete({ signal, onProgress: emit, model: this.options.model ?? 'pm', system: PM_SYSTEM_PROMPT, forceTool: tool.name, tools: [tool], messages: [{ role: 'user', content: JSON.stringify({ facts, attempt, ...(validationError ? { validationError } : {}) }) }] })]);
+          signal?.throwIfAborted();
+        } finally { if (abort) signal?.removeEventListener('abort', abort); }
         const call = response.toolCalls.length === 1 ? response.toolCalls[0] : undefined;
         const validation = call?.name === tool.name && call.input ? valid(call.input) : false;
-        if (validation === true || (Array.isArray(validation) && !validation.length)) return structuredClone(call!.input) as T;
+        if (validation === true || (Array.isArray(validation) && !validation.length)) { emit('completed'); return structuredClone(call!.input) as T; }
+        emit('invalid_output');
+        retryReason = 'invalid_output';
         validationError = Array.isArray(validation) ? validation.join('\n') : '이전 응답이 검증에 실패했습니다. 지정 도구의 JSON 스키마와 ID enum을 지키세요. evidence/targetMemberIds/answerFactIds/openTopics/ops/conflicts/factMentions는 문자열이 아니라 배열입니다. 숫자는 allowedNumericValues, 날짜는 calendarDates만 사용하세요. 직접 질문은 근거 있는 사실로 답하고, 변경 연산의 sourceMessageIds는 실제 사람 메시지만 쓰세요.';
-      } catch { /* Transport and malformed output receive the same bounded retry. */ }
+      } catch (error) {
+        if (signal?.aborted) { emit('superseded'); throw error; }
+        emit('provider_error');
+        retryReason = 'provider_error';
+        /* Transport and malformed output receive the same bounded retry. */
+      }
     }
     return undefined;
   }
@@ -352,7 +405,7 @@ export class Coordinator {
     const message = state.messages.find(m => m.messageId === messageId);
     if (!message) throw new Error(`Unknown message ${messageId}`);
     // Keep all messages as context; a newer input from the same person owns the judgment.
-    const newerInput = (rows: readonly AnyEvent[]) => !confirmed && !events.some(e => e.type === 'message_recorded' && e.payload.messageId === messageId && e.payload.attachmentIds.length) && rows.findLast(e => e.type === 'message_recorded' && e.seq > message.seq && e.payload.authorId === message.authorId && !e.payload.attachmentIds.length);
+    const newerInput = (rows: readonly AnyEvent[]) => !confirmed && !events.some(e => e.type === 'message_recorded' && e.payload.messageId === messageId && (e.payload.attachmentIds.length || e.payload.threadId)) && rows.findLast(e => e.type === 'message_recorded' && e.seq > message.seq && e.payload.authorId === message.authorId && !e.payload.attachmentIds.length && !e.payload.threadId);
     const superseded = (newer: AnyEvent): NewLedgerEvent => ({ projectId: this.options.projectId, targetProductId: this.options.targetProductId,
       actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: `coordination:${this.options.projectId}:${messageId}:pm_considered`,
       payload: { considerationId: `superseded:${messageId}`, triggerId: messageId, whoseAction: null, alreadyKnows: 'unknown', evidence: [messageId, newer.id], decision: 'silent', reason: '뒤이어 받은 같은 사람의 입력과 함께 판단합니다. 앞선 메시지는 대화 문맥에 유지합니다.', openTopics: state.openTopics } });

@@ -1,0 +1,26 @@
+
+ RUN  v5.0.2 C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task/ensemble-md2-qa/app
+
+ ❯ packages/scenarios/test/queue-latency.test.ts (2 tests | 1 failed) 1044ms
+   × preempts superseded coordination without waiting for an unresponsive provider and ignores its late result 1019ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  06:59:51
+   Duration  2.68s (tests 42%, transform 36%, import 23%)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  packages/scenarios/test/queue-latency.test.ts > preempts superseded coordination without waiting for an unresponsive provider and ignores its late result
+Error: Correction remained behind stalled model
+ ❯ Timeout._onTimeout packages/scenarios/test/queue-latency.test.ts:79:109
+     77|   const next = pm.processRecordedMessage(second.messageId);
+     78|   try {
+     79|     await Promise.race([Promise.all([processing, next]), new Promise((…
+       |                                                                                                             ^
+     80|     expect(requests[0]!.signal?.aborted).toBe(true);
+     81|     expect(requests).toHaveLength(3);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

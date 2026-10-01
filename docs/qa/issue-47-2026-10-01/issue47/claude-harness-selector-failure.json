@@ -1,0 +1,8 @@
+{
+  "provider": "claude",
+  "base": "http://127.0.0.1:3508",
+  "startedAt": "2026-10-01T22:06:37.600Z",
+  "events": [],
+  "errors": [],
+  "failure": "locator.selectOption: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('combobox', { name: '현재 참여자', exact: true })\u001b[22m\n"
+}

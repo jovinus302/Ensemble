@@ -34,7 +34,7 @@ export class CliError extends Error {
 }
 
 /** Runs the CLI without a shell, writes `input` to stdin and resolves on exit; kills it on timeout. */
-export function runCli(command: string, args: string[], input: string, options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs: number; label: string; signal?: AbortSignal }): Promise<CliRun> {
+export function runCli(command: string, args: string[], input: string, options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs: number; label: string; signal?: AbortSignal; onFirstOutput?: () => void }): Promise<CliRun> {
   return new Promise((resolve, reject) => {
     if (options.signal?.aborted) { reject(new CliError(`${options.label} cancelled`)); return; }
     let child;
@@ -59,7 +59,7 @@ export function runCli(command: string, args: string[], input: string, options: 
       setTimeout(() => settle(() => reject(timeout())), 5000).unref();
     }, options.timeoutMs);
     child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
+    child.stdout.on("data", (chunk: string) => { if (!stdout.length && chunk.length) options.onFirstOutput?.(); stdout += chunk; });
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => { stderr = (stderr + chunk).slice(-2000); });
     child.once("error", error => settle(() => reject(new CliError(`${options.label}를 실행하지 못했습니다: ${error.message}`))));

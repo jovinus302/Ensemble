@@ -908,3 +908,59 @@ it('does not commit stale scope changes when a correction arrives during the mod
   expect(project(await f.read()).plan?.version).toBe(1);
   expect(f.connector.sendUpdate).not.toHaveBeenCalled();
 });
+
+it.each(['different author', 'attachment', 'task comment'])('does not preempt unrelated %s intake', async kind => {
+  let entered!: () => void;
+  let release!: (value: object) => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const delayed = new Promise<object>(resolve => { release = resolve; });
+  const f = await fixture([() => { entered(); return delayed; }, judge()]);
+  const pending = f.coordinator.onMessage('m1');
+  await started;
+  await f.add('message_recorded', { messageId: 'm2', authorId: kind === 'different author' ? 'designer' : 'owner', text: 'independent input', attachmentIds: kind === 'attachment' ? ['file'] : [], ...(kind === 'task comment' ? { threadId: 'task:prototype' } : {}) });
+  await f.coordinator.messageRecorded('m2');
+  expect(f.calls[0]!.signal?.aborted).toBe(false);
+  release(interpret());
+  const result = await pending;
+  expect((result.events as AnyEvent[]).some(e => e.type === 'pm_considered' && e.payload.considerationId === 'superseded:m1')).toBe(false);
+  expect(f.calls).toHaveLength(2);
+});
+
+it('preempts a pending judgement and never applies its stale plan operations', async () => {
+  let entered!: () => void;
+  let release!: (value: object) => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const delayed = new Promise<object>(resolve => { release = resolve; });
+  const f = await fixture([interpret({ ops: exclusions() }), () => { entered(); return delayed; }]);
+  const pending = f.coordinator.onMessage('m1');
+  await started;
+  await f.message('m2', 'owner', 'Keep all scope');
+  await f.coordinator.messageRecorded('m2');
+  const result = await pending;
+  expect(result.events).toHaveLength(1);
+  expect(result.events[0]!.payload).toMatchObject({ considerationId: 'superseded:m1' });
+  const before = await f.read();
+  release(judge());
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(await f.read()).toEqual(before);
+  expect(project(before).plan?.version).toBe(1);
+  expect(f.connector.sendUpdate).not.toHaveBeenCalled();
+});
+
+it.each(['attachment', 'task comment'])('does not preempt an earlier %s when ordinary chat arrives', async kind => {
+  let entered!: () => void;
+  let release!: (value: object) => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const delayed = new Promise<object>(resolve => { release = resolve; });
+  const f = await fixture([() => { entered(); return delayed; }, judge()]);
+  await f.add('message_recorded', { messageId: 'm2', authorId: 'owner', text: 'independent input', attachmentIds: kind === 'attachment' ? ['file'] : [], ...(kind === 'task comment' ? { threadId: 'task:prototype' } : {}) });
+  const pending = f.coordinator.onMessage('m2');
+  await started;
+  await f.message('m3');
+  await f.coordinator.messageRecorded('m3');
+  expect(f.calls[0]!.signal?.aborted).toBe(false);
+  release(interpret());
+  const result = await pending;
+  expect((result.events as AnyEvent[]).some(e => e.type === 'pm_considered' && e.payload.considerationId === 'superseded:m2')).toBe(false);
+  expect(f.calls).toHaveLength(2);
+});

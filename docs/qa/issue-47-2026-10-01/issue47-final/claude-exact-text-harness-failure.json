@@ -1,0 +1,74 @@
+{
+  "provider": "claude",
+  "base": "http://127.0.0.1:3528",
+  "startedAt": "2026-10-01T22:14:15.996Z",
+  "events": [
+    {
+      "at": "2026-10-01T22:14:17.570Z",
+      "label": "A",
+      "uiActionMs": 11,
+      "composerClearedMs": 14,
+      "sentAt": 1790892857556
+    },
+    {
+      "at": "2026-10-01T22:14:17.679Z",
+      "firstCallObserved": {
+        "provider": "claude",
+        "model": "claude-sonnet-5",
+        "projectId": "38f177d7-481b-4141-bbc7-60ba78c24d6c",
+        "messageId": "cf0f0d70-d1b7-4c1b-a1cb-e74c717b24e1",
+        "callId": "440c272e-4655-4d6e-a9a1-a3faf9cf3fbd",
+        "operation": "interpret_coordination",
+        "attempt": 0,
+        "at": "2026-10-01T22:14:17.624Z",
+        "elapsedMs": 1,
+        "phase": "started"
+      }
+    },
+    {
+      "at": "2026-10-01T22:14:17.682Z",
+      "http": "/api/messages",
+      "status": 202,
+      "request": {
+        "authorId": "owner",
+        "text": "현재 완료된 작업들의 상태와 의존 관계를 설명해 주세요. 계획이나 작업을 변경하지 마세요. QA47-A",
+        "attachments": [],
+        "me": "owner"
+      },
+      "body": {
+        "accepted": true,
+        "messageId": "cf0f0d70-d1b7-4c1b-a1cb-e74c717b24e1"
+      }
+    },
+    {
+      "at": "2026-10-01T22:14:22.698Z",
+      "label": "B",
+      "uiActionMs": 9,
+      "composerClearedMs": 12,
+      "sentAt": 1790892862686
+    },
+    {
+      "at": "2026-10-01T22:14:22.712Z",
+      "supersededObserved": true,
+      "draftPreserved": true
+    },
+    {
+      "at": "2026-10-01T22:14:22.726Z",
+      "http": "/api/messages",
+      "status": 202,
+      "request": {
+        "authorId": "owner",
+        "text": "앞 요청을 정정합니다. 완료 상태만 한 문장으로 요약해 주세요. 새 작업 생성이나 기존 계획 변경은 하지 마세요. QA47-B",
+        "attachments": [],
+        "me": "owner"
+      },
+      "body": {
+        "accepted": true,
+        "messageId": "a668e714-ff46-4fd3-a395-4396e94345b6"
+      }
+    }
+  ],
+  "errors": [],
+  "projectId": "38f177d7-481b-4141-bbc7-60ba78c24d6c",
+  "failure": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByText('작업 8개가 모두 확인을 마쳤고 남은 작업은 없어요: 카운터 입력 방식 및 버튼 동작 비교 조사, 가상 버튼 vs 키보드 입력 방식 비교, +1·-1·초기화 버튼 동작 규칙 정리(-1 버튼 제외), 클릭 카운터 사용에 대한 가상 인터뷰 노트 작성, 최소 클릭 카운터 버튼 명세, counter.html 최소 클릭 카운터 구현(-1 버튼 제외), QA 도움말, 로그인 화면 HTML 구현(시연용).', { exact: true }) to be visible\u001b[22m\n"
+}

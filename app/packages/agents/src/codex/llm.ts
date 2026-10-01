@@ -95,7 +95,9 @@ export class CodexLlmProvider implements LlmProvider {
         let fail: ((error: Error) => void) | undefined;
         client.onFailure(() => fail?.(new CodexLlmError('transport')));
         client.on('turn/completed', ({ turn }) => { terminal.set(turn.id, turn); if (turn.id === turnId) finish?.(turn); });
-        client.on('item/agentMessage/delta', () => { firstResponseMs ??= Date.now() - started; });
+        client.on('item/agentMessage/delta', () => {
+          if (firstResponseMs === undefined) { firstResponseMs = Date.now() - started; request.onProgress?.('first_response'); }
+        });
         await client.initialize();
         controller.signal.throwIfAborted();
         threadId = await client.threadStart({ cwd, sandbox: 'read-only', approvalPolicy: 'never', ephemeral: true,
