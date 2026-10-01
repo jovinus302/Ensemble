@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const BASE_SHA = '9cd682ae815542f270624ec7ca3eb86a0bc9a1d3';
+export const BASE_SHA = 'a6bfc345bde634422421c500fad264419bc04ec9';
 export const LIMITS: Readonly<{ totalMs: number; calls: number }> = Object.freeze({ totalMs: 20 * 60_000, calls: 24 });
 export type Provider = 'codex' | 'claude';
 export type Task = 'A' | 'B';
@@ -16,8 +16,8 @@ export const RUBRIC = Object.freeze({
   interpretation: 'n=1 exploratory only; compare within provider; never infer superiority',
 });
 export const RUBRIC_HASH = createHash('sha256').update(JSON.stringify(RUBRIC)).digest('hex');
-export const PROMPT_A = `Complete this React restaurant booking starter. Date/time/1–6 guests, fixed sold-out and server-error fixtures, visible helpful errors, confirmation, saved booking surviving refresh, and usable unclipped 390/1440px layout. Use the existing local POST /api/reservations fixture. Preserve data-testid contract date,time,guests,submit,confirmation,edit,message. Date 2030-06-15 time 19:00 is sold out; 2030-06-16 time 18:00 returns an error. Offer 17:00,18:00,19:00,20:00. Do not replace build.mjs/server.mjs, change fixtures, install dependencies, access network, change permissions/authentication or incur new payments. Build with node build.mjs. Work only in this starter. Report files and limitations when finished.`;
-export const PROMPT_B_INITIAL = `${PROMPT_A}\nThis task has a staged requirement change. First implement real working date/time/guest controls and a successful build. STOP this turn at that checkpoint, report the source files, and await the next instruction before implementing the rest. Do not invent the later change.`;
+export const PROMPT_A = `Complete this React restaurant booking starter. Date/time/1–6 guests, fixed sold-out and server-error fixtures, visible helpful errors, confirmation, saved booking surviving refresh, and usable unclipped 390/1440px layout. Use the existing local POST /api/reservations fixture. Preserve data-testid contract date,time,guests,submit,confirmation,edit,message. Date 2030-06-15 time 19:00 is sold out; 2030-06-16 time 18:00 returns an error. Offer 17:00,18:00,19:00,20:00. Do not replace build.mjs/server.mjs, change fixtures, install dependencies, access network, change permissions/authentication or incur new payments. The external harness runs node build.mjs and browser acceptance; provide buildable React source. Do not request extra shell permissions or claim an external build was already run. Work only in this starter. Report files and limitations when finished.`;
+export const PROMPT_B_INITIAL = `${PROMPT_A}\nThis task has a staged requirement change. First implement real working date/time/guest controls in buildable source. STOP this turn at that checkpoint, report the source files, and await the next instruction before implementing the rest. The external harness must independently build and exercise the controls before sending the next instruction. Do not invent the later change.`;
 export const PROMPT_CHANGE = `Requirement change: maximum 8 guests. Parties of 7 or 8 may book only at or after 18:00. When guest count makes the chosen time invalid, clear that time and show the reason. Permit editing after confirmation; save and reload must show the edited values. Reject 9 guests. Complete all original requirements under this change and build successfully.`;
 
 /** A reverses both within-provider orders in B; the provider blocks also cross over. */

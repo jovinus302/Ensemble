@@ -8,7 +8,7 @@ Product-scope limitation (issues [#3](https://github.com/jovinus302/Ensemble/iss
 
 ## Frozen design
 
-Base: `main@9cd682ae815542f270624ec7ca3eb86a0bc9a1d3`. Each run receives a fresh copy of `starter/`, with the same source SHA-256. It deliberately has an unfinished, disabled time control. No generated output is carried to another condition or from task A to B.
+Base: `main@a6bfc345bde634422421c500fad264419bc04ec9`. Each run receives a fresh copy of `starter/`, with the same source SHA-256. It deliberately has an unfinished, disabled time control. No generated output is carried to another condition or from task A to B.
 
 | Order | Task | Condition |
 |---|---|---|

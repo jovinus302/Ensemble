@@ -12,7 +12,7 @@
       "task": {"enum": ["A", "B"]}, "provider": {"enum": ["codex", "claude"]}, "ensemble": {"type": "boolean"}, "ordinal": {"type": "integer", "minimum": 1, "maximum": 8}, "id": {"type": "string"}
     }},
     "blindId": {"type": "string", "format": "uuid"},
-    "baseSha": {"const": "9cd682ae815542f270624ec7ca3eb86a0bc9a1d3"},
+    "baseSha": {"const": "a6bfc345bde634422421c500fad264419bc04ec9"},
     "rubricHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "starterHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "model": {"type": "string"}, "effort": {"type": "string"},

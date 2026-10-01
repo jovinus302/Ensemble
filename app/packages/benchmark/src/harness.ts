@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { BASE_SHA, Budget, LIMITS, PROMPT_A, PROMPT_B_INITIAL, PROMPT_CHANGE, RUBRIC_HASH, type Cell, type Mode, type Role } from './protocol.ts';
@@ -53,11 +54,13 @@ export async function runCell(cell: Cell, services: Services, options: {
     await writeFile(path.join(options.outputDir, `${cell.id}.json`), JSON.stringify(report, null, 2));
   };
   const work = async () => {
+    if (options.outputDir) await mkdir(options.outputDir, { recursive: true });
     await services.prepare(); budget.check();
     report.preparationMs = elapsed(); taskStarted = elapsed();
     driver = await services.driver({ signal: controller.signal, meter: budget.meter.bind(budget),
       record: event => {
         report.events.push(event);
+        if (options.outputDir) appendFileSync(path.join(options.outputDir, `${cell.id}.events.jsonl`), JSON.stringify({ elapsedMs: elapsed(), event }) + '\n');
         const record = event as { type?: string; events?: { type?: string; payload?: unknown }[] } | null;
         if (record?.type === 'native_ledger') report.humanRequests = (record.events ?? [])
           .filter(e => e.type === 'decision_requested' || e.type === 'authority_requested').map(e => e.payload);

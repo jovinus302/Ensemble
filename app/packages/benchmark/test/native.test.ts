@@ -3,32 +3,34 @@ import type { SessionEvent } from '@ensemble/agents';
 
 const fake = vi.hoisted(() => ({
   constructors: [] as unknown[], listeners: new Set<(event: SessionEvent) => void>(), starts: 0, continuations: 0, stops: 0,
-  prepared: false, releaseStop: undefined as undefined | (() => void), holdStop: false,
+  prepared: false, releaseStop: undefined as undefined | (() => void), holdStop: false, providerOptions: [] as unknown[], taskInput: undefined as unknown,
 }));
 vi.mock('@ensemble/agents', async importOriginal => {
   const original = await importOriginal<typeof import('@ensemble/agents')>();
   class Connector {
     constructor(options: unknown) { fake.constructors.push(options); }
     async startSession() { return { workspace: 'mock-workspace', threadId: 'thread' }; }
-    async startTask() {
+    async startTask(_id: string, input: unknown) {
+      fake.taskInput = input;
       expect(fake.prepared).toBe(true); fake.starts++; emit('started', 'initial'); return 'initial';
     }
     async continueTask() { fake.continuations++; emit('started', 'continuation'); return 'continuation'; }
     async sendUpdate() { return { sent: false as const, reason: 'mock unsupported' }; }
     onEvent(listener: (event: SessionEvent) => void) { fake.listeners.add(listener); return () => { fake.listeners.delete(listener); }; }
-    async stop() { fake.stops++; if (fake.holdStop) await new Promise<void>(resolve => { fake.releaseStop = resolve; }); }
+    async stop() { fake.stops++; if (fake.holdStop) await new Promise<void>(resolve => { fake.releaseStop = resolve; }); emit('interrupted', 'initial'); emit('interrupted', 'continuation'); }
   }
   return { ...original, CodexSessionConnector: Connector, ClaudeSessionConnector: Connector };
 });
 // A test must never accidentally fall through to a CLI-backed PM implementation.
 vi.mock('@ensemble/llm', async importOriginal => ({
   ...await importOriginal<typeof import('@ensemble/llm')>(),
-  CodexCliProvider: class { complete() { throw new Error('Unexpected model call in offline test'); } },
+  CodexCliProvider: class { constructor(options: unknown) { fake.providerOptions.push(options); } complete() { throw new Error('Unexpected model call in offline test'); } },
   ClaudeCliProvider: class { complete() { throw new Error('Unexpected model call in offline test'); } },
 }));
 import { createNativeDriver, type NativeDriverOptions } from '../src/native.ts';
+import { PROMPT_B_INITIAL } from '../src/protocol.ts';
 
-function emit(status: 'started' | 'completed' | 'failed', turnId: string) {
+function emit(status: 'started' | 'completed' | 'failed' | 'interrupted', turnId: string) {
   for (const listener of fake.listeners) listener({ type: 'turn', agentId: 'prototype-agent', taskId: 'reservation', threadId: 'thread', turnId, status });
 }
 function setup(overrides: Partial<NativeDriverOptions> = {}) {
@@ -45,6 +47,26 @@ function setup(overrides: Partial<NativeDriverOptions> = {}) {
 beforeEach(() => {
   fake.constructors.length = 0; fake.listeners.clear(); fake.starts = 0; fake.continuations = 0; fake.stops = 0;
   fake.prepared = false; fake.holdStop = false; fake.releaseStop = undefined;
+  fake.providerOptions.length = 0; fake.taskInput = undefined;
+});
+it('restricts Codex PM and worker invocations identically without changing user settings', async () => {
+  const { options } = setup({ provider: 'codex', ensemble: true });
+  const driver = await createNativeDriver(options);
+  await expect(driver.start()).rejects.toThrow('Unexpected model call in offline test');
+  const worker = fake.constructors[0] as { rpc: { args: string[] } };
+  const provider = fake.providerOptions[0] as { executableArgs: string[] };
+  expect(provider.executableArgs).toEqual(['-c', 'mcp_servers.node_repl.enabled=false', '-c', 'features.multi_agent=false', '-c', 'features.multi_agent_v2=false', '-c', 'web_search="disabled"']);
+  expect(worker.rpc.args).toEqual(['app-server', ...provider.executableArgs, '-c', 'model_reasoning_effort="medium"']);
+  await driver.stop();
+});
+it('uses checkpoint-only handoff criteria and delegates build validation to the external harness', async () => {
+  const { options } = setup({ prompt: PROMPT_B_INITIAL });
+  const driver = await createNativeDriver(options); await driver.start();
+  const input = fake.taskInput as { goalSummary: { text: string }; handoffConditions: { text: string }[] };
+  expect(input.goalSummary.text).toBe(PROMPT_B_INITIAL);
+  expect(input.handoffConditions[0]!.text).toContain('external benchmark harness validates the build');
+  expect(input.handoffConditions[0]!.text).toContain('not required for this initial handoff');
+  await driver.stop();
 });
 it('constructs both native arms without a process, provider call or workspace write', async () => {
   for (const ensemble of [true, false]) {

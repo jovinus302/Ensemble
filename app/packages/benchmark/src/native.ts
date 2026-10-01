@@ -6,6 +6,14 @@ import { ProjectManager, buildTaskContext } from '@ensemble/orchestrator';
 import { MemoryLedgerStore } from '@ensemble/store';
 import { PROMPT_B_INITIAL } from './protocol.ts';
 
+// Per-process restrictions only: never mutate the user's CLI configuration.
+const CODEX_RESTRICTIONS = [
+  '-c', 'mcp_servers.node_repl.enabled=false',
+  '-c', 'features.multi_agent=false',
+  '-c', 'features.multi_agent_v2=false',
+  '-c', 'web_search="disabled"',
+];
+
 export interface NativeDriverOptions {
   provider: 'codex' | 'claude'; ensemble: boolean; model: string; effort: string;
   workspaceRoot: string; projectId: string; prompt: string; signal: AbortSignal;
@@ -29,7 +37,7 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
   // B must stop at the externally tested checkpoint. Judging the full initial goal here
   // would trigger revisions that implement the remaining requirements before the change.
   const handoffConditions = options.prompt === PROMPT_B_INITIAL
-    ? ['Initial checkpoint only: supplied source files implement real date, time and 1–6 guest selection controls; the existing build succeeds. Stop at this checkpoint. Confirmation, persistence and other remaining goal requirements are deliberately deferred until the next instruction and are not required for this initial handoff.']
+    ? ['Initial checkpoint only: supplied source files implement real date, time and 1–6 guest selection controls. The external benchmark harness validates the build and browser selection after this handoff; do not require worker-run build evidence. Stop at this checkpoint. Confirmation, persistence and other remaining goal requirements are deliberately deferred until the next instruction and are not required for this initial handoff.']
     : [options.prompt];
   const actor = { kind: 'human' as const, id: 'owner' };
   const seed = (type: NewLedgerEvent['type'], payload: unknown): NewLedgerEvent => ({ ...context, actor, type, payload, idempotencyKey: `benchmark:${type}:${randomUUID()}` });
@@ -72,11 +80,20 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
   };
   const stop = (): Promise<void> => {
     if (stopPromise) return stopPromise;
-    stopped = true; controller.abort(); unsubscribe();
+    stopped = true; controller.abort();
     // Abort CLI calls before draining the PM queue, so stopping never waits for a model's full timeout.
     stopPromise = (async () => {
       await Promise.allSettled([raw?.stop(), provider?.close?.()]);
-      try { await pm?.stop(); } finally { options.record({ type: 'native_ledger', events: await store.read() }); store.close(); }
+      try {
+        // Claude stop signals its own CLI child but returns before its close event.
+        // Wait only for turns this driver owns; never inspect or stop other processes.
+        if (options.provider === 'claude') {
+          const deadline = performance.now() + 4000;
+          while (active.size && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+          if (active.size) throw new Error('Owned Claude CLI did not terminate within cleanup budget');
+        }
+        await pm?.stop();
+      } finally { unsubscribe(); options.record({ type: 'native_ledger', events: await store.read() }); store.close(); }
     })();
     return stopPromise;
   };
@@ -86,7 +103,7 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
       check(); if (started) throw new Error('Driver already started'); started = true;
       raw = options.provider === 'codex'
         ? new CodexSessionConnector({ model: options.model, workspaceRoot: options.workspaceRoot,
-          rpc: { args: ['app-server', '-c', `model_reasoning_effort="${options.effort}"`] } })
+          rpc: { args: ['app-server', ...CODEX_RESTRICTIONS, '-c', `model_reasoning_effort="${options.effort}"`] } })
         : new ClaudeSessionConnector({ model: options.model, effort: options.effort as 'medium', workspaceRoot: options.workspaceRoot,
           allowedTools: [], disallowedTools: ['Agent', 'Task', 'WebSearch', 'WebFetch'] });
       unsubscribe = raw.onEvent(event => {
@@ -121,9 +138,9 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
       options.record({ type: 'native_config', provider: options.provider, model: options.model, effort: options.effort,
         workerUsage: null, underlyingApiCalls: null, callUnit: 'top-level CLI requests plus worker turns and Codex steer requests',
         workerMeterElapsedMeaning: 'submission latency only; native_worker_duration records full turn wall time',
-        permissions: options.provider === 'codex' ? 'native workspace-write; approval never; inherited CLI config may expose additional tools, requiring preflight audit' : 'native acceptEdits; no additional auto-approved tools; Agent/Task/WebSearch/WebFetch denied; isolated project settings' });
+        permissions: options.provider === 'codex' ? 'native workspace-write; approval never; node_repl MCP, multi_agent/multi_agent_v2 and web_search disabled per invocation' : 'native acceptEdits; no additional auto-approved tools; Agent/Task/WebSearch/WebFetch denied; isolated project settings' });
       if (options.ensemble) {
-        provider = options.provider === 'codex' ? new CodexCliProvider({ model: options.model, effort: options.effort }) : new ClaudeCliProvider({ model: options.model, effort: options.effort });
+        provider = options.provider === 'codex' ? new CodexCliProvider({ model: options.model, effort: options.effort, executableArgs: [...CODEX_RESTRICTIONS] }) : new ClaudeCliProvider({ model: options.model, effort: options.effort });
         const llm: LlmProvider = { complete: request => {
           const role = request.forceTool === 'record_handoff_review' ? 'judge' : 'pm';
           return run(role, async () => {
