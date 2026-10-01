@@ -81,3 +81,42 @@ it('interrupts a running turn on stop and refuses mid-turn updates', async () =>
   await connector.stop(agentId);
   expect(await turnEnded(events, turnId)).toMatchObject({ status: 'interrupted' });
 }, 30_000);
+
+it('cancels a turn stopped during startup before the CLI spawns', async () => {
+  const { connector, events, agentId } = fixture();
+  await connector.startSession(agentId, 'claude-tests');
+  const starting = connector.startTask(agentId, task);
+  await connector.stop(agentId); // The turn is reserved; its input is still being prepared.
+  const turnId = await starting;
+  expect(await turnEnded(events, turnId)).toMatchObject({ status: 'interrupted' });
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  expect(events.filter(e => e.turnId === turnId).map(e => e.type === 'turn' ? e.status : e.type)).toEqual(['interrupted']);
+  await expect(connector.startTask(agentId, task)).resolves.toBeTruthy();
+}, 30_000);
+
+it('cancels a reserved turn when the whole connector stops', async () => {
+  const { connector, events, agentId } = fixture();
+  await connector.startSession(agentId, 'claude-tests');
+  const starting = connector.startTask(agentId, task);
+  await connector.stop();
+  const turnId = await starting;
+  expect(await turnEnded(events, turnId)).toMatchObject({ status: 'interrupted' });
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  expect(events.some(e => e.turnId === turnId && (e.type === 'reply' || (e.type === 'turn' && e.status !== 'interrupted')))).toBe(false);
+}, 30_000);
+
+it('fails a turn whose result is flagged is_error with the readable result text, without replying the synthetic error', async () => {
+  const { connector, events, agentId } = fixture('api-error');
+  await connector.startSession(agentId, 'claude-tests');
+  const turnId = await connector.startTask(agentId, task);
+  expect(await turnEnded(events, turnId)).toMatchObject({ status: 'failed', reason: expect.stringContaining('issue with the selected model') });
+  expect(events.some(e => e.type === 'reply')).toBe(false);
+}, 30_000);
+
+it('completes a turn whose final result reaches stdout after the process exited, ignoring a stderr warning', async () => {
+  const { connector, events, agentId } = fixture('late');
+  await connector.startSession(agentId, 'claude-tests');
+  const turnId = await connector.startTask(agentId, task);
+  expect(await turnEnded(events, turnId)).toMatchObject({ status: 'completed' });
+  expect(events).toContainEqual(expect.objectContaining({ type: 'report', report: expect.objectContaining({ type: 'result_report' }) }));
+}, 30_000);
