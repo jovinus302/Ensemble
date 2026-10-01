@@ -3,6 +3,7 @@ import { MemoryLedgerStore } from '@ensemble/store';
 import { DEFAULT_PM_MAY_APPLY, project } from '@ensemble/core';
 import type { AnyEvent, EventPayloads, EventType, PlanOp, TaskSpec } from '@ensemble/core';
 import type { LlmProvider, LlmRequest, LlmResponse } from '@ensemble/llm';
+import { strictSchema, dropStrictNulls } from '@ensemble/llm';
 import type { UpdateInstructionsInput } from '@ensemble/agents';
 import { Coordinator, MAX_TASKS_PER_MESSAGE } from '../src/coordination.ts';
 import type { CoordinationInterpretation, CoordinationJudgement } from '../src/coordination.ts';
@@ -215,4 +216,30 @@ it('offers the work ops to the model with the decided enums', async () => {
   const ops = (f.calls[0]!.tools![0]!.inputSchema as { properties: { ops: { items: { oneOf: { properties: { type: { const: string } } }[] } } } }).properties.ops.items.oneOf.map(o => o.properties.type.const);
   expect(ops).toEqual(expect.arrayContaining(['create_task', 'split_task', 'cancel_task', 'set_priority']));
   expect(f.calls[0]!.system).toContain('create_task');
+});
+
+it('can request independent new work after all existing tasks are checked, for both provider schema forms', async () => {
+  for (const strict of [false, true]) {
+    const f = await fixture([request => {
+      const schema = request.tools![0]!.inputSchema;
+      const operation = create('contact');
+      const branches = (schema as any).properties.ops.items.oneOf;
+      const createSchema = branches.find((o: any) => o.properties.type.const === 'create_task');
+      expect(createSchema.required).not.toContain('parentId');
+      if (!strict) return interpret([operation]);
+      const normalized = strictSchema(schema);
+      const strictCreate = (normalized as any).properties.ops.items.anyOf.find((o: any) => o.properties.type.const === 'create_task');
+      expect(strictCreate.properties.parentId.anyOf).toContainEqual({ type: 'null' });
+      return dropStrictNulls(interpret([{ ...operation, parentId: null }]), schema) as object;
+    }, judge()], 'Add a separate contact page', 'designer');
+    for (const task of plan) await f.add('task_checked', { taskId: task.id, resultId: `result-${task.id}`, reason: 'Done' });
+    const result = await f.coordinator.onMessage('m1');
+    expect(result.requests).toHaveLength(1);
+    const state = project(await f.read());
+    const request = state.decisionRequests.get(result.requests![0]!)!.request;
+    const effects = request.options.flatMap(option => option.effects).filter(effect => effect.type === 'plan_ops');
+    expect(effects).toContainEqual(expect.objectContaining({ ops: [expect.objectContaining({ type: 'create_task', tempId: 'contact' })] }));
+    expect(JSON.stringify(effects)).not.toContain('parentId');
+    expect(f.calls).toHaveLength(2);
+  }
 });
