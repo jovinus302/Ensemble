@@ -13,8 +13,10 @@ export interface VmMessage {
   attachments: VmAttachment[];
   pm?: { kind: "fact" | "summary" | "ask" | "answer" | "nudge"; reason: string; evidence: string[] };
   record?: VmRecord;
-  /** 이 발언이 안내하는 결정 카드. 카드가 보이는 사람에게는 발언 대신 카드를 그 자리에 보여 준다. */
+  /** 이 발언이 안내하는 결정 카드. 카드가 보이는 사람에게는 발언 대신 카드를 그 자리에 보여 준다. cards와 decisionCards 양쪽에서 찾는다. */
   cardId?: string;
+  /** 이 발언이 언급한 작업(작업 이름 칩). threadId가 "task:<id>"면 그 작업의 댓글이다. */
+  taskIds?: string[];
   /** 화면 전용: 서버 기록 전(보내는 중) 내 메시지. 서버는 채우지 않는다. */
   local?: "sending";
 }
@@ -31,6 +33,71 @@ export interface VmPlanTask {
 export type VmCard =
   | { kind: "plan_approval"; id: string; planVersion: number; forMemberId: string; tasks: VmPlanTask[]; reason: string; finish?: { min: string; max: string } }
   | { kind: "authority"; id: string; forMemberId: string; text: string; changeKinds: string[] };
+/**
+ * 결정 요청 카드(사람 호출의 단일 형태). 기존 VmCard(계획 승인·권한)와 따로 둔다: 기존 카드 API(`cards/:id`)와
+ * 응답 버튼이 다르고, 결정 요청은 `POST decisions/:id`로 답한다.
+ */
+export interface VmDecisionCard {
+  kind: "decision"; id: string; forMemberId: string;
+  requestKind: "plan_change" | "assignment" | "choice" | "missing_info" | "stuck_work";
+  question: string;
+  /** 항상 있다. 화면은 추천안을 강조한다. evidence는 사람이 읽는 근거 문장. */
+  recommendation: { optionId: string; rationale: string; evidence: string[] };
+  /** summary: 이 선택지가 하는 일(효과)을 사람이 읽는 말로. */
+  options: { optionId: string; label: string; tradeoff: string; summary: string[] }[];
+  impact: { taskTitles: string[]; blockedTitles: string[]; deadlineDeltaDays?: number };
+  /** "고쳐서 승인"에서 바꿀 수 있는 필드. 없으면 그 버튼을 감춘다. */
+  editable?: ("assignee" | "title" | "priority" | "include")[];
+  /** choose: 버튼으로 고른다. text: 자유 답변(missing_info). */
+  answerMode: "choose" | "text";
+}
+/** `POST /api/decisions/:id` 본문. */
+export interface DecisionAnswer {
+  me: string; action: "approve" | "choose" | "edit" | "reject" | "answer";
+  optionId?: string; edits?: Record<string, unknown>; text?: string;
+}
+
+/** 사람에게 보이는 작업 상태. 칸반 열이 아니라 묶음 기준이다. */
+export type VmWorkStatus = "todo" | "in_progress" | "in_review" | "waiting_human" | "blocked" | "done" | "cancelled";
+/** 작업 항목. 사람에게 작업 키(ENS-12 같은)는 보이지 않는다: id는 내부 식별자이며 화면에 그리지 않는다. */
+export interface VmWorkItem {
+  id: string; title: string;
+  /** 하위 작업이면 상위 작업 id(깊이 최대 2). */
+  parentId?: string;
+  ownerId: string; ownerKind: "human" | "agent";
+  /** 상위 작업은 하위 작업에서 계산한 상태. */
+  status: VmWorkStatus;
+  priority: "high" | "normal" | "low";
+  /** 라우팅 사유를 사람이 읽는 말로(예: "Agent가 할 수 있는 일이라 바로 맡겼어요"). */
+  routingNote?: string;
+  /** status가 waiting_human일 때 누구의 어떤 결정을 기다리는지. */
+  waitingOn?: { memberId: string; requestId: string };
+  /** 하위 작업 id, 계획 순서. */
+  childIds: string[];
+  /** PM이 대화에서 정리한 맥락. */
+  brief?: {
+    why: string;
+    sources: { messageId: string; excerpt: string }[];
+    decisions: { id: string; summary: string }[];
+    attachments: VmAttachment[];
+    constraints: string[];
+  };
+  /** 출처: 이 작업을 낳은 대화(채널 메시지로 이동). */
+  origin?: { createdByName: string; messageIds: string[] };
+  handoffConditions?: string[]; exclusions?: string[]; limits?: string[];
+  resolution?: VmRoadmapTask['resolution'];
+}
+/** 작업 활동 기록 한 줄(원장에서 파생). */
+export interface VmActivityItem {
+  at: string;
+  kind: "created" | "assigned" | "started" | "submitted" | "reviewed" | "revision" | "blocked" | "resumed" | "changed" | "decision_requested" | "decision_resolved" | "comment";
+  actorId: string; text: string; messageId?: string;
+}
+export interface VmWorkTeamRow { memberId: string; currentItemId?: string; state: string; openDecisions: number }
+export interface VmWork { items: VmWorkItem[]; team: VmWorkTeamRow[] }
+/** `GET /api/tasks/:id` 응답. 상세는 상태 폴링에 싣지 않는다. comments는 threadId "task:<id>" 메시지. */
+export interface VmTaskDetail { item: VmWorkItem; activity: VmActivityItem[]; comments: VmMessage[] }
+
 export interface VmRoadmapTask {
   exclusions?: string[]; limits?: string[];
   resolution?: { taskId: string; actions: ('accept' | 'retry' | 'recheck')[] };
@@ -75,6 +142,10 @@ export interface ViewModel {
   members: VmMember[];
   messages: VmMessage[];
   cards: VmCard[];                  // me 에게 보이는 카드만
+  /** me 에게 열린 결정 요청 카드("내 결정" 탭과 채널 인라인 카드). */
+  decisionCards?: VmDecisionCard[];
+  /** 작업 패널(작업 트리·팀). */
+  work?: VmWork;
   roadmap: VmRoadmap;
   pmLog: VmPmJudgement[];           // PM의 말하기/침묵 판단 기록(토글로 보기)
   scenario?: { name: string; nextLine?: { authorName: string; text: string; hasAttachment: boolean }; done: boolean };
