@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { VmCard } from "../lib/view-model";
 import { formatDateRange, formatHourRange } from "./format";
 import { ScopeLists } from './TaskResolution';
@@ -12,9 +12,12 @@ const CHANGE_KIND: Record<string, string> = {
 
 export function DecisionCard({ card, onDecide }: { card: VmCard; onDecide: (cardId: string, approve: boolean) => Promise<unknown> }) {
   const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
   const decide = async (approve: boolean) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setPending(true);
-    try { await onDecide(card.id, approve); } finally { setPending(false); }
+    try { await onDecide(card.id, approve); } finally { inFlight.current = false; setPending(false); }
   };
 
   return (

@@ -100,6 +100,11 @@ createInterface({ input: process.stdin, crlfDelay: Infinity }).on('line', async 
       thread.turns.push(turn);
       result(id, { turn });
       notify('turn/started', { threadId: thread.id, turn });
+      if (protocolMode === 'sandbox-failure') {
+        const item = { id: 'sandbox', type: 'commandExecution', status: 'failed', aggregatedOutput: 'error building bubblewrap command: private path omitted' };
+        notify('item/completed', { threadId: thread.id, turnId: turn.id, item, completedAtMs: Date.now() });
+        break;
+      }
       if (protocolMode) {
         const text = params.input[0].text;
         const taskId = /"taskId":\s*"([^"]+)"/.exec(text)?.[1] ?? /작업 ID:? (\S+)/.exec(text)?.[1] ?? 'task';

@@ -95,6 +95,7 @@ export function useViewModel(): UseViewModelResult {
   const [outbox, setOutbox] = useState<OutboxItem[]>([]);
   const [streamDown, setStreamDown] = useState(false);
   const [fetchDown, setFetchDown] = useState(false);
+  const [offline, setOffline] = useState(false);
   const currentMe = useRef(me);
   currentMe.current = me;
   const revision = useRef(0);
@@ -119,6 +120,15 @@ export function useViewModel(): UseViewModelResult {
   }, [me]);
 
   useEffect(() => {
+    const online = () => { setOffline(false); void refresh(); };
+    const offline = () => setOffline(true);
+    setOffline(!navigator.onLine);
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+  }, [refresh]);
+
+  useEffect(() => {
     let events: EventSource | null = null;
     let polling: ReturnType<typeof setInterval> | undefined;
     let reopen: ReturnType<typeof setTimeout> | undefined;
@@ -130,6 +140,7 @@ export function useViewModel(): UseViewModelResult {
       source.addEventListener("changed", () => { void refresh(); });
       source.onopen = () => {
         clearTimeout(lost); lost = undefined; setStreamDown(false);
+        void refresh();
         if (polling) clearInterval(polling);
         polling = undefined;
       };
@@ -217,5 +228,5 @@ export function useViewModel(): UseViewModelResult {
     return { ...vm, busy: vm.busy || pending, messages: sending.length ? [...vm.messages, ...sending] : vm.messages };
   }, [vm, outbox, pending]);
 
-  return { vm: merged, error, connectionLost: streamDown || fetchDown, pending, actions };
+  return { vm: merged, error, connectionLost: offline || streamDown || fetchDown, pending, actions };
 }

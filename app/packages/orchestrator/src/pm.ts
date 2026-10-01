@@ -22,6 +22,7 @@ export interface ProjectManagerOptions extends EventContext {
   readResult?: (result: SubmittedResult) => Promise<ResultContent>;
   /** Agent turns running longer than this are interrupted and their task blocked. */
   turnTimeoutMs?: number;
+  onTiming?: (timing: { queueWaitMs: number; operationMs: number; pending: number }) => void;
 }
 export type PmPost = CoordinationResult['posts'][number];
 
@@ -85,8 +86,13 @@ export class ProjectManager {
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const queuedAt = Date.now();
     this.queued++;
-    const next = this.queue.then(operation).finally(() => { this.queued--; });
+    const next = this.queue.then(async () => {
+      const started = Date.now();
+      try { return await operation(); }
+      finally { this.options.onTiming?.({ queueWaitMs: started - queuedAt, operationMs: Date.now() - started, pending: this.queued - 1 }); }
+    }).finally(() => { this.queued--; });
     this.queue = next.catch(() => undefined);
     return next;
   }

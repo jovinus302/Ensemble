@@ -27,6 +27,8 @@ export function App() {
   const [confirm, setConfirm] = useState<{ action: Pending; message: string } | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
   const [stepping, setStepping] = useState(false);
+  const stepFlight = useRef(false);
+  const replaceFlight = useRef(false);
   const endRef = useRef<HTMLDivElement>(null);
   const messageCount = vm?.messages.length ?? 0;
 
@@ -67,16 +69,19 @@ export function App() {
     : !activity && vm.busy ? { label: "진행 중…", reason: "PM·Agent가 처리 중이에요." }
     : null;
   const stepNext = async () => {
+    if (stepFlight.current) return;
+    stepFlight.current = true;
     setStepping(true);
-    try { await actions.scenarioNext(); } finally { setStepping(false); }
+    try { await actions.scenarioNext(); } finally { stepFlight.current = false; setStepping(false); }
   };
   // 카드가 보이는 사람에게는 카드를 안내하는 PM 발언 대신 카드를 그 자리에 둔다(같은 내용을 두 번 보이지 않게).
   const visibleCards = new Map(vm.cards.map(c => [c.id, c]));
   const linkedCards = new Set(vm.messages.flatMap(m => (m.cardId && visibleCards.has(m.cardId) ? [m.cardId] : [])));
   const confirmReplace = async () => {
-    if (!confirm) return;
+    if (!confirm || replaceFlight.current) return;
+    replaceFlight.current = true;
     setConfirmPending(true);
-    try { await run(confirm.action, true); } finally { setConfirmPending(false); setConfirm(null); }
+    try { await run(confirm.action, true); } finally { replaceFlight.current = false; setConfirmPending(false); setConfirm(null); }
   };
 
   return (

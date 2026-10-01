@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@ensemble/core": "*",
-    "@ensemble/llm": "*"
+    "@ensemble/llm": "*",
+    "ajv": "^8.20.0"
   }
 }
