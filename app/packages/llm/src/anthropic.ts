@@ -25,7 +25,7 @@ export class AnthropicProvider implements LlmProvider {
           }
         : {}),
       ...(request.forceTool ? { tool_choice: { type: "tool" as const, name: request.forceTool } } : {}),
-    });
+    }, { signal: request.signal });
 
     let text = "";
     const toolCalls: ToolCall[] = [];

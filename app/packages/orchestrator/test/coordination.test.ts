@@ -847,3 +847,16 @@ it('keeps one update_sent when the runner records its own steer, and counts it o
   expect(runner.actions).toBe(plain.actions);
   expect(runner.via).toMatchObject({ via: 'steer' });
 });
+
+it('defers a queued older input to the same person’s latest message without losing context', async () => {
+  const f = await fixture([request => {
+    const {facts} = JSON.parse(request.messages[0]!.content);
+    expect(facts.messages.map((m: any) => m.messageId)).toEqual(expect.arrayContaining(['m1', 'm2']));
+    return interpret();
+  }, judge()]);
+  await f.message('m2', 'owner', '정정: 결제는 유지하세요');
+  expect((await f.coordinator.onMessage('m1')).posts).toEqual([]);
+  expect(f.calls).toHaveLength(0);
+  await f.coordinator.onMessage('m2');
+  expect(project(await f.read()).plan?.version).toBe(1);
+});

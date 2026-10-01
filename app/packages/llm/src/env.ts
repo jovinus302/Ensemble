@@ -26,7 +26,7 @@ export function loadEnv(start: string = process.cwd()): string | undefined {
   }
 }
 
-export function modelFor(role: ModelRole): string {
+export function modelFor(role: ModelRole, provider: 'anthropic' | 'codex' = 'anthropic'): string {
   const byRole = role === "pm" ? process.env.ENSEMBLE_MODEL_PM : process.env.ENSEMBLE_MODEL_AGENT;
-  return byRole || process.env.ENSEMBLE_MODEL || DEFAULT_MODEL;
+  return byRole || process.env.ENSEMBLE_MODEL || (provider === 'codex' ? '' : DEFAULT_MODEL);
 }
