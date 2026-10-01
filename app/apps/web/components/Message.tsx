@@ -24,27 +24,47 @@ export function Avatar({ member, size = 36 }: { member: VmMember | undefined; si
 
 const PM_KIND: Record<string, string> = { fact: "사실", summary: "요약", ask: "질문", answer: "답변", nudge: "알림" };
 
-export function MessageItem({ message, author, grouped }: { message: VmMessage; author: VmMember | undefined; grouped: boolean }) {
+/** 발언이 언급한 작업 칩. 작업 이름만 보인다(내부 id는 그리지 않는다). 이름을 모르는 작업은 칩을 만들지 않는다. */
+export function WorkChips({ taskIds, workTitles, onOpenTask }: { taskIds?: string[]; workTitles?: ReadonlyMap<string, string>; onOpenTask?: (taskId: string) => void }) {
+  const chips = (taskIds ?? []).flatMap(id => { const title = workTitles?.get(id); return title ? [{ id, title }] : []; });
+  if (chips.length === 0) return null;
+  return (
+    <ul className="work-chips" aria-label="언급한 작업">
+      {chips.map(c => (
+        <li key={c.id}>
+          <button type="button" className="work-chip" onClick={() => onOpenTask?.(c.id)} disabled={!onOpenTask}>
+            <span aria-hidden>▤</span> {c.title}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function MessageItem({ message, author, grouped, workTitles, onOpenTask }: {
+  message: VmMessage; author: VmMember | undefined; grouped: boolean;
+  workTitles?: ReadonlyMap<string, string>; onOpenTask?: (taskId: string) => void;
+}) {
   const [showWhy, setShowWhy] = useState(false);
 
   if (message.record?.kind === "plan_decision") {
     const r = message.record;
     const time = formatTime(message.at);
     return (
-      <div className={`msg-system msg-record${r.approved ? "" : " msg-record-rejected"}`} role="note">
+      <div id={`msg-${message.id}`} className={`msg-system msg-record${r.approved ? "" : " msg-record-rejected"}`} role="note">
         <span aria-hidden>{r.approved ? "✓" : "✕"}</span> 계획 v{r.planVersion} {r.approved ? "승인" : "거절"} — {r.byName}{time && <>, <time dateTime={message.at} className="num">{time}</time></>}
       </div>
     );
   }
   if (message.kind === "system") {
-    return <div className="msg-system" role="note">{message.text}</div>;
+    return <div id={`msg-${message.id}`} className="msg-system" role="note">{message.text}</div>;
   }
 
   const voice = message.kind === "agent" ? voiceOf(author?.id ?? message.authorId) : null;
   const bubbleStyle = voice ? { ["--voice-c" as string]: `var(--ens-voice-${voice}-container)`, ["--voice-on" as string]: `var(--ens-voice-${voice}-on)`, ["--voice" as string]: `var(--ens-voice-${voice})` } : undefined;
 
   return (
-    <article className={`msg msg-${message.kind}${grouped ? " msg-grouped" : ""}${message.local ? " msg-sending" : ""}`} style={bubbleStyle} aria-busy={message.local ? true : undefined}>
+    <article id={`msg-${message.id}`} className={`msg msg-${message.kind}${grouped ? " msg-grouped" : ""}${message.local ? " msg-sending" : ""}`} style={bubbleStyle} aria-busy={message.local ? true : undefined}>
       <div className="msg-avatar">{!grouped && <Avatar member={author} size={message.kind === "pm" ? 40 : 36} />}</div>
       <div className="msg-main">
         {!grouped && (
@@ -60,6 +80,7 @@ export function MessageItem({ message, author, grouped }: { message: VmMessage; 
           {message.pm && <span className="pm-kind">{PM_KIND[message.pm.kind] ?? message.pm.kind}</span>}
           {message.text}
         </div>
+        <WorkChips taskIds={message.taskIds} workTitles={workTitles} onOpenTask={onOpenTask} />
         {message.attachments.length > 0 && (
           <ul className="attachments">
             {message.attachments.map(a => (
