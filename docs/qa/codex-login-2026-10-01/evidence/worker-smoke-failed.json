@@ -1,0 +1,133 @@
+{
+  "success": false,
+  "workspace": "/workspace/ensemble-workers/smoke/prototype-1790858901957",
+  "elapsedMs": 34586,
+  "steps": [
+    {
+      "step": "session",
+      "elapsedMs": 158,
+      "detail": {
+        "threadId": "01a0f782-3a31-7031-b09e-b749b40ae680",
+        "workspace": "/workspace/ensemble-workers/smoke/prototype-1790858901957"
+      }
+    },
+    {
+      "step": "turn",
+      "elapsedMs": 173,
+      "detail": {
+        "turnId": "01a0f782-3a66-7b71-9a4a-b884a7809472",
+        "status": "started"
+      }
+    },
+    {
+      "step": "start",
+      "elapsedMs": 173,
+      "detail": {
+        "turnId": "01a0f782-3a66-7b71-9a4a-b884a7809472"
+      }
+    },
+    {
+      "step": "steer",
+      "elapsedMs": 926,
+      "detail": {
+        "sent": true
+      }
+    },
+    {
+      "step": "agent_message",
+      "elapsedMs": 8242,
+      "detail": {
+        "itemId": "msg_02add5471bd39cfa016abe569b339087d180408ab826d577dd",
+        "characters": 100
+      }
+    },
+    {
+      "step": "agent_message",
+      "elapsedMs": 14927,
+      "detail": {
+        "itemId": "msg_02add5471bd39cfa016abe56a1fcdc87d1a63d6709a98aaf52",
+        "characters": 219
+      }
+    },
+    {
+      "step": "acknowledgement",
+      "elapsedMs": 14928,
+      "detail": {
+        "report": {
+          "type": "acknowledge_update",
+          "updateId": "smoke-update-1790858901957",
+          "planVersion": 2,
+          "applied": [
+            "가입과 대시보드 섹션 유지",
+            "온보딩 섹션에 관심 분야 선택 추가"
+          ],
+          "dropped": [
+            "결제"
+          ]
+        },
+        "validation": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "step": "agent_message",
+      "elapsedMs": 18210,
+      "detail": {
+        "itemId": "msg_02add5471bd39cfa016abe56a575b487d18c7b1c449f0b453f",
+        "characters": 132
+      }
+    },
+    {
+      "step": "agent_message",
+      "elapsedMs": 34535,
+      "detail": {
+        "itemId": "msg_02add5471bd39cfa016abe56b3c79487d18d879065c114d3d6",
+        "characters": 295
+      }
+    },
+    {
+      "step": "question",
+      "elapsedMs": 34535,
+      "detail": {
+        "type": "question",
+        "taskId": "smoke-flow",
+        "question": "실행 환경 오류로 작업 폴더 확인과 가입.md 작성이 모두 실패했습니다. 생성된 파일은 없습니다. 파일을 작성할 수 있도록 작업 환경을 복구해 주시겠습니까, 아니면 문서 내용을 대화로 제출할까요?",
+        "options": [
+          "작업 환경을 복구한 뒤 파일 작성 재개",
+          "파일 대신 문서 내용을 대화로 제출"
+        ]
+      }
+    },
+    {
+      "step": "turn",
+      "elapsedMs": 34554,
+      "detail": {
+        "turnId": "01a0f782-3a66-7b71-9a4a-b884a7809472",
+        "status": "completed"
+      }
+    },
+    {
+      "step": "verification",
+      "elapsedMs": 34555,
+      "detail": {
+        "steered": true,
+        "ackValidation": {
+          "ok": true
+        },
+        "resultValidation": {
+          "ok": false,
+          "reasons": [
+            "No result report received"
+          ]
+        },
+        "files": [],
+        "paymentFiles": [],
+        "paymentAccountedFor": true,
+        "interestsPresent": false,
+        "reportedFilesExist": false,
+        "turnStatus": "completed"
+      }
+    }
+  ]
+}

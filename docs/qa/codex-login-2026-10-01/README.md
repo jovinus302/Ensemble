@@ -55,6 +55,6 @@ Real worker command output: `error building bubblewrap command: app-server socke
 
 ## Verification limits
 
-An intermediate merged-code run passed **506 tests across 56 files** and typecheck; a preceding build passed. Final-head checks and browser regression are recorded in the PR as they finish. Unit/fixture tests cover schema rejection, early completion, cancellation, timeout, process failure, message supersession and sandbox failure classification; those are deliberately not described as live model results.
+The final implementation run passed **508 tests across 56 files**, **typecheck**, and **production build**. Logs are in `evidence/`. The user then requested migration to a separate local worktree; final-head browser regressions remain explicitly pending in [HANDOFF.md](HANDOFF.md). Unit/fixture tests cover schema rejection, early completion, cancellation, timeout, process failure, message supersession and sandbox failure classification; those are deliberately not described as live model results.
 
 Remaining: actual worker artifact production, complete scripted scene 3 scope update, free-scenario artifact interaction, live stop/retry through successful completion, controlled full before/after end-to-end timing, and merge readiness. Do not merge based on the model terminal status or UI task label alone.
