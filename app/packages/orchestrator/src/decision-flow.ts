@@ -30,6 +30,8 @@ export interface DecisionFlowOptions {
   dispatcher: Pick<Dispatcher, 'onAnswer'>;
   /** The PM's own task resolution (accept / retry / recheck) under the same checks as the buttons. */
   resolveTask(taskId: Id, input: { action: 'accept' | 'retry' | 'recheck'; by: Id; note?: string }, trigger: string): Promise<PmPost[]>;
+  /** Starts the work the applied plan ops reserved (`CoordinationResult.starts`); returns what people hear. */
+  startReserved(taskIds: Id[], trigger: string, by: Id): Promise<PmPost[]>;
   /** Q3: what an unanswered request does once it expires. Default: expire and keep the work paused. */
   settings?: DecisionSettings;
 }
@@ -112,18 +114,23 @@ export async function decideRequest(options: DecisionFlowOptions, requestId: Id,
     if (!task || !RESOLVABLE.includes(task.status)) throw new DecisionRequestError('invalid_state', `"${task?.spec.title ?? '작업'}" 작업은 이미 멈춘 상태가 아니라 이 결정을 반영할 수 없어요.`);
   }
   const posts: PmPost[] = [];
+  let starts: Id[] = [];
   if (message) {
     // Plan changes go first: if the coordinator refuses them (a changed ledger, the automation cap), the request
     // stays open and nothing claims they were applied. One trigger message carries every op of the answer (the
-    // coordinator considers a message once); it is idempotent, so a retried answer reuses it. The requestId is
-    // left empty on purpose: the coordinator's requestId names a legacy `authority_requested` card.
+    // coordinator considers a message once); it is idempotent, so a retried answer reuses it. The coordinator
+    // checks the message author is the request target and records new work's origin with this request.
     await store.append([message]);
-    posts.push(...(await options.coordinator.onConfirmedOperations(messageId, ops, '')).posts);
+    const applied = await options.coordinator.onConfirmedOperations(messageId, ops, requestId);
+    posts.push(...applied.posts);
+    starts = applied.starts ?? [];
   }
   const recorded = resolved.events.map((event, i) => ({ ...event, ...(i === 0 && extra.idempotencyKey ? { idempotencyKey: extra.idempotencyKey } : {}), ...(extra.at ? { at: extra.at } : {}) }));
   const tx = await store.transaction(context.projectId, current => project(current).decisionRequests.get(requestId)?.status === 'open'
     ? { append: recorded, result: true }
     : { append: [], result: false });
+  // New work the ops reserved starts once the request is closed, so it no longer reads as waiting on the person.
+  if (starts.length) posts.push(...await options.startReserved(starts, messageId, authority));
   if (!tx.result) return posts;
   for (const [index, effect] of effects.entries()) {
     if (effect.type === 'resolve_task') {

@@ -214,3 +214,31 @@ it('a question answered in the channel closes its request as answered, and the n
   expect(after.decisionRequests.get(questionRequestId(first.questionId))).toMatchObject({ status: 'answered', resolution: { by: 'owner', answerText: '네, 넣어 주세요' } });
   expect(after.decisionRequests.get(questionRequestId(second.questionId))).toMatchObject({ status: 'open', request: { kind: 'missing_info', targetMemberId: 'owner' } });
 });
+
+it('approving new work (create_task) records its origin with the request and starts the agent work it reserved', async () => {
+  const f = await fixture();
+  await f.store.append([{ ...f.ctx, actor: { kind: 'human', id: 'designer' }, type: 'message_recorded', payload: { messageId: 'm-login', authorId: 'designer', text: '로그인 화면도 만들어 주세요', attachmentIds: [] } }]);
+  const draft = { tempId: 'login', title: '로그인 화면 시안', assignee: 'proto-agent', handoffConditions: ['로그인 화면 1개'], dependsOn: [], priority: 'normal' as const,
+    routing: { executor: 'agent' as const, reason: 'agent_capable' as const, note: '프로토타입 Agent가 할 수 있는 일' },
+    brief: { why: '예약 전에 로그인이 필요하다', sourceMessageIds: ['m-login'], decisionIds: [], attachmentIds: [], constraints: [] } };
+  await f.request({ requestId: 'req-login', kind: 'plan_change', targetMemberId: 'owner', question: '디자이너가 요청한 로그인 화면 작업을 추가할까요?',
+    options: [{ optionId: 'add', label: '작업 추가', effects: [{ type: 'plan_ops', ops: [{ type: 'create_task', ...draft, sourceMessageIds: ['m-login'] }] }], tradeoff: '범위가 늘어납니다' }, hold],
+    recommendation: { optionId: 'add', rationale: '예약 흐름에 필요합니다', evidence: ['m-login'] }, impact: { taskIds: ['login'], blockedTaskIds: [] }, sourceMessageIds: ['m-login'] });
+
+  await f.pm.decideRequest('req-login', { by: 'owner', action: 'approve' });
+
+  const after = await f.state();
+  expect(after.decisionRequests.get('req-login')?.status).toBe('approved');
+  expect(after.tasks.get('login')?.meta?.origin).toMatchObject({ decisionRequestId: 'req-login' });
+  expect(after.tasks.get('login')?.status).toBe('running');
+  expect(f.connector.starts.map(s => [s.agentId, s.input.taskId])).toContainEqual(['proto-agent', 'login']);
+});
+
+it('work the coordinator reserved while handling a chat message is started by the PM (CoordinationResult.starts)', async () => {
+  const f = await fixture();
+  await f.store.append([{ ...f.ctx, actor: { kind: 'pm', id: 'pm' }, type: 'task_start_reserved', payload: { taskId: 'research', specVersion: 1, trigger: 'chat' } }]);
+  vi.spyOn(f.pm['coordinator'], 'onMessage').mockResolvedValue({ posts: [], events: [], starts: ['research'] });
+  await f.pm.postMessage('owner', '조사 작업 바로 시작해 주세요');
+  expect((await f.state()).tasks.get('research')?.status).toBe('running');
+  expect(f.connector.starts.map(s => s.input.taskId)).toEqual(['research']);
+});

@@ -108,7 +108,27 @@ export class ProjectManager {
     return this.enqueue(() => this.thenDeliver(decidePlan({ store: this.options.store, context: this.context, dispatcher: this.dispatcher }, proposalId, memberId, approve)));
   }
   decideAuthority(requestId: string, memberId: string, granted: boolean): Promise<PmPost[]> {
-    return this.enqueue(() => this.thenDeliver(decideAuthority({ store: this.options.store, context: this.context, coordinator: this.coordinator }, requestId, memberId, granted)));
+    return this.enqueue(() => this.thenDeliver(this.authorityAnswer(requestId, memberId, granted)));
+  }
+  /** A legacy authority card answer; work its approved ops reserved starts right after. */
+  private async authorityAnswer(requestId: string, memberId: string, granted: boolean): Promise<PmPost[]> {
+    const before = (await this.read()).at(-1)?.seq ?? 0;
+    const posts = await decideAuthority({ store: this.options.store, context: this.context, coordinator: this.coordinator }, requestId, memberId, granted);
+    const reserved = (await this.read() as AnyEvent[]).flatMap(e => e.seq > before && e.type === 'task_start_reserved' ? [e.payload.taskId] : []);
+    return [...posts, ...await this.startNew(reserved, `authority-answer:${requestId}`, memberId)];
+  }
+  /**
+   * Starts work the coordinator reserved while applying a change (new or split work routed to an agent):
+   * agents through the session boundary, people through a channel line, recorded under one consideration.
+   */
+  private async startNew(taskIds: readonly string[], trigger: string, whoseAction: string | null): Promise<PmPost[]> {
+    const lines: string[] = [];
+    for (const taskId of new Set(taskIds)) {
+      const started = await this.dispatcher.startReserved(taskId);
+      lines.push(...started.notices, ...started.failures);
+    }
+    const state = project(await this.read());
+    return this.speak(`start:${trigger}`, trigger, whoseAction, '변경으로 생긴 작업을 시작했다', lines.map(text => ({ kind: 'ask' as const, text: channelText(text, state, 3) })));
   }
   decideCard(cardId: string, memberId: string, approve: boolean): Promise<PmPost[]> {
     return this.enqueue(async () => {
@@ -116,7 +136,7 @@ export class ProjectManager {
       // Decision requests share the card API: approve = the recommendation, otherwise reject.
       if (project(events).decisionRequests.has(cardId)) return this.thenDeliver(decideRequest(this.decisionFlow(), cardId, { by: memberId, action: approve ? 'approve' : 'reject' }));
       if (events.some(e => e.type === 'plan_proposed' && e.payload.proposalId === cardId)) return this.thenDeliver(decidePlan({ store: this.options.store, context: this.context, dispatcher: this.dispatcher }, cardId, memberId, approve));
-      return this.thenDeliver(decideAuthority({ store: this.options.store, context: this.context, coordinator: this.coordinator }, cardId, memberId, approve));
+      return this.thenDeliver(this.authorityAnswer(cardId, memberId, approve));
     });
   }
   /**
@@ -129,7 +149,8 @@ export class ProjectManager {
   private decisionFlow(): DecisionFlowOptions {
     return { store: this.options.store, context: this.context, coordinator: this.coordinator, dispatcher: this.dispatcher, settings: this.options.decisionSettings,
       // Already inside the PM queue: the private resolution, with a refusal said in the channel instead of failing the answer.
-      resolveTask: (taskId, input, trigger) => this.fromChat(trigger, () => this.resolve(taskId, input, trigger)) };
+      resolveTask: (taskId, input, trigger) => this.fromChat(trigger, () => this.resolve(taskId, input, trigger)),
+      startReserved: (taskIds, trigger, by) => this.startNew(taskIds, trigger, by) };
   }
   private now(): Date { return (this.options.clock ?? (() => new Date()))(); }
 
@@ -374,7 +395,7 @@ export class ProjectManager {
       }
       const coordinated = await this.coordinator.onMessage(messageId) as CoordinationResult & { resolutions?: Resolution[]; reopens?: Reopen[] };
       await this.deliverAgentAnswers(coordinated.agentAnswers ?? [], authorId);
-      const posts = [...coordinated.posts];
+      const posts = [...coordinated.posts, ...await this.startNew(coordinated.starts ?? [], messageId, authorId)];
       // The coordinator reads what the person asked for; the PM carries it out under the same checks as the buttons.
       for (const [i, r] of (coordinated.resolutions ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.resolve(r.taskId, { action: r.action, by: authorId, ...(r.note ? { note: r.note } : {}) }, `${messageId}:${i}`)));
       for (const [i, r] of (coordinated.reopens ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.reopen(r.taskId, authorId, r.reason, `${messageId}:${i}`, r.announcement)));

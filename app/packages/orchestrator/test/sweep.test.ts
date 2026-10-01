@@ -101,6 +101,25 @@ it('work blocked four hours gets one stuck_work request to the decider; sweeping
   expect(f.connector.continued).toHaveLength(0);
 });
 
+it('the stuck card offers cancelling work nothing depends on, and choosing it cancels through the coordinator', async () => {
+  const f = await fixture({ tasks: [TASKS[0]!] });
+  await f.blockResearch(0);
+  await f.pm.sweep(at(5));
+  const [request] = requestsOf(await f.events());
+  expect(request!.options.map(o => o.optionId)).toEqual(['retry', 'cancel', 'hold']);
+  await f.pm.decideRequest(request!.requestId, { by: 'owner', action: 'choose', optionId: 'cancel' });
+  const state = await f.state();
+  expect(state.tasks.get('research')?.status).toBe('cancelled');
+  expect(state.decisionRequests.get(request!.requestId)?.status).toBe('chose_other');
+});
+
+it('work others depend on is never offered for cancelling (the plan would break)', async () => {
+  const f = await fixture();
+  await f.blockResearch(0);
+  await f.pm.sweep(at(5));
+  expect(requestsOf(await f.events())[0]!.options.map(o => o.optionId)).toEqual(['retry', 'hold']);
+});
+
 it('work blocked less than four hours is left alone', async () => {
   const f = await fixture();
   await f.blockResearch(0);
