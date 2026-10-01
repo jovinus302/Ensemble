@@ -133,6 +133,10 @@ function describeOp(op: PlanOp, state: ProjectState): string {
     case 'reassign': return `${taskName(state, op.taskId)} 담당 ${name(op.assignee)}`;
     case 'set_deadline': return `기한 ${op.date}`;
     case 'change_goal': return `목표 ${op.text}`;
+    case 'create_task': return `새 작업 ${op.title}`;
+    case 'split_task': return `${taskName(state, op.taskId)}을 ${op.children.map(c => c.title).join(' · ')}로 나눔`;
+    case 'cancel_task': return `${taskName(state, op.taskId)} 취소`;
+    case 'set_priority': return `${taskName(state, op.taskId)} 우선순위 ${op.priority}`;
   }
 }
 function operationKey(op: PlanOp): string {

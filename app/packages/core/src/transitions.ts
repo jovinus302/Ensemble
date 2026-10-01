@@ -3,12 +3,19 @@ import type { EventContext } from "./events.ts";
 import { isStaleResult, pendingUpdates } from "./projection.ts";
 import type { ProjectState, TaskState } from "./projection.ts";
 import { automationGate } from "./action-limit.ts";
+import { isParentTask, priorityRank } from "./work.ts";
 export function startKey(task: TaskState): string { return `start:${task.spec.id}:v${task.specVersion}`; }
+/** Ready work in start order: higher priority first, then creation order. Parents never run. */
+export function startOrder(state: ProjectState): TaskState[] {
+  const order = [...state.tasks.values()].map((task, index) => ({ task, index }));
+  order.sort((a, b) => priorityRank(a.task.meta?.priority) - priorityRank(b.task.meta?.priority) || (a.task.ordinal ?? a.index) - (b.task.ordinal ?? b.index));
+  return order.map(({ task }) => task).filter((task) => !isParentTask(state, task));
+}
 export function planStarts(state: ProjectState, trigger: Id, ctx: EventContext): NewLedgerEvent[] {
   const events: NewLedgerEvent[] = [];
   const occupied = new Set(state.activeTurn.keys());
   const { remaining } = automationGate(state);
-  for (const task of state.tasks.values()) {
+  for (const task of startOrder(state)) {
     if (events.length >= remaining) break;
     const agent = state.members.get(task.spec.assignee)?.kind === "agent";
     if (task.status !== "ready" || state.reservedStartKeys.has(startKey(task)) || (agent && occupied.has(task.spec.assignee))) continue;
