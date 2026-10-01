@@ -14,6 +14,7 @@ export interface PmTiming { operation: string; elapsedMs: number; firstResponseM
 export interface CodexLlmOptions {
   rpc?: RpcOptions;
   timeoutMs?: number;
+  effort?: string;
   onTiming?: (timing: PmTiming) => void;
 }
 
@@ -113,7 +114,7 @@ export class CodexLlmProvider implements LlmProvider {
         const completed = new Promise<CodexTurn>((resolve, reject) => { finish = resolve; fail = reject; });
         void completed.catch(() => undefined);
         // An abort can occur before turn/start replies; process cleanup still cancels that request.
-        turnId = await client.turnStart({ threadId, effort: 'low',
+        turnId = await client.turnStart({ threadId, effort: this.options.effort ?? 'low',
           text: JSON.stringify({ messages: request.messages, ...(tool ? { response: { name: tool.name, description: tool.description, schema } } : {}) }),
           ...(schema ? { outputSchema: strictOutputSchema(schema) } : {}),
         });

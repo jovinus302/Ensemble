@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { CodexSessionConnector } from '../src/codex/connector.ts';
 import type { SessionEvent } from '../src/session.ts';
 import type { TaskInstructionsInput, UpdateInstructionsInput } from '../src/protocol.ts';
@@ -56,4 +56,12 @@ it('surfaces malformed reports and questions and prevents path traversal or cros
   await connector.sendUpdate(agentId, update);
   expect(events).toContainEqual(expect.objectContaining({ type: 'parse_error' }));
   expect(events).toContainEqual(expect.objectContaining({ type: 'report', report: expect.objectContaining({ type: 'question' }) }));
+});
+
+it('blocks on sandbox initialization failure without exposing private diagnostics or retrying commands', async () => {
+  const { connector, events, agentId } = fixture('sandbox-failure');
+  await connector.startSession(agentId, 'connector-tests');
+  await connector.startTask(agentId, task);
+  await vi.waitFor(() => expect(events.some(e => e.type === 'turn' && e.status === 'failed')).toBe(true));
+  expect(JSON.stringify(events)).not.toContain('private path');
 });

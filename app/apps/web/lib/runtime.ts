@@ -127,7 +127,7 @@ export class WebRuntime {
     if (!['api', 'codex', 'claude'].includes(pmRuntime)) throw new Error('ENSEMBLE_PM_RUNTIME must be api, codex, or claude');
     const timeoutMs = process.env.ENSEMBLE_PM_TIMEOUT_MS ? Number(process.env.ENSEMBLE_PM_TIMEOUT_MS) : Number(process.env.ENSEMBLE_PM_TIMEOUT_MINUTES ?? 1.5) * 60_000;
     this.pmLlm = this.options.llm ?? (pmRuntime === 'codex'
-      ? new CodexLlmProvider({ timeoutMs, onTiming: timing => console.info('[ensemble:pm-model]', JSON.stringify(timing)) })
+      ? new CodexLlmProvider({ timeoutMs, effort: process.env.ENSEMBLE_PM_EFFORT?.trim() || 'low', onTiming: timing => console.info('[ensemble:pm-model]', JSON.stringify(timing)) })
       : pmRuntimeFromEnv().llm);
     this.pmModel = modelFor('pm', pmRuntime === 'codex' ? 'codex' : 'anthropic');
     // Agent results arrive as attachments recorded from the agent's workspace; the PM reads them from the ledger.

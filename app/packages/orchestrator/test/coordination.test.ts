@@ -860,3 +860,14 @@ it('defers a queued older input to the same person’s latest message without lo
   await f.coordinator.onMessage('m2');
   expect(project(await f.read()).plan?.version).toBe(1);
 });
+
+it('does not commit stale scope changes when a correction arrives during the model call', async () => {
+  const f = await fixture([async () => {
+    await f.message('m2', 'owner', '정정: 결제는 유지하세요');
+    return interpret({ops: exclusions()});
+  }, judge()]);
+  const result = await f.coordinator.onMessage('m1');
+  expect(result.posts).toEqual([]);
+  expect(project(await f.read()).plan?.version).toBe(1);
+  expect(f.connector.sendUpdate).not.toHaveBeenCalled();
+});

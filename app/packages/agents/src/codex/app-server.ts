@@ -41,7 +41,7 @@ export interface ThreadOptions {
   baseInstructions?: string;
   config?: Record<string, unknown>;
 }
-export interface TurnInput { threadId: string; text: string; clientUserMessageId?: string; outputSchema?: Record<string, unknown>; effort?: 'low' | 'medium' | 'high' }
+export interface TurnInput { threadId: string; text: string; clientUserMessageId?: string; outputSchema?: Record<string, unknown>; effort?: string }
 export interface SteerInput extends TurnInput { expectedTurnId: string; clientUserMessageId: string }
 export interface InitializeResult {
   userAgent: string; codexHome: string; platformFamily: string; platformOs: string;
