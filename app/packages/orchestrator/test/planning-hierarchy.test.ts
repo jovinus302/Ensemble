@@ -65,7 +65,12 @@ it('(4) commits subtasks under their template task with metadata for every task 
   const between = events.filter(e => e.seq > committed.seq && e.seq < metas.at(-1)!.seq).map(e => e.type);
   expect(new Set(between)).toEqual(new Set(['estimate_updated', 'task_meta_set']));
   const research1 = metas.find(e => e.payload.taskId === 'research-1')!.payload;
-  expect(research1).toMatchObject({ priority: 'normal', routing: { executor: 'agent', reason: 'agent_capable' }, origin: { createdBy: 'pm', planVersion: 1, sourceMessageIds: [] } });
+  // Provenance: the decider's goal message (recorded as theirs when nobody had) is where every first-plan item came from.
+  const goal = events.find((e): e is Extract<AnyEvent, { type: 'message_recorded' }> => e.type === 'message_recorded' && e.payload.text === '예약 서비스 시제품')!;
+  expect(goal.payload.authorId).toBe('owner');
+  expect(committed.type === 'plan_committed' && committed.payload.sourceMessageIds).toEqual([goal.payload.messageId]);
+  expect(research1).toMatchObject({ priority: 'normal', routing: { executor: 'agent', reason: 'agent_capable' }, origin: { createdBy: 'owner', planVersion: 1, sourceMessageIds: [goal.payload.messageId] } });
+  expect(research1.brief!.sourceMessageIds).toEqual([goal.payload.messageId]);
   expect(research1.brief!.why).toContain('research 작업');
   expect(metas.find(e => e.payload.taskId === 'interview')!.payload.routing).toMatchObject({ executor: 'human', reason: 'needs_human_judgement' });
 

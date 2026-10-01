@@ -20,3 +20,7 @@ app/data/
 # local reference material (not part of this repo)
 argo/
 ensemble-studio-v1.0/
+
+# files `next dev` may generate for coding agents (disabled in next.config.ts)
+app/apps/web/AGENTS.md
+app/apps/web/CLAUDE.md

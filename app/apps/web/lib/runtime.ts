@@ -491,10 +491,13 @@ export class WebRuntime {
     if (state.members.get(me)?.kind !== 'human' || entry.request.targetMemberId !== me) throw new RuntimeError('forbidden', '결정을 요청받은 사람만 답할 수 있어요.', 403);
     // An option that relays the person's words (missing_info "답하기") needs those words: "추천대로 진행" or picking it
     // without text would close the request and leave the agent waiting for an answer that never comes.
+    // An option that carries its own answer (an agent's offered choice, `answerText`) answers with it when picked as is;
+    // words typed alongside win, since they are the person's own answer.
     const picked = answer.action === 'approve' ? entry.request.recommendation.optionId : answer.action === 'choose' || answer.action === 'edit' ? answer.optionId : undefined;
-    if (picked !== undefined && entry.request.options.find(o => o.optionId === picked)?.effects.some(e => e.type === 'answer')) {
-      if (!answer.text?.trim()) throw new RuntimeError('answer_required', '이 질문에는 답을 적어 주세요. 적은 답이 Agent에게 그대로 전달돼요.', 400);
-      answer = { action: 'answer', text: answer.text };
+    const option = picked !== undefined ? entry.request.options.find(o => o.optionId === picked) : undefined;
+    if (option?.effects.some(e => e.type === 'answer')) {
+      if (answer.text?.trim()) answer = { action: 'answer', text: answer.text };
+      else if (!option.answerText?.trim() || answer.action === 'edit') throw new RuntimeError('answer_required', '이 질문에는 답을 적어 주세요. 적은 답이 Agent에게 그대로 전달돼요.', 400);
     }
     let core: DecisionAnswer;
     switch (answer.action) {

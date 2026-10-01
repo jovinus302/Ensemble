@@ -249,7 +249,8 @@ it.each([false, true])('allows messages during drafting but rejects team changes
     expect((await pending).proposal?.tasks).toHaveLength(4);
     const events = await f.store.read() as AnyEvent[];
     expect(events.filter(e => e.type === 'pm_spoke' && e.payload.text === '계획 v1 초안을 확인하고 승인해 주세요.')).toHaveLength(1);
-    expect(events.filter(e => e.type === 'message_recorded')).toHaveLength(1);
+    // The note sent while drafting, and the goal itself recorded as the decider's message (the plan's source).
+    expect(events.filter(e => e.type === 'message_recorded').map(e => e.type === 'message_recorded' && e.payload.text)).toEqual(['참고 자료입니다', 'Ship']);
   }
   await f.pm.stop();
 });

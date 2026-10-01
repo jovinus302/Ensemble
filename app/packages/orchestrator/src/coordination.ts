@@ -1,5 +1,5 @@
 import { availabilityWeek, formatKstDate, scopeItem, scopeMentions, remainingScopeOps, type ForecastResult } from '@ensemble/core';
-import { channelText, taskName, shortTaskName, numericFacts, hasGroundedNumbers } from './channel-text.ts';
+import { channelText, taskName, shortTaskName, numericFacts, hasGroundedNumbers, particle } from './channel-text.ts';
 import { affectedMembers, automationGate, diffPlans, forecastFromState, withoutStopped, isAutomationAction, limitReachedEvent, project, applyOps, opAuthority } from '@ensemble/core';
 import { createDecisionRequest, isParentTask, planOpProblems, planOpsProblems, planStarts, routeTask, taskMetaFromOps, PRIORITIES, ROUTING_REASONS } from '@ensemble/core';
 import { createHash } from 'node:crypto';
@@ -189,6 +189,54 @@ function describeOp(op: PlanOp, state: ProjectState): string {
     case 'set_priority': return `${taskName(state, op.taskId)} 우선순위 ${op.priority}`;
   }
 }
+/**
+ * One task's change in words: what an agent receives as `change` lines (and may echo back to people), never a
+ * serialized spec. Scope marks in the title are carried by their own exclusion/limit lines.
+ */
+export function specChangeLines(prev: TaskSpec, next: TaskSpec, state: Pick<ProjectState, 'tasks' | 'members'>): string[] {
+  const title = (id: string) => `"${state.tasks.get(id)?.spec.title ?? '선행 작업'}"`;
+  const added = (before: readonly string[] = [], after: readonly string[] = []) => after.filter(item => !before.includes(item));
+  const lines: string[] = [];
+  if ((prev.baseTitle ?? prev.title) !== (next.baseTitle ?? next.title)) lines.push(`작업 이름 변경: ${next.baseTitle ?? next.title}`);
+  for (const item of added(prev.exclusions, next.exclusions)) lines.push(`범위에서 제외: ${item}`);
+  for (const item of added(next.exclusions, prev.exclusions)) lines.push(`다시 범위에 포함: ${item}`);
+  if (JSON.stringify(prev.limits ?? []) !== JSON.stringify(next.limits ?? []) && next.limits?.length) lines.push(`범위 한정: ${next.limits.join(' · ')}까지만`);
+  if (JSON.stringify(prev.handoffConditions) !== JSON.stringify(next.handoffConditions)) lines.push(`인계 조건: ${next.handoffConditions.join('; ')}`);
+  if (JSON.stringify(prev.dependsOn) !== JSON.stringify(next.dependsOn)) lines.push(next.dependsOn.length ? `선행 작업: ${next.dependsOn.map(title).join(', ')}` : '선행 작업 없음');
+  if (prev.assignee !== next.assignee) lines.push(`담당: ${state.members.get(next.assignee)?.displayName ?? '다른 담당'}`);
+  return lines.length ? lines : [`${next.title}: 인계 조건 ${next.handoffConditions.join('; ')}`];
+}
+
+/** Agent work that is finished, addressed by a message in its own thread: the work a comment is about. */
+function finishedAgentThreadTask(state: ProjectState, threadId: string | undefined) {
+  const task = threadId?.startsWith('task:') ? state.tasks.get(threadId.slice('task:'.length)) : undefined;
+  return task && task.status === 'checked' && state.members.get(task.spec.assignee)?.kind === 'agent' ? task : undefined;
+}
+
+/**
+ * A change asked for in a finished agent work item's own thread becomes follow-up work for the agent (§2.1: work
+ * with a result is not reworked in place; new work builds on it), with the comment as its origin. A model that read
+ * the comment as reopening the checked result is turned into that follow-up; authority stays with `opAuthority`.
+ */
+function commentFollowUps(state: ProjectState, message: { messageId: string; threadId?: string }, ops: CoordinationOp[]): CoordinationOp[] {
+  const task = finishedAgentThreadTask(state, message.threadId);
+  if (!task) return ops;
+  const taken = new Set((state.plan?.tasks ?? []).map(t => t.id));
+  const base = task.spec.baseTitle ?? task.spec.title;
+  const agent = state.members.get(task.spec.assignee)?.displayName ?? 'Agent';
+  return ops.map((op): CoordinationOp => {
+    if (op.type !== 'reopen_task' || op.taskId !== task.spec.id || !op.sourceMessageIds.includes(message.messageId)) return op;
+    let n = 1;
+    while (taken.has(`follow-up-${n}`)) n++;
+    const tempId = `follow-up-${n}`;
+    taken.add(tempId);
+    return { type: 'create_task', sourceMessageIds: op.sourceMessageIds, tempId, title: `${base} 보완`, assignee: task.spec.assignee,
+      handoffConditions: [op.reason], dependsOn: [task.spec.id], priority: 'normal',
+      routing: { executor: 'agent', reason: 'agent_capable', note: `${agent}${particle(agent, '이/가')} 만든 결과에 이어지는 일이라 같은 Agent에게 맡겨요` },
+      brief: { why: `완료된 "${base}" 결과에 남긴 댓글 요청을 반영하는 후속 작업이에요.`, decisionIds: [], attachmentIds: [], constraints: [] } } as unknown as CoordinationOp;
+  });
+}
+
 function operationKey(op: PlanOp): string {
   return JSON.stringify(Object.entries(op).filter(([key]) => key !== 'sourceMessageIds').sort(([a], [b]) => a.localeCompare(b)));
 }
@@ -334,7 +382,7 @@ export class Coordinator {
       if (!Array.isArray(v.factMentions) || !v.factMentions.every(mention => mention && typeof mention === 'object' && humanMessages.some(m => m.messageId === mention.messageId) && strings(mention.factIds) && mention.factIds.every((id: string) => knownFacts.some(f => f.id === id)))) errors.push('factMentions: 실제 사람 messageId와 knownFacts의 id만 배열로 사용하세요.');
       return errors;
     });
-    if (interpretation && !confirmedOps) interpretation.ops = prepareOps(state, events, interpretation.ops).ops;
+    if (interpretation && !confirmedOps) interpretation.ops = prepareOps(state, events, commentFollowUps(state, message, interpretation.ops)).ops;
     const planOps =(interpretation?.ops ?? []).filter((op): op is PlanOp => !isRecoveryOp(op)).map(op => {
       if (op.type !== 'set_availability') return op;
       const sources = humanMessages.filter(m => op.sourceMessageIds.includes(m.messageId) && m.authorId === op.memberId);
@@ -621,6 +669,17 @@ export class Coordinator {
         }
         append.push(make('decision_recorded', { decisionId: changeId, summary, sourceMessageIds, approvedBy: 'pm', changeKinds: [...new Set(applied.map(op => opAuthority(state, op).kind))] }));
         if (planChanged) append.push(make('plan_committed', { version: version + 1, basedOn: version, tasks, reason: summary, approvedBy: 'pm', sourceMessageIds }, 'plan_committed', true));
+        // The conversation that changed existing work joins that work's context (§2.6): its sources, the recorded
+        // decision and the scope it settled. Metadata only, so no spec version moves.
+        for (const taskId of new Set(applied.flatMap(op => op.type === 'exclude_scope' || op.type === 'limit_scope' || op.type === 'handoff_early' || op.type === 'reassign' ? [op.taskId] : []))) {
+          const brief = state.tasks.get(taskId)?.meta?.brief;
+          if (!brief || !tasks.some(t => t.id === taskId)) continue;
+          const taskOps = applied.filter(op => 'taskId' in op && op.taskId === taskId);
+          const settled = taskOps.flatMap(op => op.type === 'exclude_scope' ? [`${op.item} 제외`] : op.type === 'limit_scope' ? [`${op.items.join(' · ')}까지만`] : []);
+          append.push(make('task_meta_set', { taskId, brief: { ...brief,
+            sourceMessageIds: [...new Set([...brief.sourceMessageIds, ...taskOps.flatMap(op => op.sourceMessageIds)])],
+            decisionIds: [...new Set([...brief.decisionIds, changeId])], constraints: [...new Set([...brief.constraints, ...settled])] } }, `brief:${taskId}`));
+        }
       }
       // Origin, brief, routing and priority of new work, in the same transaction as its plan version.
       for (const [index, op] of applied.entries()) {
@@ -647,7 +706,7 @@ export class Coordinator {
         const predecessorRework = reworkDependents.some(t => t.spec.id === taskId);
         const cancelled = diff.removed.find(t => t.id === taskId);
         if (!diff.changed.some(c => c.taskId === taskId) && !predecessorRework && !cancelled) continue;
-        deliveries.push({ agentId, taskId, input: { updateId: `${changeId}:${agentId}`, fromVersion: version, toVersion: version + 1, keep: diff.unchanged.filter(t => t.assignee === agentId).map(t => t.title), change: [...diff.changed.filter(c => c.taskId === taskId).map(c => JSON.stringify(c.next)), ...(predecessorRework ? [reworkText] : [])], drop: cancelled ? [cancelled.title] : dropFor(taskId), reason: summary } });
+        deliveries.push({ agentId, taskId, input: { updateId: `${changeId}:${agentId}`, fromVersion: version, toVersion: version + 1, keep: diff.unchanged.filter(t => t.assignee === agentId).map(t => t.title), change: [...diff.changed.filter(c => c.taskId === taskId).flatMap(c => specChangeLines(c.prev, c.next, state)), ...(predecessorRework ? [reworkText] : [])], drop: cancelled ? [cancelled.title] : dropFor(taskId), reason: summary } });
       }
     }
     // Todo work whose assignee left the team and that no agent can take goes to the decider as an `assignment` request.
@@ -678,6 +737,17 @@ export class Coordinator {
         }, { projectId: this.options.projectId, targetProductId: this.options.targetProductId }, now));
       } catch { continue; } // One open request per task: the earlier request still covers it.
       append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:ask:assignment:${spec.id}`, text, kind: 'ask', requestId, taskIds: [spec.id] }, `ask:assignment:${spec.id}`, true));
+    }
+    // A card or an authority question put to someone is the PM speaking: the record says so, and to whom (never "silent").
+    const asks = (append as AnyEvent[]).flatMap(e => e.type === 'pm_spoke' && e.idempotencyKey?.startsWith(`${key}:ask:`) ? [e.payload.text] : []);
+    if (asks.length) {
+      const asked = [...new Set((append as AnyEvent[]).flatMap(e => e.type === 'decision_requested' ? [e.payload.targetMemberId] : e.type === 'authority_requested' ? [e.payload.personId] : []))];
+      const requestIds = (append as AnyEvent[]).flatMap(e => e.type === 'decision_requested' || e.type === 'authority_requested' ? [e.payload.requestId] : []);
+      judgement = { ...judgement, decision: 'speak', alreadyKnows: 'no',
+        whoseAction: asked.length ? asked.map(id => `${id}: 결정 카드에 답하기`).join(', ') : judgement.whoseAction,
+        evidence: [...new Set([...judgement.evidence, `msg:${messageId}`, ...requestIds])],
+        reason: judgement.decision === 'speak' ? judgement.reason : '혼자 정할 수 없는 변경이라 결정할 사람에게 추천안과 함께 물었다',
+        text: asks.join('\n') };
     }
     const agentAnswers = [...new Map((interpretation?.agentAnswers ?? []).map(a => [a.questionId, a])).values()].map(a => ({ taskId: pendingAgentQuestions.find(q => q.questionId === a.questionId)!.taskId, questionId: a.questionId, text: humanMessages.filter(m => a.sourceMessageIds.includes(m.messageId)).map(m => m.text).join('\n') }));
     const tx = await this.store.transaction<'duplicate' | 'retry' | 'applied' | 'superseded'>(this.options.projectId, fresh => {

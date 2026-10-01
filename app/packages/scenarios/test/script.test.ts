@@ -141,3 +141,32 @@ it('resolves reserved and revising active tasks and leaves finished tasks out', 
   expect(resolveTarget(project(await store.read()), { assignee: 'designer', pick: 'next' })).toBe('b');
   expect(() => resolveTarget(project([]), { assignee: 'designer' })).toThrow('작업 없음');
 });
+it('passes over a reply line the PM never asked for, so the next line offered is always one that posts', async () => {
+  const store = new MemoryLedgerStore();
+  await store.append([
+    { ...ctx, type: 'member_joined', payload: { memberId: 'owner', kind: 'human', displayName: '사용자' } },
+    { ...ctx, type: 'goal_set', payload: { text: '예약 시연', decider: 'owner', delegation: { pmMayApply: ['scope_reduce'] } } },
+  ]);
+  const postMessage = vi.fn(async () => []);
+  const host = { read: () => store.read(), recordStop: vi.fn(), pm: { postMessage } } as unknown as ScriptHost;
+  const clarify = continuousScenario.steps.at(-1)!;
+  const steps = [{ as: 'owner', text: 'ㅇㅋ 결제는 이번엔 빼자' }, clarify, { as: 'owner', text: '다음 이야기' }];
+  const progress: ScriptProgress = { step: 0, anchors: {} };
+  await advanceScript(host, steps, progress);
+  // The PM applied the exclusion without asking: the clarification is never offered, the script moves to the next real line.
+  expect(postMessage.mock.calls.map(c => (c as unknown[])[1])).toEqual(['ㅇㅋ 결제는 이번엔 빼자']);
+  expect(progress.step).toBe(2);
+  await advanceScript(host, steps, progress);
+  expect(progress.step).toBe(3);
+  expect(postMessage).toHaveBeenCalledTimes(2);
+  // When the PM does ask, the clarification is the next line and it posts.
+  const asked: ScriptProgress = { step: 0, anchors: {} };
+  postMessage.mockImplementationOnce(async () => {
+    await store.append([{ ...ctx, type: 'pm_spoke', payload: { messageId: 'q', considerationId: 'q', kind: 'answer', text: '변경 내용을 확인하지 못해, 적용할 작업과 변경할 범위를 다시 알려주시겠어요?' } }]);
+    return [];
+  });
+  await advanceScript(host, steps, asked);
+  expect(asked.step).toBe(1);
+  await advanceScript(host, steps, asked);
+  expect(postMessage).toHaveBeenLastCalledWith('owner', clarify.text);
+});

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { project, type EventContext, type EventPayloads, type NewLedgerEvent, type ProjectState, type TaskSpec } from '@ensemble/core';
+import { project, type EventContext, type EventPayloads, type LedgerEvent, type NewLedgerEvent, type ProjectState, type TaskSpec } from '@ensemble/core';
 import type { LlmProvider, ToolSpec } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
 import type { Dispatcher } from './dispatch.ts';
@@ -159,6 +159,12 @@ export async function startFreeProject(options: { store: LedgerStore; llm: LlmPr
   if (deadline !== undefined && !Number.isFinite(Date.parse(deadline))) throw new Error('올바른 기한을 입력해 주세요.');
   const members = [...state.members.values()].map(m => ({ ...m, weeklyHours: state.availability.get(m.memberId) }));
   const goalSet: NewLedgerEvent = { ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'goal_set', payload: { ...state.goal, text: goal, ...(deadline ? { deadline } : {}) } };
+  // The plan comes from the decider's own words: the goal message a host already recorded for them (a scripted line),
+  // else the goal they typed, recorded as their message — so every first-plan work item can point back to it.
+  const decider = state.goal.decider;
+  const said = state.messages.findLast(m => m.authorId === decider && !m.threadId && m.text.trim() === goal.trim());
+  const goalMessageId = said?.messageId ?? randomUUID();
+  const goalMessage: NewLedgerEvent[] = said ? [] : [{ ...options.context, actor: { kind: 'human', id: decider }, type: 'message_recorded', payload: { messageId: goalMessageId, authorId: decider, text: goal, attachmentIds: [] } }];
   const record = (append: NewLedgerEvent[]) => options.store.transaction(options.context.projectId, events => {
     if (events.some(e => e.seq > state.lastSeq && !['message_recorded', 'attachment_recorded', 'pm_considered', 'pm_spoke', 'reply_recorded'].includes(e.type))) throw new Error('초안을 만드는 동안 팀 기록이 바뀌었습니다. 다시 시도해 주세요.');
     return { append, result: undefined };
@@ -168,32 +174,53 @@ export async function startFreeProject(options: { store: LedgerStore; llm: LlmPr
     draft = await proposePlan({ goal, deadline, members, decider: state.goal.decider, llm: options.llm, model: options.model });
   } catch (error) {
     if (!(error instanceof PlanDraftingError)) throw error;
-    await record([goalSet, ...planningNotice(options.context, `plan-failed:${randomUUID()}`, state.goal.decider,
+    await record([goalSet, ...goalMessage, ...planningNotice(options.context, `plan-failed:${randomUUID()}`, state.goal.decider,
       error instanceof MissingTemplateRoleError ? `${error.reason}.` : `계획 초안을 만들지 못했습니다: ${error.reason}. 목표를 조금 더 구체적으로 적어 '자유형식'에서 다시 시작해 주세요.`, state.openTopics)]);
     return { failure: error };
   }
-  const proposal = { ...draft, proposalId: randomUUID(), version: 1, forMemberId: state.goal.decider };
-  await record([goalSet,
+  const proposal = { ...draft, proposalId: randomUUID(), version: 1, forMemberId: state.goal.decider, sourceMessageIds: [goalMessageId] };
+  await record([goalSet, ...goalMessage,
     { ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'plan_proposed', payload: proposal },
     ...planningNotice(options.context, proposal.proposalId, proposal.forMemberId, '계획 v1 초안을 확인하고 승인해 주세요.', state.openTopics, '계획 초안에 대한 결정권자 승인이 필요하다')]);
   return { proposal };
 }
 
+/** The goal as one short phrase: its first sentence without the demo prefix, cut at a word boundary. */
+export function goalPhrase(goal: string, max = 40): string {
+  const first = goal.replace(/^시연용 가상 자료(?:입니다)?[.。]?\s*/, '').split(/[.!?。\n]/)[0]!.trim().replace(/\s+/g, ' ');
+  if (first.length <= max) return first;
+  const space = first.lastIndexOf(' ', max - 1);
+  return `${space > 0 ? first.slice(0, space) : first.slice(0, max - 1)}…`;
+}
+
 /**
  * Metadata of a first-plan task, recorded with its commit (§3 B2). The role template fixes who does
- * what, so routing follows the assignee's kind; the brief says why the work serves the goal.
+ * what, so routing follows the assignee's kind; the brief says how the work leads to the goal, and both
+ * brief and origin point at the conversation the plan came from (the decider's goal and approval messages).
  */
-export function initialTaskMeta(state: ProjectState, tasks: readonly TaskSpec[], task: TaskSpec): EventPayloads['task_meta_set'] {
+export function initialTaskMeta(state: ProjectState, tasks: readonly TaskSpec[], task: TaskSpec, source: { createdBy?: string; sourceMessageIds?: readonly string[] } = {}): EventPayloads['task_meta_set'] {
   const agent = state.members.get(task.assignee)?.kind === 'agent';
   const parent = tasks.find(t => t.id === task.parentId);
-  const goal = state.goal?.text ?? '';
+  const goal = goalPhrase(state.goal?.text ?? '') || '프로젝트 목표';
+  const after = task.dependsOn.map(id => tasks.find(t => t.id === id)?.title).filter((title): title is string => !!title);
+  const why = parent ? `"${parent.title}"를 나눈 하위 작업이에요. 목표 "${goal}"를 위한 일이에요.`
+    : after.length ? `${after.map(title => `"${title}"`).join(', ')} 결과를 이어받아 목표 "${goal}"에 다가가는 일이에요.`
+    : `목표 "${goal}"를 위해 먼저 시작하는 일이에요.`;
+  const sourceMessageIds = [...(source.sourceMessageIds ?? [])];
   return {
     taskId: task.id, priority: 'normal',
     routing: agent ? { executor: 'agent', reason: 'agent_capable', note: 'Agent 역할로 할 수 있는 일이라 바로 맡겼어요' }
       : { executor: 'human', reason: 'needs_human_judgement', note: '사람의 판단과 접촉이 필요한 일이라 사람이 맡아요' },
-    brief: { why: parent ? `목표 "${goal}"를 위한 ${parent.title}의 하위 작업이에요` : `목표 "${goal}"를 위해 필요한 일이에요`, sourceMessageIds: [], decisionIds: [], attachmentIds: [], constraints: [] },
-    origin: { createdBy: 'pm', planVersion: 1, sourceMessageIds: [] },
+    brief: { why, sourceMessageIds, decisionIds: [], attachmentIds: [], constraints: [] },
+    origin: { createdBy: sourceMessageIds.length && source.createdBy ? source.createdBy : 'pm', planVersion: 1, sourceMessageIds },
   };
+}
+
+/** The conversation a first plan came from: the goal message its draft recorded, then the decider's latest channel line before approving. */
+function planSources(events: readonly LedgerEvent[], state: ProjectState, proposal: EventPayloads['plan_proposed'], memberId: string): string[] {
+  const proposed = events.find(e => e.type === 'plan_proposed' && (e.payload as EventPayloads['plan_proposed']).proposalId === proposal.proposalId)?.seq ?? 0;
+  const approval = state.messages.filter(m => m.authorId === memberId && !m.threadId && m.seq > proposed).at(-1);
+  return [...new Set([...(proposal.sourceMessageIds ?? []), ...(approval ? [approval.messageId] : [])])].filter(id => state.messages.some(m => m.messageId === id));
 }
 
 export async function decidePlan(options: { store: LedgerStore; context: EventContext; dispatcher: Dispatcher }, proposalId: string, memberId: string, approve: boolean): Promise<PmPost[]> {
@@ -209,9 +236,10 @@ export async function decidePlan(options: { store: LedgerStore; context: EventCo
     if (state.plan) throw new Error('초기 계획이 이미 확정됐습니다.');
     const base = { ...options.context, actor: { kind: 'human' as const, id: memberId } };
     const append: NewLedgerEvent[] = [{ ...base, type: 'plan_decided', payload: { proposalId, memberId, approved: approve } }];
-    if (approve) append.push({ ...base, type: 'plan_committed', payload: { version: 1, basedOn: null, tasks: proposal.tasks, reason: proposal.reason, approvedBy: memberId, sourceMessageIds: [] } }, ...proposal.estimates.map(e => ({ ...base, type: 'estimate_updated', payload: { ...e, source: 'pm' } })),
-      // Work metadata goes in with the commit, so every first-plan task has its routing and brief from the start.
-      ...proposal.tasks.map((task): NewLedgerEvent => ({ ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'task_meta_set', idempotencyKey: `plan-meta:${proposalId}:${task.id}`, payload: initialTaskMeta(state, proposal.tasks, task) })));
+    const sourceMessageIds = planSources(events, state, proposal, memberId);
+    if (approve) append.push({ ...base, type: 'plan_committed', payload: { version: 1, basedOn: null, tasks: proposal.tasks, reason: proposal.reason, approvedBy: memberId, sourceMessageIds } }, ...proposal.estimates.map(e => ({ ...base, type: 'estimate_updated', payload: { ...e, source: 'pm' } })),
+      // Work metadata goes in with the commit, so every first-plan task has its routing, brief and origin from the start.
+      ...proposal.tasks.map((task): NewLedgerEvent => ({ ...options.context, actor: { kind: 'system', id: 'pm' }, type: 'task_meta_set', idempotencyKey: `plan-meta:${proposalId}:${task.id}`, payload: initialTaskMeta(state, proposal.tasks, task, { createdBy: memberId, sourceMessageIds }) })));
     else append.push(...planningNotice(options.context, `reject:${proposalId}`, memberId, '계획에서 무엇을 바꾸면 좋을까요?', state.openTopics));
     return { append, result: true };
   });

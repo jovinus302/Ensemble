@@ -95,6 +95,17 @@ export async function waitForCondition(condition: Condition, read: () => Promise
     await pause(Math.min(100, timeout - (now() - started)));
   }
 }
+/** A line said only in reply to a PM question: a choice (`answerIfAsked`) or a scope clarification (`clarifyScopeIfAsked`). */
+export function isConditionalStep(step: ScriptedStep): boolean {
+  return step.action === 'answerIfAsked' || step.action === 'clarifyScopeIfAsked';
+}
+/** The PM question a conditional line answers, asked after `after` (the ledger seq before the previous line); undefined when none. */
+export function promptFor(step: ScriptedStep, events: readonly LedgerEvent[], after: number): Extract<AnyEvent, { type: 'pm_spoke' }> | undefined {
+  const spoken = (events as readonly AnyEvent[]).filter((e): e is Extract<AnyEvent, { type: 'pm_spoke' }> => e.seq > after && e.type === 'pm_spoke');
+  if (step.action === 'clarifyScopeIfAsked') return spoken.findLast(e => /적용할 작업.*범위/.test(e.payload.text) && /알려|확인/.test(e.payload.text));
+  if (step.action === 'answerIfAsked') return spoken.findLast(e => e.payload.kind === 'ask' && e.payload.text.includes('(선택지:'));
+  return undefined;
+}
 export interface ScriptHost {
   waitOptions?: WaitOptions;
   recordHuman?: (authorId: string, text: string, step: number) => Promise<void>;
@@ -137,16 +148,14 @@ export async function advanceScript(host: ScriptHost, steps: readonly ScriptedSt
         await host.pm.setAvailability(step.as, step.weeklyHours!);
       } else if (step.action === 'clarifyScopeIfAsked') {
         // A literal owner reply to the PM's visible clarification, never a repaired PM decision.
-        const after = progress.anchors[progress.step - 1] ?? state.lastSeq;
-        const question = (events as AnyEvent[]).findLast(e => e.seq > after && e.type === 'pm_spoke' && /적용할 작업.*범위/.test(e.payload.text) && /알려|확인/.test(e.payload.text));
+        const question = promptFor(step, events, progress.anchors[progress.step - 1] ?? state.lastSeq);
         if (question) {
           if (state.goal?.decider !== step.as) throw new Error('범위 재확인은 결정권자가 답해야 합니다');
           await host.pm.postMessage(step.as, step.text);
         }
       } else if (step.action === 'answerIfAsked') {
         // A literal human choice, conditional on a new PM question. Never invent PM dialogue.
-        const after = progress.anchors[progress.step - 1] ?? state.lastSeq;
-        const question = (events as AnyEvent[]).findLast(e => e.seq > after && e.type === 'pm_spoke' && e.payload.kind === 'ask' && e.payload.text.includes('(선택지:'));
+        const question = promptFor(step, events, progress.anchors[progress.step - 1] ?? state.lastSeq);
         if (question?.type === 'pm_spoke') {
           const choice = /\(선택지:\s*([^)]*)\)/.exec(question.payload.text)?.[1]?.split(' / ')[0]?.trim();
           if (!choice) throw new Error('PM decision question has no readable choice');
@@ -158,8 +167,18 @@ export async function advanceScript(host: ScriptHost, steps: readonly ScriptedSt
       }
       (progress.executed ??= {})[progress.step] = true;
     }
-    if (progress.step === steps.length - 1 && completion) await waitForCondition(completion, () => host.read(), progress.anchors, host.waitOptions);
-    progress.step++;
+    // A line that is said only when the PM asks for it (a clarification, a choice) is never offered as the next
+    // line once the PM, having handled this step, did not ask: it is passed over, so the script ends (or moves on)
+    // instead of showing a line that "다음 발언" would never post.
+    let next = progress.step + 1;
+    const after = await host.read();
+    while (steps[next] && isConditionalStep(steps[next]!) && !promptFor(steps[next]!, after, progress.anchors[next - 1] ?? project(after).lastSeq)) {
+      progress.anchors[next] = progress.anchors[next - 1] ?? project(after).lastSeq;
+      (progress.executed ??= {})[next] = true;
+      next++;
+    }
+    if (next >= steps.length && completion) await waitForCondition(completion, () => host.read(), progress.anchors, host.waitOptions);
+    progress.step = next;
   } catch (error) {
     console.error(`[ensemble] 대본 ${progress.step + 1}단계 중단`, error);
     const reason = error instanceof ScenarioError ? error.message : error instanceof Error && error.message === '대본 대기를 취소했습니다.' ? error.message : '대본 진행 조건을 확인하지 못했습니다. 현재 작업 상태를 확인한 뒤 다시 시도해 주세요.';

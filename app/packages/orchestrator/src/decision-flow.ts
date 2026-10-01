@@ -58,6 +58,28 @@ function answerLabel(answer: DecisionAnswer, state: ProjectState, requestId: Id)
   }
 }
 
+/**
+ * The person's answer as it reads in the channel: the choice and, briefly, what it changes ("추천대로 진행(반영) · 새 작업
+ * "로그인 화면""). Never the whole question again — the card above already says it.
+ */
+function answerRecordText(label: string, ops: readonly PlanOp[], state: ProjectState): string {
+  const title = (id: string) => `"${state.tasks.get(id)?.spec.title ?? '작업'}"`;
+  const what = ops.flatMap(op => {
+    switch (op.type) {
+      case 'create_task': return [`새 작업 "${op.title}"`];
+      case 'split_task': return [`${title(op.taskId)} 나누기`];
+      case 'cancel_task': return [`${title(op.taskId)} 취소`];
+      case 'reassign': return [`${title(op.taskId)} 담당 변경`];
+      case 'set_priority': return [`${title(op.taskId)} 우선순위`];
+      case 'exclude_scope': return [`${title(op.taskId)}에서 ${op.item} 제외`];
+      case 'limit_scope': return [`${title(op.taskId)} 범위 한정`];
+      default: return [];
+    }
+  });
+  const summary = [...new Set(what)].join(', ');
+  return summary ? `${label} · ${summary.length > 60 ? `${summary.slice(0, 59)}…` : summary}` : label;
+}
+
 /** Why the plan ops of an answer cannot be applied now, in Korean; undefined when they can. */
 function opsProblem(state: ProjectState, ops: PlanOp[]): string | undefined {
   if (!state.plan || !state.goal) return '계획을 확정한 뒤에 이 결정을 반영할 수 있어요.';
@@ -95,9 +117,12 @@ export async function decideRequest(options: DecisionFlowOptions, requestId: Id,
   try { resolved = resolveDecision(state, requestId, answer, context, options.settings ?? DEFAULT_DECISION_SETTINGS); }
   catch (error) { throw new DecisionRequestError('invalid_input', error instanceof Error ? error.message : '답을 처리할 수 없어요.'); }
   const effects: DecisionEffect[] = resolved.effects;
+  // The words that reach the agent: the person's own answer, or the chosen option's answer (an agent's offered choice).
+  const resolution = resolved.events[0]?.payload as { outcome?: string; answerText?: string } | undefined;
+  const answerText = answer.action === 'answer' ? answer.text : resolution?.outcome === 'answered' ? resolution.answerText : undefined;
   // An option that relays the person's words (missing_info "답하기") needs those words: approving or picking it
   // without an answer would close the request and leave the agent waiting for an answer that never comes.
-  if (!closing && answer.action !== 'answer' && effects.some(effect => effect.type === 'answer')) {
+  if (!closing && !answerText?.trim() && effects.some(effect => effect.type === 'answer')) {
     throw new DecisionRequestError('invalid_input', '이 질문에는 답을 적어 주세요. 적은 답이 Agent에게 그대로 전달돼요.');
   }
   // Whose authority the effects carry: the person who answered; an expiry that applies the recommendation
@@ -107,7 +132,7 @@ export async function decideRequest(options: DecisionFlowOptions, requestId: Id,
   const ops = effects.flatMap(effect => effect.type === 'plan_ops' ? effect.ops : []).map(op => ({ ...op, sourceMessageIds: [messageId] }) as PlanOp);
   const message: NewLedgerEvent | undefined = ops.length ? { ...context, actor: closing ? { kind: 'system', id: 'pm' } : { kind: 'human', id: authority },
     type: 'message_recorded', idempotencyKey: `${messageId}:message`, ...(extra.at ? { at: extra.at } : {}),
-    payload: { messageId, authorId: authority, text: `${answerLabel(answer, state, requestId)}: ${request.question}`, attachmentIds: [] } } : undefined;
+    payload: { messageId, authorId: authority, text: answerRecordText(answerLabel(answer, state, requestId), ops, state), attachmentIds: [] } } : undefined;
   if (ops.length) {
     const withAnswer = structuredClone(state);
     withAnswer.messages.push({ messageId, authorId: authority, text: request.question, seq: state.lastSeq + 1 });
@@ -141,9 +166,9 @@ export async function decideRequest(options: DecisionFlowOptions, requestId: Id,
   for (const [index, effect] of effects.entries()) {
     if (effect.type === 'resolve_task') {
       posts.push(...await options.resolveTask(effect.taskId, { action: effect.action, by: authority, ...(effect.note ? { note: effect.note } : {}) }, `${messageId}:${index}`));
-    } else if (effect.type === 'answer' && answer.action === 'answer') {
-      // The person's words, verbatim, through the existing relay (steer into the live turn or a new turn).
-      await options.dispatcher.onAnswer(effect.taskId, answer.text, { by: answer.by });
+    } else if (effect.type === 'answer' && answerText?.trim() && !closing) {
+      // The person's words (or the option they chose), verbatim, through the existing relay (steer into the live turn or a new turn).
+      await options.dispatcher.onAnswer(effect.taskId, answerText, { by: answer.by });
     }
   }
   return posts;

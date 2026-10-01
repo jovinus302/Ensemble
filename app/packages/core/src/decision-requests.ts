@@ -59,6 +59,11 @@ export function decisionRequestProblems(state: ProjectState, request: RequestPay
   if (options.length < MIN_DECISION_OPTIONS || options.length > MAX_DECISION_OPTIONS) problems.push(`선택지는 ${MIN_DECISION_OPTIONS}~${MAX_DECISION_OPTIONS}개여야 합니다.`);
   if (new Set(options.map((option) => option.optionId)).size !== options.length) problems.push("선택지 id가 겹칩니다.");
   if (options.length && !options.some(isHoldOption)) problems.push("하지 않음/보류 선택지가 필요합니다.");
+  for (const option of options) {
+    if (option.answerText === undefined) continue;
+    if (typeof option.answerText !== "string" || !option.answerText.trim()) problems.push("선택지의 답이 비었습니다.");
+    else if (!option.effects.some((effect) => effect.type === "answer")) problems.push("답을 담은 선택지는 답 전달 효과가 있어야 합니다.");
+  }
   const recommendation = request.recommendation;
   if (!recommendation || !options.some((option) => option.optionId === recommendation.optionId)) problems.push("추천안은 선택지 중 하나여야 합니다.");
   else if (!recommendation.rationale?.trim()) problems.push("추천 근거가 비었습니다.");
@@ -255,12 +260,22 @@ export function resolveDecision(state: ProjectState, requestId: Id, answer: Deci
     return found;
   };
   const recommended = option(request.recommendation.optionId);
-  let outcome: DecisionOutcome; let effects: DecisionEffect[] = []; const extra: Partial<ResolvedPayload> = {};
+  let outcome!: DecisionOutcome; let effects: DecisionEffect[] = []; const extra: Partial<ResolvedPayload> = {};
   const metaEvents: NewLedgerEvent[] = [];
+  // An option that carries its own answer (an agent's offered choice) answers the question with that text, verbatim.
+  const answering = (chosen: DecisionOption): boolean => {
+    if (chosen.answerText === undefined || !chosen.answerText.trim()) return false;
+    outcome = "answered"; extra.optionId = chosen.optionId; extra.answerText = chosen.answerText;
+    effects = chosen.effects.filter((effect) => effect.type === "answer");
+    return true;
+  };
   switch (answer.action) {
-    case "approve": outcome = "approved"; effects = recommended.effects; extra.optionId = recommended.optionId; break;
+    case "approve":
+      if (answering(recommended)) break;
+      outcome = "approved"; effects = recommended.effects; extra.optionId = recommended.optionId; break;
     case "choose": {
       const chosen = option(answer.optionId);
+      if (answering(chosen)) break;
       outcome = chosen.optionId === recommended.optionId ? "approved" : "chose_other"; effects = chosen.effects; extra.optionId = chosen.optionId; break;
     }
     case "edit": {

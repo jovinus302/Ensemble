@@ -402,6 +402,7 @@ export class ProjectManager {
       const coordinated = await this.coordinator.onMessage(messageId) as CoordinationResult & { resolutions?: Resolution[]; reopens?: Reopen[] };
       await this.deliverAgentAnswers(coordinated.agentAnswers ?? [], authorId);
       const posts = [...coordinated.posts, ...await this.startNew(coordinated.starts ?? [], messageId, authorId)];
+      posts.push(...await this.threadReply(message.payload, coordinated));
       // The coordinator reads what the person asked for; the PM carries it out under the same checks as the buttons.
       for (const [i, r] of (coordinated.resolutions ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.resolve(r.taskId, { action: r.action, by: authorId, ...(r.note ? { note: r.note } : {}) }, `${messageId}:${i}`)));
       for (const [i, r] of (coordinated.reopens ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.reopen(r.taskId, authorId, r.reason, `${messageId}:${i}`, r.announcement)));
@@ -436,15 +437,39 @@ export class ProjectManager {
     }
   }
 
-  /** One PM record and its lines, under one idempotent consideration. */
-  private async speak(considerationId: string, triggerId: string, whoseAction: string | null, reason: string, posts: PmPost[], evidence: string[] = []): Promise<PmPost[]> {
+  /** One PM record and its lines, under one idempotent consideration. `where` puts the lines in a work thread. */
+  private async speak(considerationId: string, triggerId: string, whoseAction: string | null, reason: string, posts: PmPost[], evidence: string[] = [], where: { threadId?: string; taskIds?: string[] } = {}): Promise<PmPost[]> {
     const state = project(await this.read());
     if (!posts.length) return [];
     await this.options.store.append([
       { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId, whoseAction, alreadyKnows: 'no', evidence: [triggerId, ...evidence], decision: 'speak', reason, openTopics: state.openTopics } },
-      ...posts.map((post, i) => ({ ...this.context, actor: { kind: 'system' as const, id: 'pm' }, type: 'pm_spoke' as const, idempotencyKey: `${considerationId}:${i}`, payload: { considerationId, messageId: `${considerationId}:${i}`, ...post } })),
+      ...posts.map((post, i) => ({ ...this.context, actor: { kind: 'system' as const, id: 'pm' }, type: 'pm_spoke' as const, idempotencyKey: `${considerationId}:${i}`, payload: { considerationId, messageId: `${considerationId}:${i}`, ...post, ...where } })),
     ]);
     return posts;
+  }
+
+  /**
+   * A work comment the PM turned into work or a decision request gets one short reply in its own thread (B6): what
+   * the PM did with it — new follow-up work and who has it, or whom it asked. Comments that changed nothing get none.
+   */
+  private async threadReply(message: { messageId: string; authorId: string; threadId?: string }, coordinated: CoordinationResult): Promise<PmPost[]> {
+    if (!message.threadId?.startsWith('task:')) return [];
+    const state = project(await this.read());
+    const name = (id: string) => state.members.get(id)?.displayName ?? '담당자';
+    const recorded = coordinated.events as AnyEvent[];
+    const created = [...new Set(recorded.flatMap(e => e.type === 'task_meta_set' && e.payload.origin?.sourceMessageIds.includes(message.messageId) ? [e.payload.taskId] : []))];
+    const lines: string[] = [];
+    for (const id of created) {
+      const task = state.tasks.get(id);
+      if (!task) continue;
+      const title = task.spec.title, who = name(task.spec.assignee);
+      lines.push(`이 댓글 요청을 후속 작업 "${title}"${particle(title, '으로/로')} 만들어 ${who}에게 맡겼어요.`);
+    }
+    for (const e of recorded) if (e.type === 'decision_requested') lines.push(`이 댓글 요청을 반영할지 ${name(e.payload.targetMemberId)}님께 추천안과 함께 결정을 요청했어요.`);
+    if (!lines.length) return [];
+    const taskId = message.threadId.slice('task:'.length);
+    return this.speak(`thread-reply:${message.messageId}`, message.messageId, message.authorId, '댓글 요청을 어떻게 처리했는지 댓글을 쓴 사람이 알아야 한다',
+      [{ kind: 'fact', text: channelText(lines.join(' '), state, 3) }], [], { threadId: message.threadId, taskIds: [taskId, ...created] });
   }
 
   private async resolve(taskId: string, { action, by, note }: ResolveTaskInput, trigger: string): Promise<PmPost[]> {

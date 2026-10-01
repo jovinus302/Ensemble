@@ -29,6 +29,22 @@ const research = `# 조사 보고서
 유료 가격과 세부 기능의 최신성은 미확인입니다. 실제 고객 증거와 시장 수요는 미검증입니다.
 디자이너는 가상의 인터뷰 자료와 함께 가입 정상·오류 흐름, 시간 선택·예약 확인을 설계합니다.
 `;
+/**
+ * A change line as the demo agent repeats it in its result summary. Lines are sentences; anything structured (a
+ * serialized spec from an older record) is never echoed raw — only its readable scope parts are, or nothing.
+ */
+export function readableNote(line: string): string | undefined {
+  const text = line.trim();
+  if (!text) return undefined;
+  if (!/^[[{]/.test(text)) return text;
+  try {
+    const value = JSON.parse(text) as { title?: unknown; exclusions?: unknown; limits?: unknown };
+    const list = (v: unknown) => Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+    const limits = list(value.limits);
+    const parts = [...list(value.exclusions).map(x => `범위에서 제외: ${x}`), ...(limits.length ? [`범위 한정: ${limits.join(' · ')}까지만`] : [])];
+    return parts.join(' / ') || (typeof value.title === 'string' ? `${value.title} 변경 반영` : undefined);
+  } catch { return undefined; }
+}
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const excludesPayment = (text: string) => /결제|payment/i.test(text) && /제외|삭제|제거|빼|drop|exclude/i.test(text);
 const scopeExcludesPayment = (scope: { exclusions?: readonly string[]; limits?: readonly string[] }) =>
@@ -92,6 +108,8 @@ export class FakeConnector implements SessionConnector {
   private listeners = new Set<(e: SessionEvent) => void>();
   private sessions = new Map<string, { threadId: string; workspace: string }>();
   private runs = new Map<string, { input: TaskInstructionsInput; turnId: string; timer?: ReturnType<typeof setTimeout>; index: number; excludePayment: boolean; generation: number; finished: boolean; notes: string[] }>();
+  /** Result files already written per work item: a later result of the same work gets its own numbered name. */
+  private written = new Map<string, number>();
   /** `${agentId}:${taskId}` that already asked the demo question: the next turn carries the answer and finishes. */
   private asked = new Set<string>();
   constructor(private root: string, private generate?: RevisionGenerator, private readyToFinish: (agentId: string, planVersion: number) => boolean = () => true, private delayMs = 2000,
@@ -153,11 +171,21 @@ export class FakeConnector implements SessionConnector {
     let content = prototype ? prototypeHtml(run.input, run.excludePayment) : `${research}\n## 인계 조건 확인\n${conditionSections(run.input, false, run.excludePayment)}`;
     if (!prototype && this.generate) content += '\n## 인계 조건별 시연 보완\n' + await this.generate({ title: run.input.taskTitle.text, handoffConditions: run.input.handoffConditions.map(c => c.text), request: '시연용 조사 보고서의 조건별 근거를 구체화하세요. 실제 조사라고 주장하지 말고 출처 후보와 미확인 사항을 구분하세요.', previous: [{ name: 'research.md', mimeType: 'text/markdown', content }] });
     if (this.runs.get(agentId) !== run || generation !== run.generation) return;
-    const file = `${prototype ? 'prototype' : 'research'}-v${run.input.planVersion}-${run.index}.${prototype ? 'html' : 'md'}`;
+    const file = this.fileName(run.input, prototype ? 'html' : 'md');
     writeFileSync(path.join(this.sessions.get(agentId)!.workspace, file), content);
     const notes = run.notes.length ? ` · 반영한 요청: ${run.notes.map(n => n.length > 80 ? `${n.slice(0, 79)}…` : n).join(' / ')}` : '';
     this.emit(agentId, { type: 'result_report', taskId: run.input.taskId, planVersion: run.input.planVersion, summary: `시연용 가상 자료: ${run.input.taskTitle.text}${notes}`, files: [{ path: file, description: prototype ? '로컬에서 여는 클릭 가능한 HTML' : '출처 후보와 확인 한계를 구분한 조사 보고서' }], limitations: ['시연용 가상 자료이며 실제 조사·고객 검증이 아닙니다.'] });
     this.complete(agentId);
+  }
+  /**
+   * A result file named after its work, as a person would save it ("비슷한 서비스 비교.md"): no plan version or turn
+   * index. Each work item keeps its own file; a later result of the same work is numbered ("… (2).md").
+   */
+  private fileName(input: TaskInstructionsInput, extension: string): string {
+    const base = input.taskTitle.text.replace(/[\\/:*?"<>|#%{}^~[\]`]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60).trim() || '결과';
+    const n = (this.written.get(input.taskId) ?? 0) + 1;
+    this.written.set(input.taskId, n);
+    return n === 1 ? `${base}.${extension}` : `${base} (${n}).${extension}`;
   }
   private complete(agentId: string) {
     const run = this.runs.get(agentId)!; run.finished = true;
@@ -167,7 +195,7 @@ export class FakeConnector implements SessionConnector {
     const run = this.runs.get(agentId); if (!run || run.finished) return { sent: false as const, reason: '진행 중인 턴이 없습니다.' };
     run.generation++; run.input.planVersion = input.toVersion;
     // Comments and answers reach the agent as change lines; the demo result names what it took in.
-    run.notes.push(...input.change.filter(line => line.trim()));
+    run.notes.push(...input.change.map(readableNote).filter((line): line is string => !!line));
     run.excludePayment ||= input.drop.some(s => /결제|payment/i.test(s)) || input.change.some(excludesPayment);
     setTimeout(() => { if (this.runs.get(agentId) === run) this.emit(agentId, { type: 'acknowledge_update', updateId: input.updateId, planVersion: input.toVersion, applied: input.change, dropped: input.drop }); }, 0);
     this.schedule(agentId); return { sent: true as const };
@@ -191,10 +219,18 @@ export const FAKE_NEW_WORK = /^(.+?)(?:도|을|를)?\s*(?:새로\s*)?만들어\s
 export const FAKE_EXCLUDE = /^(?:(?:ㅇㅋ|ok|오케이|좋아요?|네|그래요?)[,.!]?\s*)?(\S+?)(?:은|는|을|를)\s*(?:이번엔|이번에는|일단)?\s*(?:빼자|빼\s*(?:줘|주세요)|제외하자|제외해\s*(?:줘|주세요))/i;
 
 type Facts = Record<string, unknown>;
-interface FactTask { spec: { id: string; title: string; handoffConditions: string[] }; status: string }
+interface FactTask { spec: { id: string; title: string; baseTitle?: string; assignee?: string; handoffConditions: string[] }; status: string }
+/** A work comment that asks for a change ("…도 넣어 주세요", "바꿔 줘"), as the demo model reads it. */
+const FAKE_CHANGE_REQUEST = /(?:해\s*(?:줘|주세요|주실래요)|넣어|추가|바꿔|바꾸|수정|고쳐|빼\s*(?:줘|주세요)|늘려|줄여|만들어)/;
 interface FactMessage { messageId: string; authorId: string; text: string; threadId?: string }
 interface FactMember { memberId: string; kind: string; displayName: string; role?: string }
-const shortGoal = (goal: unknown) => (typeof goal === 'string' ? goal : '목표').replace(/^시연용 가상 자료(?:입니다)?[.。]?\s*/, '').split(/[.!?。\n]/)[0]!.trim().slice(0, 30) || '목표';
+/** The goal's first sentence as a short title prefix, cut at a word boundary (never mid-word). */
+export const shortGoal = (goal: unknown, max = 30) => {
+  const first = (typeof goal === 'string' ? goal : '목표').replace(/^시연용 가상 자료(?:입니다)?[.。]?\s*/, '').split(/[.!?。\n]/)[0]!.trim().replace(/\s+/g, ' ');
+  if (first.length <= max) return first || '목표';
+  const space = first.lastIndexOf(' ', max);
+  return (space > 0 ? first.slice(0, space) : first.slice(0, max)).trim() || '목표';
+};
 
 /**
  * Explicit demo PM model (ENSEMBLE_PM_RUNTIME=fake): fixed, rule-based answers to the PM's structured tools so the
@@ -216,6 +252,7 @@ export class FakePmLlm implements LlmProvider {
       case 'interpret_coordination': return this.interpret(this.facts(request));
       case 'judge_coordination': return { whoseAction: null, alreadyKnows: 'yes', evidence: [], decision: 'silent', reason: '작업 기록과 카드로 충분해 따로 말하지 않는다', openTopics: [], text: '', targetMemberIds: [], changesOpenQuestionAnswer: false, answerFactIds: [] };
       case 'route_message': return { kind: 'chat' };
+      case 'recommend_answer': return this.recommend(this.facts(request));
       case 'record_handoff_review': return this.review(request.messages[0]?.content ?? '');
       default: return undefined;
     }
@@ -241,6 +278,8 @@ export class FakePmLlm implements LlmProvider {
     const base = { category: 'chat', summary: '일반 대화', ops: [] as unknown[], conflicts: [], conversation: { questionMessageId: null, waitingOnMemberIds: [], directedToPm: false }, factMentions: [] };
     const scope = message && this.exclusion(facts, messages, message);
     if (scope) return { ...base, category: 'decision', summary: `범위 제외: ${scope.item}`, ops: [{ type: 'exclude_scope', ...scope }] };
+    const followUp = message && this.followUp(facts, message);
+    if (followUp) return { ...base, category: 'work', summary: `댓글 후속 작업: ${followUp.title}`, ops: [followUp] };
     // Work comments stay with their work item; only channel requests create work.
     const match = message && !message.threadId ? FAKE_NEW_WORK.exec(message.text.trim()) : null;
     const title = match?.[1]?.trim();
@@ -277,6 +316,34 @@ export class FakePmLlm implements LlmProvider {
     const at = messages.findIndex(m => m.messageId === message.messageId);
     const proposal = messages.slice(0, at).findLast(m => !m.threadId && m.authorId !== message.authorId && m.text.includes(item));
     return { taskId: task.spec.id, item, sourceMessageIds: [...(proposal ? [proposal.messageId] : []), message.messageId] };
+  }
+  /**
+   * A change asked for in the thread of an agent's finished work ("캘린더 추가 버튼도 넣어 주세요"): one follow-up work
+   * item for the same agent that builds on the finished result. Whether it applies or goes to the decider is the real code's call.
+   */
+  private followUp(facts: Facts, message: FactMessage) {
+    const taskId = message.threadId?.startsWith('task:') ? message.threadId.slice('task:'.length) : undefined;
+    const tasks = Array.isArray(facts.taskStates) ? facts.taskStates as FactTask[] : [];
+    const task = tasks.find(t => t.spec.id === taskId);
+    const members = Array.isArray(facts.members) ? facts.members as FactMember[] : [];
+    const agent = members.find(m => m.memberId === task?.spec.assignee && m.kind === 'agent');
+    if (!task || task.status !== 'checked' || !agent || !FAKE_CHANGE_REQUEST.test(message.text)) return undefined;
+    const plan = facts.plan as { tasks?: { id: string }[] } | undefined;
+    const taken = new Set((plan?.tasks ?? []).map(t => t.id));
+    let n = 1;
+    while (taken.has(`follow-up-${n}`)) n++;
+    const title = `${task.spec.baseTitle ?? task.spec.title} 보완`;
+    return { type: 'create_task', sourceMessageIds: [message.messageId], tempId: `follow-up-${n}`, title, assignee: agent.memberId,
+      handoffConditions: [message.text.trim()], dependsOn: [task.spec.id], priority: 'normal',
+      routing: { executor: 'agent', reason: 'agent_capable', note: `${agent.displayName}가 만든 결과에 이어지는 일이라 같은 Agent에게 맡겨요` },
+      brief: { why: `완료된 "${task.spec.baseTitle ?? task.spec.title}" 결과에 남긴 댓글 요청을 반영하는 후속 작업이에요.`, decisionIds: [], attachmentIds: [], constraints: [] } };
+  }
+  /** The demo PM recommends the smallest of an agent's offered answers: it can be widened later. */
+  private recommend(facts: Facts) {
+    const options = Array.isArray(facts.options) ? facts.options.filter((o): o is string => typeof o === 'string') : [];
+    if (!options.length) return undefined;
+    const optionIndex = options.reduce((best, option, i) => option.length < options[best]!.length ? i : best, 0);
+    return { optionIndex, rationale: `범위가 가장 작은 "${options[optionIndex]}" 안으로 먼저 진행하면 지금 계획 안에서 빨리 확인하고, 필요하면 나중에 넓힐 수 있어요.`, decisionIds: [] };
   }
   private review(body: string) {
     const lines = body.split('\n');

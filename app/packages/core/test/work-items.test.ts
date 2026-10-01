@@ -191,5 +191,15 @@ describe("taskActivity", () => {
     expect(activity.at(-1)).toMatchObject({ kind: "changed", cancelled: true, planVersion: 3 });
     // Without an origin, the plan commit's messages are the source.
     expect(taskActivity(events, "b")[0]).toMatchObject({ kind: "created", source: { sourceMessageIds: ["m1"] } });
+    // An answer names the words that went to the agent.
+    expect(activity[4]).toMatchObject({ answerText: "파랑" });
+  });
+
+  it("links a later plan change to the conversation that made it", () => {
+    const { events, emit } = ledger(); team(emit);
+    commit(emit, 1, [spec("a", "agent")]);
+    emit("message_recorded", { messageId: "m2", authorId: "owner", text: "결제는 이번엔 빼자", attachmentIds: [] }, owner);
+    emit("plan_committed", { version: 2, basedOn: 1, tasks: [spec("a", "agent", [], { exclusions: ["결제"] })], reason: "a에서 결제 제외", approvedBy: "pm", sourceMessageIds: ["m2"] });
+    expect(taskActivity(events, "a").at(-1)).toMatchObject({ kind: "changed", planVersion: 2, text: "a에서 결제 제외", source: { sourceMessageIds: ["m2"] } });
   });
 });
