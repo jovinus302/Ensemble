@@ -1,4 +1,4 @@
-import { project, forecast, forecastFromState, availabilityWeek, isParentTask, openDecisions, taskActivity, waitingOn, workStatus,
+import { project, forecast, forecastFromState, availabilityWeek, bundleDecisions, isParentTask, openDecisions, taskActivity, waitingOn, workStatus,
   type AnyEvent, type DecisionEffect, type EventPayloads, type LedgerEvent, type PlanOp, type Priority, type ProjectState, type RoutingReason, type TaskActivity, type TaskState, type TaskStatus } from '@ensemble/core';
 import type { ViewModel, VmActivity, VmActivityItem, VmMessage, VmCard, VmDecisionCard, VmPmJudgement, VmPlanTask, VmTaskDetail, VmWork, VmWorkItem, VmWorkStatus, VmWorkTeamRow } from './view-model';
 import { taskResolutions } from './task-resolution';
@@ -111,7 +111,11 @@ function labeler(typed: readonly AnyEvent[], state: ProjectState, name: (id: str
     if (prefix === 'reject') { const v = version(rest); return v ? `계획 v${v} 거절` : '계획 거절'; }
     if (prefix === 'plan-failed') return '계획 초안 작성 실패';
     if (prefix === 'turn-blocked') return 'Agent 작업 멈춤';
-    if (prefix === 'question') return 'Agent 질문';
+    if (prefix === 'question') {
+      // question:<taskId>:<n> — 누가 어느 작업에서 물었는지로 읽는다.
+      const taskId = rest.slice(0, rest.lastIndexOf(':')), task = state.tasks.get(taskId);
+      return task ? `${name(task.spec.assignee)}의 질문 · ${taskTitle(taskId)}` : 'Agent 질문';
+    }
     const id = results.has(raw) || attachments.has(raw) ? raw : prefix === 'result' || prefix === 'attachment' ? rest : raw;
     const attachment = attachments.get(id);
     if (attachment) return `${attachment.name}${attachment.taskId ? ` · ${taskTitle(attachment.taskId)}` : ''}`;
@@ -418,9 +422,8 @@ function workBuilder(events: readonly LedgerEvent[], typed: readonly AnyEvent[],
       default: return ['변경 없음'];
     }
   };
-  const decisionCards = (me: string): VmDecisionCard[] => [...state.decisionRequests.values()]
-    .filter(entry => entry.status === 'open' && entry.request.targetMemberId === me).sort((a, b) => a.requestedSeq - b.requestedSeq)
-    .map(({ request }) => ({
+  type OpenRequest = Parameters<typeof bundleDecisions>[0][number];
+  const decisionCard = (request: OpenRequest): VmDecisionCard => ({
       kind: 'decision' as const, id: request.requestId, forMemberId: request.targetMemberId, requestKind: request.kind, question: visible(request.question),
       recommendation: { optionId: request.recommendation.optionId, rationale: visible(request.recommendation.rationale), evidence: [...new Set(request.recommendation.evidence.flatMap(evidence))] },
       options: request.options.map(o => ({ optionId: o.optionId, label: visible(o.label), tradeoff: visible(o.tradeoff), summary: o.effects.flatMap(effectLines) })),
@@ -428,7 +431,14 @@ function workBuilder(events: readonly LedgerEvent[], typed: readonly AnyEvent[],
         ...(request.impact.deadlineDeltaDays !== undefined ? { deadlineDeltaDays: request.impact.deadlineDeltaDays } : {}) },
       ...(request.editable?.length ? { editable: [...request.editable] } : {}),
       answerMode: request.kind === 'missing_info' ? 'text' as const : 'choose' as const,
-    }));
+    });
+  /**
+   * 한 사람에게 열린 결정 요청은 카드 최대 3장(core bundleDecisions): 넷째부터는 셋째 카드에 묶여 `bundled`로 따라간다.
+   * 계획 승인·권한 카드(vm.cards)는 따로 보이므로 묶지 않는다.
+   */
+  const decisionCards = (me: string): VmDecisionCard[] =>
+    bundleDecisions(openDecisions(state).filter(d => d.source === 'decision_requested' && d.targetMemberId === me))
+      .map(([lead, ...rest]) => ({ ...decisionCard(lead!), ...(rest.length ? { bundled: rest.map(decisionCard) } : {}) }));
 
   const activityText = (a: TaskActivity): string => {
     switch (a.kind) {

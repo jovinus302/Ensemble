@@ -172,6 +172,15 @@ export function DecisionRequestCard({ card, members, onDecide }: { card: VmDecis
           <button type="button" className="btn-primary" disabled={pending} onClick={() => void send({ action: "approve", optionId: card.recommendation.optionId })}>추천대로 진행</button>
         </div>
       )}
+
+      {card.bundled && card.bundled.length > 0 && (
+        <details className="decision-bundle">
+          <summary>같이 정할 결정 <span className="num">{card.bundled.length}</span>건 더</summary>
+          <div className="decision-list">
+            {card.bundled.map(b => <DecisionRequestCard key={b.id} card={b} members={members} onDecide={onDecide} />)}
+          </div>
+        </details>
+      )}
     </section>
   );
 }

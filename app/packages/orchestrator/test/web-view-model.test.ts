@@ -138,3 +138,31 @@ it('MD2 builds the work panel, decision cards and task detail from the ledger wi
   for (const id of ids) expect(JSON.stringify(detail.activity.map(a => a.text))).not.toContain(id);
   expect(buildTaskDetail(events, 'missing', { me: 'owner' })).toBeUndefined();
 });
+
+it('bundles a person\'s open decision requests beyond three into the third card and reads agent-question evidence as words', async () => {
+  const store = new MemoryLedgerStore(), context = { projectId: 'bundle', targetProductId: 'web' };
+  const as = (kind: 'human' | 'pm' | 'agent' | 'system', id: string) => ({ ...context, actor: { kind, id } });
+  const hold = { optionId: 'hold', label: '보류', effects: [{ type: 'none' as const }], tradeoff: '' };
+  const ask = (requestId: string, targetMemberId: string, evidence: string[] = []) => ({ ...as('pm', 'pm'), type: 'decision_requested' as const, payload: {
+    requestId, kind: 'choice' as const, targetMemberId, question: `${requestId}?`, sourceMessageIds: [], options: [{ ...hold, optionId: 'go', label: '진행' }, hold],
+    recommendation: { optionId: 'hold', rationale: '기다려요', evidence }, impact: { taskIds: [], blockedTaskIds: [] } } });
+  await store.append([
+    { ...as('system', 'setup'), type: 'member_joined', payload: { memberId: 'owner', kind: 'human', displayName: '사용자' } },
+    { ...as('system', 'setup'), type: 'member_joined', payload: { memberId: 'designer', kind: 'human', displayName: '디자이너' } },
+    { ...as('system', 'setup'), type: 'member_joined', payload: { memberId: 'prototype-agent', kind: 'agent', displayName: '프로토타입 Agent' } },
+    { ...as('system', 'setup'), type: 'goal_set', payload: { text: '예약 시제품', decider: 'owner', delegation: { pmMayApply: [] } } },
+    { ...as('pm', 'pm'), type: 'plan_committed', payload: { version: 1, basedOn: null, approvedBy: 'owner', reason: '초기', sourceMessageIds: [], tasks: [
+      { id: 'login-screen', title: '로그인 화면', baseTitle: '로그인 화면', assignee: 'prototype-agent', dependsOn: [], handoffConditions: ['시안'], exclusions: [], limits: [] }] } },
+    ask('r-a', 'owner', ['question:login-screen:1']), ask('r-b', 'owner'), ask('r-c', 'owner'), ask('r-d', 'owner'), ask('r-e', 'owner'), ask('r-x', 'designer'),
+  ]);
+  const events = await store.read();
+  const owner = buildViewModel(events, { me: 'owner', mode: 'free', busy: false });
+  // Five open requests: three cards, the last carrying the fourth and fifth (core bundleDecisions).
+  expect(owner.decisionCards!.map(c => [c.id, ...(c.bundled ?? []).map(b => b.id)])).toEqual([['r-a'], ['r-b'], ['r-c', 'r-d', 'r-e']]);
+  expect(owner.decisionCards![2]!.bundled![0]).toMatchObject({ kind: 'decision', question: 'r-d?', answerMode: 'choose' });
+  const designer = buildViewModel(events, { me: 'designer', mode: 'free', busy: false });
+  expect(designer.decisionCards!.map(c => c.id)).toEqual(['r-x']);
+  expect(designer.decisionCards![0]!.bundled).toBeUndefined();
+  // An agent question cited as evidence names who asked and on which work, not a bare "Agent 질문".
+  expect(owner.decisionCards![0]!.recommendation.evidence).toEqual(['프로토타입 Agent의 질문 · 로그인 화면']);
+});

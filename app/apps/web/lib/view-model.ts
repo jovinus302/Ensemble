@@ -52,6 +52,8 @@ export interface VmDecisionCard {
   editable?: ("assignee" | "title" | "priority" | "include")[];
   /** choose: 버튼으로 고른다. text: 자유 답변(missing_info). */
   answerMode: "choose" | "text";
+  /** 한 사람에게 결정 요청이 3건을 넘으면 넷째부터 셋째 카드에 묶인다(요청 순서). 묶인 요청도 각자 답한다. */
+  bundled?: VmDecisionCard[];
 }
 /** `POST /api/decisions/:id` 본문. */
 export interface DecisionAnswer {

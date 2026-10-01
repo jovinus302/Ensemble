@@ -6,7 +6,7 @@ import { DecisionRequestCard } from "../components/DecisionRequestCard";
 import { WorkChips } from "../components/Message";
 import { WorkItemDetail } from "../components/WorkItemDetail";
 import { TeamList, WorkPanel, WorkTree } from "../components/WorkPanel";
-import { decisionOptions, groupWorkItems, planTaskTree, stallGuidance, taskDetailRevision, teamLines, waitingLabel, workGroupOf } from "../components/work-view";
+import { decisionOptions, decisionTotal, groupWorkItems, planTaskTree, stallGuidance, taskDetailRevision, teamLines, waitingLabel, workGroupOf } from "../components/work-view";
 import { ActivityLine } from "../components/Activity";
 import { buildMockViewModel } from "../lib/mock-view-model";
 import type { VmDecisionCard, VmMessage, VmWorkItem } from "../lib/view-model";
@@ -262,5 +262,18 @@ describe("멈춤 안내", () => {
     expect(stalled(false, false)).not.toMatch(/다시 시도|건너뛰기/);
     expect(stalled(true, true)).toContain(">다시 시도</button>");
     expect(stalled(true, true)).toContain(">건너뛰기</button>");
+  });
+});
+
+describe("묶인 결정 요청", () => {
+  it("대표 카드 안에 묶인 요청을 접어 두고, 배지는 묶인 요청까지 센다", () => {
+    const [payment, retry] = [vm.decisionCards!.find(c => c.id === "decision-payment")!, vm.decisionCards!.find(c => c.id === "decision-retry")!];
+    const lead: VmDecisionCard = { ...payment, bundled: [retry, { ...retry, id: "decision-retry-2" }] };
+    const out = html(createElement(DecisionRequestCard, { card: lead, members: vm.members, onDecide: noop }));
+    expect(out).toMatch(/<details class="decision-bundle"><summary>같이 정할 결정 <span class="num">2<\/span>건 더<\/summary>/);
+    expect(out.split(`<h3 class="card-title">${retry.question}</h3>`)).toHaveLength(3);
+    expect(decisionTotal([lead, payment])).toBe(4);
+    const panel = html(createElement(WorkPanel, { vm: { ...vm, decisionCards: [lead], cards: [] }, tab: "decisions", onTab: () => {}, onOpenTask: () => {}, onDecide: noop, onDecideRequest: noop, onSetAvailability: noop }));
+    expect(panel).toContain('<span class="tab-count num">3</span>');
   });
 });

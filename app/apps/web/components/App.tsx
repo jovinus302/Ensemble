@@ -15,7 +15,7 @@ import { PmLogPanel } from "./PmLog";
 import { useViewModel } from "./use-view-model";
 import { WorkItemDetail } from "./WorkItemDetail";
 import { WorkPanel, type PanelTab } from "./WorkPanel";
-import { stallGuidance } from "./work-view";
+import { decisionTotal, stallGuidance } from "./work-view";
 
 const REPLACE_WARNING = "진행 중인 프로젝트는 보관되고 화면에서 사라집니다.";
 type Pending = { kind: "scenario" } | { kind: "free"; goal: string; deadline?: string };
@@ -98,7 +98,7 @@ export function App() {
   const visibleCards = new Map<string, VmCard | VmDecisionCard>([...vm.cards, ...(vm.decisionCards ?? [])].map(c => [c.id, c]));
   const linkedCards = new Set(vm.messages.flatMap(m => (m.cardId && visibleCards.has(m.cardId) ? [m.cardId] : [])));
   const workTitles = new Map((vm.work?.items ?? []).map(i => [i.id, i.title]));
-  const decisionCount = (vm.decisionCards?.length ?? 0) + vm.cards.length;
+  const decisionCount = decisionTotal([...(vm.decisionCards ?? []), ...vm.cards]);
   const showMobile = (view: MobileView) => {
     setMobileView(view);
     if (view === "decisions") setPanelTab("decisions");

@@ -1,6 +1,6 @@
 // 작업 패널의 보기 계산(순수 함수). 화면 컴포넌트는 이 결과만 그린다.
 // 작업 id는 내부 값이다. 여기서 만드는 어떤 문구에도 id를 넣지 않는다(사용자에게 작업 키를 보이지 않는다).
-import type { VmActivity, VmDecisionCard, VmMember, VmMessage, VmPlanTask, VmWork, VmWorkItem, VmWorkStatus, VmWorkTeamRow } from "../lib/view-model";
+import type { VmActivity, VmCard, VmDecisionCard, VmMember, VmMessage, VmPlanTask, VmWork, VmWorkItem, VmWorkStatus, VmWorkTeamRow } from "../lib/view-model";
 
 export const WORK_STATUS_LABEL: Record<VmWorkStatus, string> = {
   todo: "할 일", in_progress: "진행 중", in_review: "검토 중", waiting_human: "사람 대기",
@@ -86,6 +86,11 @@ export function teamLines(work: VmWork | undefined, members: VmMember[]): TeamLi
 export function decisionOptions(card: VmDecisionCard) {
   const options = card.options.map(o => ({ ...o, recommended: o.optionId === card.recommendation.optionId }));
   return [...options.filter(o => o.recommended), ...options.filter(o => !o.recommended)];
+}
+
+/** 결정 배지 숫자: 묶인 요청(bundled)도 각자 답해야 하므로 센다. */
+export function decisionTotal(cards: readonly (VmCard | VmDecisionCard)[]): number {
+  return cards.reduce((n, c) => n + 1 + (c.kind === "decision" ? c.bundled?.length ?? 0 : 0), 0);
 }
 
 export const DECISION_KIND_LABEL: Record<VmDecisionCard["requestKind"], string> = {

@@ -9,7 +9,7 @@ import { Avatar } from "./Message";
 import { RoadmapCard } from "./Roadmap";
 import type { ResolveTask } from "./TaskResolution";
 import type { ActionResult } from "./use-view-model";
-import { WORK_STATUS_LABEL, WORK_STATUS_TONE, groupWorkItems, teamLines, waitingLabel, type WorkGroup, type WorkRow } from "./work-view";
+import { WORK_STATUS_LABEL, decisionTotal, WORK_STATUS_TONE, groupWorkItems, teamLines, waitingLabel, type WorkGroup, type WorkRow } from "./work-view";
 
 export type PanelTab = "work" | "team" | "decisions" | "schedule";
 const TABS: { key: PanelTab; label: string }[] = [
@@ -125,7 +125,7 @@ export function WorkPanel({ vm, tab, onTab, onOpenTask, onDecide, onDecideReques
       <div className="panel-tabs" role="tablist" aria-label="작업 패널">
         {TABS.map(t => (
           <button key={t.key} type="button" role="tab" id={`panel-tab-${t.key}`} aria-selected={tab === t.key} aria-controls="panel-body" onClick={() => onTab(t.key)}>
-            {t.label}{t.key === "decisions" && decisions.length > 0 && <span className="tab-count num">{decisions.length}</span>}
+            {t.label}{t.key === "decisions" && decisions.length > 0 && <span className="tab-count num">{decisionTotal(decisions)}</span>}
           </button>
         ))}
       </div>

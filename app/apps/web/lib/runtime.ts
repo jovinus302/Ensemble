@@ -11,6 +11,7 @@ import { continuousScenario, advanceScript, createRevisionGenerator, sceneEvents
 import { FakeConnector, FakePmLlm } from './fake-connector';
 import { buildTaskDetail, buildViewModel, projectTitle } from './build-view-model';
 import { taskResolutions, type ResolutionAction } from './task-resolution';
+import { stallGuidance } from '../components/work-view';
 import type { DecisionAnswer as WebDecisionAnswer, VmActivity } from './view-model';
 
 /** B8: the stuck-work sweep runs this often; the daily digest is offered on the same tick (it posts at most once a day, from 09:00 Asia/Seoul). */
@@ -227,18 +228,21 @@ export class WebRuntime {
     if (state.members.get(me)?.kind !== 'human') me = state.goal?.decider ?? 'owner';
     const next = continuousScenario.steps[this.meta.script?.step ?? this.meta.step];
     const stopped = this.meta.script?.stopped;
-    const view = buildViewModel(events, { me, mode: this.meta.mode, busy: this.busy || !!this.scenarioFlight || this.pendingMessages > 0, now: this.meta.mode === 'scenario' ? SCENE_NOW : new Date(),
-      ...(this.meta.mode === 'scenario' ? { scenario: { name: `${continuousScenario.key} · 장면 ${next?.scene ?? 3}`, done: !stopped && !next,
-        ...(stopped ? { nextLine: { authorName: '시나리오 중단', text: '대본 진행이 멈췄습니다. 상태를 확인하고 재시도하거나 이 단계를 건너뛰세요.', hasAttachment: false } } : next ? { nextLine: { authorName: state.members.get(next.as)?.displayName ?? next.as, text: next.text, hasAttachment: !!next.attachments?.length } } : {}) } } : {}),
-    });
-    const goal = state.goal?.text?.replace(/^시연용 가상 자료입니다\.?\s*/, '') ?? '새 프로젝트';
     const resolutions = taskResolutions(events, me).map(r => ({ ...r, actions: this.pendingResolutions.has(r.taskId) ? [] : r.actions }));
-    for (const task of view.roadmap.tasks) if (task.resolution && this.pendingResolutions.has(task.id)) task.resolution.actions = [];
     const activity = this.activity(events);
     if (resolutions.length && !activity.stalled) activity.stalled = { reason: resolutions[0]!.reason, canRetry: false, canSkip: false };
     const resolutionError = [...this.resolutionErrors.values()].at(-1);
     if (resolutionError) activity.stalled = { reason: resolutionError, canRetry: false, canSkip: false };
-    return { ...view, project: { ...view.project, id: this.meta.projectId, title: shortTitle(goal.split(/[.!?。]/)[0]!), synthetic: this.meta.mode === 'scenario' }, activity: { ...activity, ...(activity.stalled ? { stalled: { ...activity.stalled, tasks: resolutions } } : {}) } };
+    if (activity.stalled) activity.stalled = { ...activity.stalled, tasks: resolutions };
+    // 멈춤 안내는 화면에 실제로 보이는 버튼(다시 시도·건너뛰기·작업별 처리)만 말한다.
+    const stoppedText = activity.stalled ? stallGuidance(activity.stalled, true) : '대본 진행이 멈췄습니다. 상태를 확인해 주세요.';
+    const view = buildViewModel(events, { me, mode: this.meta.mode, busy: this.busy || !!this.scenarioFlight || this.pendingMessages > 0, now: this.meta.mode === 'scenario' ? SCENE_NOW : new Date(),
+      ...(this.meta.mode === 'scenario' ? { scenario: { name: `${continuousScenario.key} · 장면 ${next?.scene ?? 3}`, done: !stopped && !next,
+        ...(stopped ? { nextLine: { authorName: '시나리오 중단', text: stoppedText, hasAttachment: false } } : next ? { nextLine: { authorName: state.members.get(next.as)?.displayName ?? next.as, text: next.text, hasAttachment: !!next.attachments?.length } } : {}) } } : {}),
+    });
+    const goal = state.goal?.text?.replace(/^시연용 가상 자료입니다\.?\s*/, '') ?? '새 프로젝트';
+    for (const task of view.roadmap.tasks) if (task.resolution && this.pendingResolutions.has(task.id)) task.resolution.actions = [];
+    return { ...view, project: { ...view.project, id: this.meta.projectId, title: shortTitle(goal.split(/[.!?。]/)[0]!), synthetic: this.meta.mode === 'scenario' }, activity };
   }
 
   async archives() {
@@ -349,7 +353,7 @@ export class WebRuntime {
     await this.ready;
     if (this.replacing) throw new RuntimeError('project_switching', '프로젝트를 전환 중입니다. 잠시 후 다시 시도해 주세요.');
     if (this.meta.mode !== 'scenario' || !this.meta.script) throw new RuntimeError('scenario_missing', '먼저 시나리오를 시작해 주세요.');
-    if (this.meta.script.stopped) throw new RuntimeError('scenario_stopped', '대본이 멈췄습니다. 재시도하거나 이 단계를 건너뛰세요.');
+    if (this.meta.script.stopped) throw new RuntimeError('scenario_stopped', '대본이 멈췄습니다. 채널 아래 멈춤 안내를 확인해 주세요.');
     void this.scenarioNext().catch(() => console.info('[ensemble] 대본 진행 중단: 상태에서 이유를 확인하세요.'));
     return { accepted: true as const };
   }
