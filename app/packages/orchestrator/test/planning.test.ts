@@ -30,6 +30,14 @@ it('T4 gives the exact failed task and condition count to the retry without drop
   expect(f.calls[1]!.system).toContain('combine');
   await f.pm.stop();
 });
+
+it('asks research conditions for cited sources and stated limits, never for live verification the artifact cannot show', async () => {
+  const f = await setup([draft()]);
+  await f.pm.startFreeProject('경쟁사의 공개 자료를 조사하고 출처와 확인 한계를 남겨줘');
+  expect(f.calls[0]!.system).toContain('a cited source (URL or document name) per item and a separate limitations section');
+  expect(f.calls[0]!.system).toContain('never require that sources were actually opened, accessed or verified live');
+  await f.pm.stop();
+});
 it.each(['디자이너에게 전달했다는 근거', '공유 가능한 문서 형태로 전달', '채널에 업로드'])('retries then removes unobservable QA condition: %s', async condition => {
   const bad = draft();
   bad.tasks[0]!.handoffConditions = ['각 항목별 출처 링크와 확인 한계를 명시한 보고서', condition];
