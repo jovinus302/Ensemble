@@ -5,7 +5,9 @@ import { expect, it, vi } from 'vitest';
 import { MemoryLedgerStore } from '@ensemble/store';
 import type { LlmProvider } from '@ensemble/llm';
 import { project, type AnyEvent } from '@ensemble/core';
-import { WebRuntime } from '../../../apps/web/lib/runtime.ts';
+import { FREE_FAKE_AGENT_DELAY_MS, WebRuntime } from '../../../apps/web/lib/runtime.ts';
+import { FakePmLlm } from '../../../apps/web/lib/fake-connector.ts';
+import type { ViewModel, VmTaskDetail } from '../../../apps/web/lib/view-model.ts';
 import { GET, POST } from '../../../apps/web/app/api/[...path]/route.ts';
 import { continuousScenario, conditionMet, resolveTarget, sceneEvents } from '../src/index.ts';
 import { setup } from './continuous-fixture.ts';
@@ -275,4 +277,102 @@ it('delivers a persisted next-turn change once when the web runtime restarts', a
     expect((await store.read()).filter(e => e.type === 'update_sent')).toHaveLength(1);
     expect((await store.read() as AnyEvent[]).find(e => e.type === 'update_acknowledged')?.payload).toMatchObject({ dropped: ['결제'] });
   } finally { await app.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+it('MD2 drives the work flow through the API with the fake PM model and fake agents', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'ensemble-work-flow-'));
+  const app = new WebRuntime({ dataDir: dir, store: new MemoryLedgerStore(), llm: new FakePmLlm(), fakeAgentDelayMs: 600, timers: false });
+  globalRuntime.ensembleRuntime = app;
+  const get = (route: string) => GET(new Request(`http://localhost/api/${route}`), { params: Promise.resolve({ path: route.split('?')[0]!.split('/') }) });
+  const view = async (me: string) => await app.state(me) as unknown as ViewModel;
+  const item = async (title: string) => (await view('owner')).work?.items.find(i => i.title === title);
+  try {
+    await app.state();
+    // Free start → hierarchical plan card for the decider.
+    expect((await post('free/start', { me: 'owner', goal: '인터뷰 예약 서비스 시제품', deadline: '2026-12-01' })).status).toBe(200);
+    const plan = (await view('owner')).cards.find(c => c.kind === 'plan_approval');
+    expect(plan?.kind === 'plan_approval' && plan.tasks.length).toBe(6);
+    // Sub-tasks carry their parent on the plan card (for the card to nest them once the contract names the field).
+    expect(plan?.kind === 'plan_approval' && plan.tasks.filter(t => (t as { parentId?: string }).parentId === 'research').map(t => t.title)).toEqual(['비슷한 서비스 비교', '사용자 반응 가설 정리']);
+    expect((await post(`cards/${plan!.id}`, { memberId: 'owner', approve: true })).status).toBe(200);
+    // Agent work starts by itself and shows in the panel; the parent's status comes from its children.
+    await eventually(async () => (await view('owner')).work!.items.some(i => i.parentId === 'research' && i.status === 'in_progress'));
+    const research = (await view('owner')).work!.items.find(i => i.id === 'research')!;
+    expect(research).toMatchObject({ status: 'in_progress', ownerKind: 'agent' });
+    expect(research.childIds).toHaveLength(2);
+    // The designer (not the decider) asks for new work: nothing is created, the decider gets a card with a recommendation.
+    expect((await post('messages', { authorId: 'designer', text: '로그인 화면도 만들어 줘' })).status).toBe(202);
+    await eventually(async () => ((await view('owner')).decisionCards ?? []).length === 1);
+    const card = (await view('owner')).decisionCards![0]!;
+    expect(card).toMatchObject({ requestKind: 'plan_change', answerMode: 'choose', impact: { taskTitles: ['로그인 화면'] } });
+    expect(card.options.find(o => o.optionId === card.recommendation.optionId)?.summary.join(' ')).toContain('로그인 화면');
+    expect(JSON.stringify(card)).not.toMatch(/new-work-\d/);
+    expect(await item('로그인 화면')).toBeUndefined();
+    expect((await view('designer')).decisionCards).toEqual([]);
+    expect((await post(`decisions/${card.id}`, { me: 'designer', action: 'approve' })).status).toBe(403);
+    expect((await post('decisions/missing', { me: 'owner', action: 'approve' })).status).toBe(404);
+    expect((await post(`decisions/${card.id}`, { me: 'owner', action: 'approve', optionId: card.recommendation.optionId })).status).toBe(200);
+    // Approved: the work exists, its agent starts, and the agent's question becomes the decider's card.
+    await eventually(async () => ((await view('owner')).decisionCards ?? []).some(c => c.requestKind === 'missing_info'));
+    const owner = await view('owner');
+    const login = owner.work!.items.find(i => i.title === '로그인 화면')!;
+    expect(login).toMatchObject({ ownerId: 'prototype-agent', ownerKind: 'agent', status: 'waiting_human', waitingOn: { memberId: 'owner' }, origin: { createdByName: '디자이너' } });
+    const question = owner.decisionCards!.find(c => c.requestKind === 'missing_info')!;
+    expect(question.answerMode).toBe('text');
+    expect(owner.messages.some(m => m.cardId === question.id && m.taskIds?.includes(login.id))).toBe(true);
+    // "추천대로 진행" (or picking 답하기) without words would strand the agent: refused, the request stays open.
+    for (const body of [{ me: 'owner', action: 'approve', optionId: question.recommendation.optionId }, { me: 'owner', action: 'choose', optionId: question.recommendation.optionId }]) {
+      const refused = await post(`decisions/${question.id}`, body);
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toMatchObject({ error: { code: 'answer_required' } });
+    }
+    expect((await view('owner')).decisionCards!.some(c => c.id === question.id)).toBe(true);
+    expect((await item('로그인 화면'))?.status).toBe('waiting_human');
+    expect((await post(`decisions/${question.id}`, { me: 'owner', action: 'answer', text: '이메일 로그인만 해 주세요' })).status).toBe(200);
+    // The answer resumes the work; a comment on it reaches the agent while it runs.
+    expect((await item('로그인 화면'))?.status).toBe('in_progress');
+    expect((await post(`tasks/${login.id}/comments`, { me: 'owner', text: '버튼 문구는 짧게 해 주세요' })).status).toBe(202);
+    await eventually(async () => (await app.store.read() as AnyEvent[]).some(e => e.type === 'change_notified' && e.payload.changeId.startsWith('comment:') && e.payload.recipientId === 'prototype-agent'));
+    await eventually(async () => (await item('로그인 화면'))?.status === 'done');
+    const response = await get(`tasks/${login.id}`);
+    expect(response.status).toBe(200);
+    const detail = await response.json() as VmTaskDetail;
+    expect(detail.item.title).toBe('로그인 화면');
+    expect(detail.comments.map(c => c.text)).toEqual(['버튼 문구는 짧게 해 주세요']);
+    expect(detail.activity.map(a => a.kind)).toEqual(expect.arrayContaining(['created', 'started', 'decision_requested', 'decision_resolved', 'comment', 'submitted', 'reviewed']));
+    const submitted = (await app.store.read() as AnyEvent[]).findLast(e => e.type === 'result_submitted' && e.payload.taskId === login.id);
+    expect(submitted?.type === 'result_submitted' && submitted.payload.summary).toContain('버튼 문구는 짧게');
+    // Comments stay in the work thread, not the channel.
+    expect((await view('owner')).messages.some(m => m.text === '버튼 문구는 짧게 해 주세요')).toBe(false);
+    expect((await get('tasks/missing')).status).toBe(404);
+    expect((await post('tasks/missing/comments', { me: 'owner', text: '확인' })).status).toBe(404);
+    expect((await post(`tasks/${login.id}/comments`, { me: 'research-agent', text: '확인' })).status).toBe(403);
+  } finally { await app.stop(); delete globalRuntime.ensembleRuntime; await rm(dir, { recursive: true, force: true }); }
+}, 20000);
+
+it('runs the stuck-work sweep and the daily digest on its timer tick only in free projects, with the digest switchable', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'ensemble-tick-'));
+  const app = new WebRuntime({ dataDir: dir, store: new MemoryLedgerStore(), llm: new FakePmLlm(), timers: false, digest: false });
+  try {
+    await app.state();
+    const sweep = vi.spyOn(app.pm, 'sweep'), digest = vi.spyOn(app.pm, 'digest');
+    await app.tick(new Date('2026-10-02T01:00:00Z'));
+    expect(sweep).toHaveBeenCalledTimes(1);
+    expect(digest).not.toHaveBeenCalled();
+    expect(app.digestEnabled).toBe(false);
+    expect(FREE_FAKE_AGENT_DELAY_MS).toBe(30_000);
+    const goal = (await app.store.read() as AnyEvent[]).find(e => e.type === 'goal_set');
+    expect(goal?.type === 'goal_set' && goal.payload.delegation.pmMayApply).toEqual(['reorder', 'split_task', 'reassign_agent']);
+    await app.startScenario(continuousScenario.key);
+    const scenarioSweep = vi.spyOn(app.pm, 'sweep');
+    await app.tick();
+    expect(scenarioSweep).not.toHaveBeenCalled();
+  } finally { await app.stop(); await rm(dir, { recursive: true, force: true }); }
+  const on = new WebRuntime({ dataDir: await mkdtemp(path.join(tmpdir(), 'ensemble-tick-on-')), store: new MemoryLedgerStore(), llm: new FakePmLlm(), timers: false });
+  try {
+    await on.state();
+    const digest = vi.spyOn(on.pm, 'digest');
+    await on.tick(new Date('2026-10-02T01:00:00Z'));
+    expect(digest).toHaveBeenCalledWith(new Date('2026-10-02T01:00:00Z'));
+  } finally { await on.stop(); await rm(on.dataDir, { recursive: true, force: true }); }
 });

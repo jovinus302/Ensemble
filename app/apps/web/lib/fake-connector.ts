@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ContinueTaskInput, Report, SessionConnector, SessionEvent, TaskInstructionsInput, UpdateInstructionsInput } from '@ensemble/agents';
+import type { LlmProvider, LlmRequest, LlmResponse } from '@ensemble/llm';
 import type { RevisionGenerator } from '@ensemble/scenarios';
 
 const research = `# 조사 보고서
@@ -78,24 +79,46 @@ get('reset').onclick=()=>{get('signup').reset();get('slot').value='';get('summar
 }
 
 /** Explicit demo transport: real files and normal reports, never PM verdicts or ledger writes. */
+/** Free-project demo: work about a login screen first asks the person how people sign in (the agent-question flow). */
+export const FAKE_QUESTION = { trigger: /로그인/, question: '로그인 방식은 이메일만 둘까요, 소셜 로그인도 넣을까요?', options: ['이메일만', '이메일과 소셜 로그인'] } as const;
+
+export interface FakeConnectorOptions {
+  /** Whether a run may stop on the demo question (free projects only; the scripted scenario never asks). */
+  askQuestions?: () => boolean;
+}
+
 export class FakeConnector implements SessionConnector {
   private listeners = new Set<(e: SessionEvent) => void>();
   private sessions = new Map<string, { threadId: string; workspace: string }>();
-  private runs = new Map<string, { input: TaskInstructionsInput; turnId: string; timer?: ReturnType<typeof setTimeout>; index: number; excludePayment: boolean; generation: number; finished: boolean }>();
+  private runs = new Map<string, { input: TaskInstructionsInput; turnId: string; timer?: ReturnType<typeof setTimeout>; index: number; excludePayment: boolean; generation: number; finished: boolean; notes: string[] }>();
+  /** `${agentId}:${taskId}` that already asked the demo question: the next turn carries the answer and finishes. */
+  private asked = new Set<string>();
   constructor(private root: string, private generate?: RevisionGenerator, private readyToFinish: (agentId: string, planVersion: number) => boolean = () => true, private delayMs = 2000,
-    private currentTask?: (taskId: string) => Promise<{ title: string; handoffConditions: readonly string[]; exclusions?: readonly string[]; limits?: readonly string[] } | undefined>) {}
+    private currentTask?: (taskId: string) => Promise<{ title: string; handoffConditions: readonly string[]; exclusions?: readonly string[]; limits?: readonly string[] } | undefined>,
+    private options: FakeConnectorOptions = {}) {}
   async startSession(agentId: string, projectId: string) {
     const session = { threadId: `fake-${projectId}-${agentId}`, workspace: path.join(this.root, encodeURIComponent(projectId), encodeURIComponent(agentId)) };
     mkdirSync(session.workspace, { recursive: true }); this.sessions.set(agentId, session); return session;
   }
   async startTask(agentId: string, input: TaskInstructionsInput) {
     const old = this.runs.get(agentId); clearTimeout(old?.timer);
-    const run = { input: structuredClone(input), turnId: `fake-${randomUUID()}`, index: 0, excludePayment: !!scopeExcludesPayment(instructionScope(input)) || input.decisions.some(d => excludesPayment(d.text)), generation: 0, finished: false };
+    const run = { input: structuredClone(input), turnId: `fake-${randomUUID()}`, index: 0, excludePayment: !!scopeExcludesPayment(instructionScope(input)) || input.decisions.some(d => excludesPayment(d.text)), generation: 0, finished: false, notes: [] as string[], timer: undefined as ReturnType<typeof setTimeout> | undefined };
     this.runs.set(agentId, run);
     setTimeout(() => {
       if (this.runs.get(agentId) !== run) return;
       for (const handler of this.listeners) handler({ type: 'turn', status: 'started', agentId, taskId: run.input.taskId, threadId: this.sessions.get(agentId)!.threadId, turnId: run.turnId });
     }, 0);
+    const key = `${agentId}:${input.taskId}`;
+    if (this.options.askQuestions?.() && FAKE_QUESTION.trigger.test(input.taskTitle.text) && !this.asked.has(key)) {
+      // One question per task, then the turn ends; the person's answer arrives with the next turn (continueTask).
+      this.asked.add(key);
+      run.timer = setTimeout(() => {
+        if (this.runs.get(agentId) !== run) return;
+        this.emit(agentId, { type: 'question', taskId: run.input.taskId, question: FAKE_QUESTION.question, options: [...FAKE_QUESTION.options] });
+        this.complete(agentId);
+      }, this.delayMs);
+      return run.turnId;
+    }
     this.schedule(agentId); return run.turnId;
   }
   private emit(agentId: string, report: Report) {
@@ -131,7 +154,8 @@ export class FakeConnector implements SessionConnector {
     if (this.runs.get(agentId) !== run || generation !== run.generation) return;
     const file = `${prototype ? 'prototype' : 'research'}-v${run.input.planVersion}-${run.index}.${prototype ? 'html' : 'md'}`;
     writeFileSync(path.join(this.sessions.get(agentId)!.workspace, file), content);
-    this.emit(agentId, { type: 'result_report', taskId: run.input.taskId, planVersion: run.input.planVersion, summary: `시연용 가상 자료: ${run.input.taskTitle.text}`, files: [{ path: file, description: prototype ? '로컬에서 여는 클릭 가능한 HTML' : '출처 후보와 확인 한계를 구분한 조사 보고서' }], limitations: ['시연용 가상 자료이며 실제 조사·고객 검증이 아닙니다.'] });
+    const notes = run.notes.length ? ` · 반영한 요청: ${run.notes.map(n => n.length > 80 ? `${n.slice(0, 79)}…` : n).join(' / ')}` : '';
+    this.emit(agentId, { type: 'result_report', taskId: run.input.taskId, planVersion: run.input.planVersion, summary: `시연용 가상 자료: ${run.input.taskTitle.text}${notes}`, files: [{ path: file, description: prototype ? '로컬에서 여는 클릭 가능한 HTML' : '출처 후보와 확인 한계를 구분한 조사 보고서' }], limitations: ['시연용 가상 자료이며 실제 조사·고객 검증이 아닙니다.'] });
     this.complete(agentId);
   }
   private complete(agentId: string) {
@@ -141,6 +165,8 @@ export class FakeConnector implements SessionConnector {
   async sendUpdate(agentId: string, input: UpdateInstructionsInput) {
     const run = this.runs.get(agentId); if (!run || run.finished) return { sent: false as const, reason: '진행 중인 턴이 없습니다.' };
     run.generation++; run.input.planVersion = input.toVersion;
+    // Comments and answers reach the agent as change lines; the demo result names what it took in.
+    run.notes.push(...input.change.filter(line => line.trim()));
     run.excludePayment ||= input.drop.some(s => /결제|payment/i.test(s)) || input.change.some(excludesPayment);
     setTimeout(() => { if (this.runs.get(agentId) === run) this.emit(agentId, { type: 'acknowledge_update', updateId: input.updateId, planVersion: input.toVersion, applied: input.change, dropped: input.drop }); }, 0);
     this.schedule(agentId); return { sent: true as const };
@@ -154,5 +180,89 @@ export class FakeConnector implements SessionConnector {
   async stop(agentId?: string) {
     for (const [id, run] of this.runs) if (!agentId || id === agentId) { clearTimeout(run.timer); this.runs.delete(id); }
     if (!agentId) this.listeners.clear();
+  }
+}
+
+/** "로그인 화면도 만들어 줘" → "로그인 화면": a request for new work in the demo's own words. */
+export const FAKE_NEW_WORK = /^(.+?)(?:도|을|를)?\s*(?:새로\s*)?만들어\s*(?:줘|줄래|주세요|주실래요)/;
+
+type Facts = Record<string, unknown>;
+interface FactMessage { messageId: string; authorId: string; text: string; threadId?: string }
+interface FactMember { memberId: string; kind: string; displayName: string; role?: string }
+const shortGoal = (goal: unknown) => (typeof goal === 'string' ? goal : '목표').replace(/^시연용 가상 자료(?:입니다)?[.。]?\s*/, '').split(/[.!?。\n]/)[0]!.trim().slice(0, 30) || '목표';
+
+/**
+ * Explicit demo PM model (ENSEMBLE_PM_RUNTIME=fake): fixed, rule-based answers to the PM's structured tools so the
+ * whole work flow runs locally without a model. It drafts a plan with subtasks, turns "…만들어 줘" into one new
+ * work item for an agent, stays silent otherwise, and passes a handoff review by quoting each condition the fake
+ * agents wrote into their files. Authority, routing, records and every check remain the real code's.
+ */
+export class FakePmLlm implements LlmProvider {
+  async complete(request: LlmRequest): Promise<LlmResponse> {
+    const input = this.answer(request);
+    return { text: '', model: 'fake-pm', responseId: `fake-pm-${randomUUID()}`, usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: input ? [{ name: request.forceTool!, input }] : [] };
+  }
+  private facts(request: LlmRequest): Facts {
+    try { const body = JSON.parse(request.messages[0]?.content ?? '{}') as Facts; return (body.facts as Facts | undefined) ?? body; } catch { return {}; }
+  }
+  private answer(request: LlmRequest): Record<string, unknown> | undefined {
+    switch (request.forceTool) {
+      case 'propose_plan': return this.plan(this.facts(request));
+      case 'interpret_coordination': return this.interpret(this.facts(request));
+      case 'judge_coordination': return { whoseAction: null, alreadyKnows: 'yes', evidence: [], decision: 'silent', reason: '작업 기록과 카드로 충분해 따로 말하지 않는다', openTopics: [], text: '', targetMemberIds: [], changesOpenQuestionAnswer: false, answerFactIds: [] };
+      case 'route_message': return { kind: 'chat' };
+      case 'record_handoff_review': return this.review(request.messages[0]?.content ?? '');
+      default: return undefined;
+    }
+  }
+  private plan(facts: Facts) {
+    const goal = shortGoal(facts.goal);
+    const template = Array.isArray(facts.template) ? facts.template as { id: string }[] : [];
+    const slots: Record<string, Record<string, unknown>> = {
+      research: { title: `${goal} 사례 조사`, handoffConditions: ['비교한 서비스와 출처 후보 목록', '확인하지 못한 내용을 한계로 구분'], hours: { min: 2, max: 4 },
+        subtasks: [
+          { title: '비슷한 서비스 비교', handoffConditions: ['비교한 서비스와 출처 후보 목록'], hours: { min: 1, max: 2 } },
+          { title: '사용자 반응 가설 정리', handoffConditions: ['사용자 반응 가설과 확인 한계'], hours: { min: 1, max: 2 } },
+        ] },
+      interview: { title: '고객 인터뷰', handoffConditions: ['인터뷰 대상과 질문 목록', '인터뷰에서 들은 반응 요약'], hours: { min: 2, max: 4 } },
+      flow: { title: '사용 흐름 설계', handoffConditions: ['가입과 예약 흐름의 화면 목록'], hours: { min: 3, max: 5 } },
+      prototype: { title: '클릭 가능한 프로토타입', handoffConditions: ['가입 흐름을 눌러 볼 수 있는 화면'], hours: { min: 3, max: 6 } },
+    };
+    return { tasks: template.map(slot => ({ templateKey: slot.id, ...(slots[slot.id] ?? { title: `${goal} 작업`, handoffConditions: ['결과물 내용 요약'], hours: { min: 1, max: 2 } }) })) };
+  }
+  private interpret(facts: Facts) {
+    const messages = Array.isArray(facts.messages) ? facts.messages as FactMessage[] : [];
+    const message = messages.find(m => m.messageId === facts.messageId);
+    const base = { category: 'chat', summary: '일반 대화', ops: [] as unknown[], conflicts: [], conversation: { questionMessageId: null, waitingOnMemberIds: [], directedToPm: false }, factMentions: [] };
+    // Work comments stay with their work item; only channel requests create work.
+    const match = message && !message.threadId ? FAKE_NEW_WORK.exec(message.text.trim()) : null;
+    const title = match?.[1]?.trim();
+    if (!message || !title) return base;
+    const members = Array.isArray(facts.members) ? facts.members as FactMember[] : [];
+    const agents = members.filter(m => m.kind === 'agent');
+    const agent = (/조사|리서치|분석/.test(title) ? agents.find(m => m.memberId === 'research-agent') : agents.find(m => m.memberId === 'prototype-agent')) ?? agents[0];
+    if (!agent) return base;
+    const plan = facts.plan as { tasks?: { id: string }[] } | undefined;
+    const taken = new Set((plan?.tasks ?? []).map(t => t.id));
+    let n = taken.size + 1;
+    while (taken.has(`new-work-${n}`)) n++;
+    return { ...base, category: 'work', summary: `새 작업 요청: ${title}`, ops: [{
+      type: 'create_task', sourceMessageIds: [message.messageId], tempId: `new-work-${n}`, title, assignee: agent.memberId,
+      handoffConditions: [`${title} 결과물을 열어 확인할 수 있음`], dependsOn: [], priority: 'normal',
+      routing: { executor: 'agent', reason: 'agent_capable', note: `${agent.displayName}가 할 수 있는 일이라 바로 맡겨요` },
+      brief: { why: `채널에서 "${title}" 작업이 목표에 필요하다는 요청이 나왔어요.`, decisionIds: [], attachmentIds: [], constraints: [] },
+    }] };
+  }
+  private review(body: string) {
+    const lines = body.split('\n');
+    const start = lines.indexOf('## 인계 조건');
+    const conditions: string[] = [];
+    for (const line of start >= 0 ? lines.slice(start + 1) : []) {
+      if (line.startsWith('## ')) break;
+      const m = /^\d+\.\s(.*)$/.exec(line);
+      if (m) conditions.push(m[1]!);
+    }
+    // The fake agents write every condition into their file ("### n. condition"), so the quote is checkable.
+    return { conditions: conditions.map((condition, i) => ({ index: i + 1, met: true, quote: condition })), decisionConflicts: [] };
   }
 }

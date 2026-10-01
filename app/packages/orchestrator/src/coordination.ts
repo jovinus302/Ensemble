@@ -1,7 +1,7 @@
 import { availabilityWeek, formatKstDate, scopeItem, scopeMentions, remainingScopeOps, type ForecastResult } from '@ensemble/core';
 import { channelText, taskName, shortTaskName, numericFacts, hasGroundedNumbers } from './channel-text.ts';
 import { affectedMembers, automationGate, diffPlans, forecastFromState, withoutStopped, isAutomationAction, limitReachedEvent, project, applyOps, opAuthority } from '@ensemble/core';
-import { createDecisionRequest, planOpProblems, planOpsProblems, planStarts, routeTask, taskMetaFromOps, PRIORITIES, ROUTING_REASONS } from '@ensemble/core';
+import { createDecisionRequest, isParentTask, planOpProblems, planOpsProblems, planStarts, routeTask, taskMetaFromOps, PRIORITIES, ROUTING_REASONS } from '@ensemble/core';
 import { createHash } from 'node:crypto';
 import type { AnyEvent, ChangeKind, EventContext, EventPayloads, EventType, LedgerEvent, NewLedgerEvent, PlanOp, ProjectState, TaskDraft, TaskSpec } from '@ensemble/core';
 import type { SessionConnector, UpdateInstructionsInput } from '@ensemble/agents';
@@ -9,6 +9,7 @@ import type { LlmProvider, ToolSpec } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
 import { PM_SYSTEM_PROMPT } from './pm-prompt.ts';
 import { recoveryRefusal, taskQuestions } from './context.ts';
+import { opsApplicable } from './sweep.ts';
 
 export type TaskRecoveryOp = (
   | { type: 'resolve_task'; taskId: string; action: 'accept' | 'retry' | 'recheck'; note?: string }
@@ -261,6 +262,31 @@ function forecastAnswer(forecast: ForecastResult, state: ProjectState): string {
 
 const calendarForecast = (forecast: ForecastResult) => forecast.ok ? { ...forecast, calendarDates: { timeZone: 'Asia/Seoul', min: formatKstDate(forecast.end.min), max: formatKstDate(forecast.end.max) } } : forecast;
 
+/**
+ * Live work whose assignee is not on the team (a removed member, a stale id), routed as the sweep routes it (§2.5):
+ * the old assignee is read as the role the work needs, so a capable agent is found, else a person (`no_capable_agent`).
+ */
+function orphanRoutes(state: ProjectState, tasks: readonly TaskSpec[] = state.plan?.tasks ?? []) {
+  return tasks.filter(spec => !state.members.has(spec.assignee) && state.tasks.get(spec.id)?.status !== 'cancelled')
+    .map(spec => ({ spec, route: routeTask(state, { executor: 'agent', reason: 'agent_capable', note: '', role: spec.assignee }) }));
+}
+/** The forecast with orphaned work on its routed assignee: a member leaving never crashes the PM loop. Nothing is reassigned. */
+function forecastRouted(state: ProjectState, now: Date): ForecastResult {
+  const orphans = orphanRoutes(state);
+  if (!orphans.length || !state.plan) return forecastFromState(state, now);
+  const routed = structuredClone(state);
+  routed.plan!.tasks = routed.plan!.tasks.flatMap(spec => {
+    const orphan = orphans.find(o => o.spec.id === spec.id);
+    const assignee = !orphan ? spec.assignee : orphan.route.ok ? orphan.route.assignee : undefined;
+    // Without anyone to route to (no decider), the work is left out and its dependents read as unknown.
+    if (assignee === undefined) return [];
+    const task = routed.tasks.get(spec.id);
+    if (task && JSON.stringify(task.spec) === JSON.stringify(spec)) task.spec = { ...spec, assignee };
+    return [{ ...spec, assignee }];
+  });
+  return forecastFromState(routed, now);
+}
+
 /** Fixed operations preserve task identity; authority and calculations stay in code. */
 export class Coordinator {
   private queue: Promise<unknown> = Promise.resolve();
@@ -306,7 +332,7 @@ export class Coordinator {
     const make = <K extends EventType>(type: K, payload: EventPayloads[K], suffix: string = type, action = false): NewLedgerEvent => ({ projectId: this.options.projectId, targetProductId: this.options.targetProductId, type, payload, actor: { kind: action ? 'pm' : 'system', id: 'pm' }, at: now.toISOString(), idempotencyKey: `${key}:${suffix}` });
     const prior = events.filter(e => e.type === 'pm_considered' && events.some(s => s.type === 'pm_spoke' && s.payload.considerationId === e.payload.considerationId));
     const forecastInputs = events.filter(e => ['plan_committed', 'availability_updated', 'estimate_updated', 'goal_set', 'task_checked'].includes(e.type)).map(e => e.id);
-    const current = forecastFromState(state, now);
+    const current = forecastRouted(state, now);
     const knownFacts = [
       { id: 'forecast:current', value: current },
       ...(state.plan?.tasks ?? []).map(t => ({ id: `task:${t.id}`, value: t })),
@@ -372,7 +398,7 @@ export class Coordinator {
       }
       if (op.type === 'set_deadline' && candidate.goal) candidate.goal.deadline = op.date;
     }
-    const proposed = forecastFromState(candidate, now);
+    const proposed = forecastRouted(candidate, now);
     // More new work than one message should make goes to the decider as one bundled request.
     const bundled = !confirmedOps && newTaskIds(ops).length > MAX_TASKS_PER_MESSAGE;
     const assessed: { op: PlanOp; kind: ChangeKind; personId?: string; allowed: boolean }[] = ops.map(op => bundled && isWorkOp(op) ? { op, kind: 'scope_add', personId: state.goal?.decider, allowed: false } : { op, ...opAuthority(state, op) });
@@ -412,7 +438,7 @@ export class Coordinator {
     const impact = { current, proposed, deltaDays: current.ok && proposed.ok ? { min: proposed.days.min - current.days.min, max: proposed.days.max - current.days.max } : null, diff, affected, absent, operations: assessed, conflicts: interpretation?.conflicts ?? [] };
     const lastAvailability = events.findLastIndex(e => e.type === 'availability_updated');
     const beforeState = lastAvailability >= 0 ? project(events.slice(0, lastAvailability)) : undefined;
-    const beforeAvailability = beforeState ? forecastFromState(beforeState, now) : undefined;
+    const beforeAvailability = beforeState ? forecastRouted(beforeState, now) : undefined;
     const capacity = (s: ProjectState) => [...s.members.values()].filter(m => m.kind === 'human').map(m => ({ memberId: m.memberId, name: m.displayName, baselineWeeklyHours: s.availability.get(m.memberId), overrides: [...(s.availabilityOverrides.get(m.memberId) ?? [])] }));
     const factList: { id: string; description: string; value: unknown }[] = [
       ...state.messages.map(m => ({ id: `msg:${m.messageId}`, description: '기록된 사실', value: m })),
@@ -609,7 +635,7 @@ export class Coordinator {
             weeks.set(op.weekStart, op.weeklyHours); appliedState.availabilityOverrides.set(op.memberId, weeks);
           } else appliedState.availability.set(op.memberId, op.weeklyHours);
         }
-        const after = settled(forecastFromState(appliedState, now));
+        const after = settled(forecastRouted(appliedState, now));
         const late = after.uncertainty ? ` ${after.uncertainty.warning}.` : after.ok && after.lateness && after.lateness.maxDays > 0 ? ` 그래도 최대 ${formatKstDate(after.end.max)}로 기한을 넘깁니다.` : '';
         const reopening = reopens.length ? ` — ${reopens.map(r => `${shortTaskName(state, r.taskId).replace(/\s*\([^)]*포함\)/g, '')} 작업을 다시 열어 ${r.reason}을 맡겼어요`).join('; ')}` : '';
         post = uncertainScope.length
@@ -652,6 +678,35 @@ export class Coordinator {
         if (!diff.changed.some(c => c.taskId === taskId) && !predecessorRework && !cancelled) continue;
         deliveries.push({ agentId, taskId, input: { updateId: `${changeId}:${agentId}`, fromVersion: version, toVersion: version + 1, keep: diff.unchanged.filter(t => t.assignee === agentId).map(t => t.title), change: [...diff.changed.filter(c => c.taskId === taskId).map(c => JSON.stringify(c.next)), ...(predecessorRework ? [reworkText] : [])], drop: cancelled ? [cancelled.title] : dropFor(taskId), reason: summary } });
       }
+    }
+    // Todo work whose assignee left the team and that no agent can take goes to the decider as an `assignment` request.
+    // Asked once per task here; an answered (held) request is re-asked by the daily sweep, not on every message.
+    const decider = state.goal?.decider;
+    const planAfter = append.some(e => e.type === 'plan_committed') ? tasks : state.plan?.tasks ?? [];
+    for (const { spec, route } of decider ? orphanRoutes(state, planAfter) : []) {
+      const task = state.tasks.get(spec.id);
+      if (!task || !['waiting', 'ready'].includes(task.status) || isParentTask(state, task)) continue;
+      if (!route.ok || route.routing.reason !== 'no_capable_agent') continue;
+      if ([...state.decisionRequests.values()].some(e => e.request.kind === 'assignment' && e.request.impact.blockedTaskIds.includes(spec.id))) continue;
+      const person = route.assignee ?? decider!;
+      const ops: PlanOp[] = [{ type: 'reassign', taskId: spec.id, assignee: person, sourceMessageIds: [] }];
+      if (!opsApplicable(state, ops, decider!)) continue;
+      const name = (id: string) => state.members.get(id)?.displayName ?? '담당자';
+      const label = person === decider ? '제가 맡기' : `${name(person)}님이 맡기`;
+      const requestId = `${key}:assignment:${spec.id}`;
+      const text = channelText(`${name(decider!)}님, "${spec.title}" 작업을 맡을 담당이 팀에 없고 이 일을 할 수 있는 Agent도 없어요. 추천은 '${label}'입니다 — 결정 카드에서 골라 주세요.`, state);
+      try {
+        append.push(createDecisionRequest(state, {
+          requestId, kind: 'assignment', targetMemberId: decider!, question: `"${spec.title}" 작업을 맡을 담당이 팀에 없어요. 누구에게 맡길까요?`,
+          options: [
+            { optionId: 'person', label, effects: [{ type: 'plan_ops', ops }], tradeoff: '사람의 일정에 이 작업이 더해집니다.' },
+            { optionId: 'hold', label: '보류', effects: [{ type: 'none' }], tradeoff: '담당이 정해질 때까지 이 작업은 시작하지 않습니다.' },
+          ],
+          recommendation: { optionId: 'person', rationale: `담당 ${spec.assignee}이 팀에 없고, 이 일을 할 수 있는 Agent가 없어 사람이 맡아야 합니다.`, evidence: [] },
+          impact: { taskIds: [spec.id], blockedTaskIds: [spec.id] }, sourceMessageIds: [],
+        }, { projectId: this.options.projectId, targetProductId: this.options.targetProductId }, now));
+      } catch { continue; } // One open request per task: the earlier request still covers it.
+      append.push(make('pm_spoke', { considerationId: key, messageId: `${key}:ask:assignment:${spec.id}`, text, kind: 'ask', requestId, taskIds: [spec.id] }, `ask:assignment:${spec.id}`, true));
     }
     const agentAnswers = [...new Map((interpretation?.agentAnswers ?? []).map(a => [a.questionId, a])).values()].map(a => ({ taskId: pendingAgentQuestions.find(q => q.questionId === a.questionId)!.taskId, questionId: a.questionId, text: humanMessages.filter(m => a.sourceMessageIds.includes(m.messageId)).map(m => m.text).join('\n') }));
     const tx = await this.store.transaction<'duplicate' | 'retry' | 'applied'>(this.options.projectId, fresh => {

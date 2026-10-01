@@ -27,6 +27,7 @@ export async function GET(request: Request, context: Context) {
     if (route === 'archives') return json(await app.archives());
     if (parts[0] === 'archives' && parts.length === 2) return json(await app.archivedState(parts[1]!, new URL(request.url).searchParams.get('me') ?? 'owner'));
     if (route === 'state') return json(await app.state(new URL(request.url).searchParams.get('me') ?? 'owner'));
+    if (parts[0] === 'tasks' && parts.length === 2) return json(await app.task(parts[1]!, new URL(request.url).searchParams.get('me') ?? 'owner'));
     if (route === 'events') {
       let cleanup = () => {};
       const stream = new ReadableStream<Uint8Array>({
@@ -56,7 +57,9 @@ export async function POST(request: Request, context: Context) {
   try {
     const parts = (await context.params).path, route = parts.join('/');
     const resolving = parts[0] === 'tasks' && parts.length === 3 && parts[2] === 'resolve';
-    if (!resolving && !['messages', 'availability', 'free/start', 'scenario/start', 'scenario/next', 'scenario/retry', 'scenario/skip'].includes(route) && !(parts[0] === 'cards' && parts.length === 2)) return json({ error: { code: 'not_found', message: '요청한 경로를 찾지 못했습니다.' } }, 404);
+    const commenting = parts[0] === 'tasks' && parts.length === 3 && parts[2] === 'comments';
+    const deciding = parts[0] === 'decisions' && parts.length === 2;
+    if (!resolving && !commenting && !deciding && !['messages', 'availability', 'free/start', 'scenario/start', 'scenario/next', 'scenario/retry', 'scenario/skip'].includes(route) && !(parts[0] === 'cards' && parts.length === 2)) return json({ error: { code: 'not_found', message: '요청한 경로를 찾지 못했습니다.' } }, 404);
     let parsed: unknown;
     try { parsed = await request.json(); } catch { throw new InputError('요청 내용을 읽을 수 없습니다.'); }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new InputError('요청 형식이 올바르지 않습니다.');
@@ -67,6 +70,25 @@ export async function POST(request: Request, context: Context) {
       if (body.action !== 'accept' && body.action !== 'retry' && body.action !== 'recheck') throw new InputError('작업 해결 방법을 선택해 주세요.');
       if (body.note !== undefined && typeof body.note !== 'string') throw new InputError('메모는 글로 입력해 주세요.');
       return json(await app.resolveTask(parts[1]!, body.action, me, body.note as string | undefined), 202);
+    }
+    if (commenting) {
+      // The commenter must name themselves: a comment is the person's own words in the work thread.
+      const author = text(body.me, 'me');
+      if (typeof body.text !== 'string' || !body.text.trim()) throw new InputError('댓글 내용을 입력해 주세요.');
+      return json(await app.comment(parts[1]!, author, body.text), 202);
+    }
+    if (deciding) {
+      const answerer = text(body.me, 'me');
+      if (!['approve', 'choose', 'edit', 'reject', 'answer'].includes(body.action as string)) throw new InputError('답하는 방법을 선택해 주세요.');
+      if (body.optionId !== undefined && typeof body.optionId !== 'string') throw new InputError('선택지 형식이 올바르지 않습니다.');
+      if (body.edits !== undefined && (!body.edits || typeof body.edits !== 'object' || Array.isArray(body.edits))) throw new InputError('고칠 내용 형식이 올바르지 않습니다.');
+      if (body.text !== undefined && typeof body.text !== 'string') throw new InputError('답은 글로 입력해 주세요.');
+      if (body.action === 'choose' && !body.optionId) throw new InputError('선택지를 골라 주세요.');
+      if (body.action === 'edit' && !body.edits) throw new InputError('고칠 내용을 입력해 주세요.');
+      if (body.action === 'answer' && !(body.text as string | undefined)?.trim()) throw new InputError('답을 입력해 주세요.');
+      const action = body.action as 'approve' | 'choose' | 'edit' | 'reject' | 'answer';
+      await app.run(() => app.decide(parts[1]!, answerer, { action, ...(body.optionId ? { optionId: body.optionId as string } : {}), ...(body.edits ? { edits: body.edits as Record<string, unknown> } : {}), ...(typeof body.text === 'string' ? { text: body.text } : {}) }));
+      return json(await app.state(answerer));
     }
     if (body.confirmReplace !== undefined && typeof body.confirmReplace !== 'boolean') throw new InputError('프로젝트 교체 확인 값이 올바르지 않습니다.');
     if (route === 'messages') {
