@@ -1,0 +1,28 @@
+{
+  "provider": "codex",
+  "tasks": [
+    {
+      "id": "research",
+      "title": "버튼·키보드 방식 가상 비교",
+      "status": "checked"
+    },
+    {
+      "id": "interview",
+      "title": "카운터 가상 인터뷰 노트",
+      "status": "checked"
+    },
+    {
+      "id": "flow",
+      "title": "최소 카운터 버튼 동작 명세",
+      "status": "checked"
+    },
+    {
+      "id": "prototype",
+      "title": "로컬 counter.html 클릭 카운터 구현 (감소(-1) 버튼 제외, +1 버튼·초기화 버튼까지)",
+      "status": "checked"
+    }
+  ],
+  "desktop": true,
+  "mobile": true,
+  "pageErrors": []
+}

@@ -319,6 +319,20 @@ it('cannot relabel a human commitment as a delegated reorder', async () => {
   expect(project(await f.read()).availability.get('designer')).toBe(10);
 });
 
+it('does not restart a scope judgement for worker progress commentary', async () => {
+  const f = await fixture([interpret({ ops: exclusions() }), judge()]);
+  let calls = 0;
+  const llm: LlmProvider = { async complete(request) {
+    calls++;
+    await f.add('reply_recorded', { memberId: 'agent', taskId: 'prototype', turnId: 'turn-1', text: 'Implementation is progressing.' });
+    return { text: '', model: 'fake', responseId: 'r', usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [{ name: request.forceTool!, input: (request.forceTool === 'interpret_coordination' ? interpret({ ops: exclusions() }) : judge()) as unknown as Record<string, unknown> }] };
+  } };
+  const result = await new Coordinator(f.store, llm, f.connector, ctx).onMessage('m1');
+  expect(calls).toBe(2);
+  expect(result.events.some(e => e.type === 'plan_committed')).toBe(true);
+  expect(f.connector.sendUpdate).toHaveBeenCalledTimes(1);
+});
+
 it('retries a changing snapshot twice, then explains the failure without stale writes or delivery', async () => {
   const f = await fixture([interpret({ ops: exclusions() }), judge()]);
   let judgements = 0;
@@ -846,4 +860,28 @@ it('keeps one update_sent when the runner records its own steer, and counts it o
   expect(plain.sent).toBe(1);
   expect(runner.actions).toBe(plain.actions);
   expect(runner.via).toMatchObject({ via: 'steer' });
+});
+
+it('defers a queued older input to the same person’s latest message without losing context', async () => {
+  const f = await fixture([request => {
+    const {facts} = JSON.parse(request.messages[0]!.content);
+    expect(facts.messages.map((m: any) => m.messageId)).toEqual(expect.arrayContaining(['m1', 'm2']));
+    return interpret();
+  }, judge()]);
+  await f.message('m2', 'owner', '정정: 결제는 유지하세요');
+  expect((await f.coordinator.onMessage('m1')).posts).toEqual([]);
+  expect(f.calls).toHaveLength(0);
+  await f.coordinator.onMessage('m2');
+  expect(project(await f.read()).plan?.version).toBe(1);
+});
+
+it('does not commit stale scope changes when a correction arrives during the model call', async () => {
+  const f = await fixture([async () => {
+    await f.message('m2', 'owner', '정정: 결제는 유지하세요');
+    return interpret({ops: exclusions()});
+  }, judge()]);
+  const result = await f.coordinator.onMessage('m1');
+  expect(result.posts).toEqual([]);
+  expect(project(await f.read()).plan?.version).toBe(1);
+  expect(f.connector.sendUpdate).not.toHaveBeenCalled();
 });

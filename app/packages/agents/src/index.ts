@@ -35,6 +35,7 @@ for (const role of builtInRoles) registerAgentRole(role);
 export * from './session.ts';
 export * from './protocol.ts';
 export { CodexSessionConnector } from './codex/connector.ts';
+export { CodexLlmProvider, CodexLlmError } from './codex/llm.ts';
 export type { CodexConnectorOptions } from './codex/connector.ts';
 export { ClaudeSessionConnector } from './claude/connector.ts';
 export type { ClaudeConnectorOptions } from './claude/connector.ts';

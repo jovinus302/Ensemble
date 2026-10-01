@@ -7,14 +7,15 @@ import type { SessionEvent } from '../src/session.ts';
 
 const startedAt = Date.now();
 const agentId = `prototype-${startedAt}`;
-const workspace = path.join(homedir(), 'ensemble-agent-workspaces', 'smoke', agentId);
+const workspaceRoot = process.env.ENSEMBLE_AGENT_WORKSPACE_ROOT ?? path.join(homedir(), 'ensemble-agent-workspaces');
+const workspace = path.join(workspaceRoot, 'smoke', agentId);
 const reportPath = path.join(workspace, 'smoke-run.json');
 const steps: { step: string; elapsedMs: number; detail: unknown }[] = [];
 const record = (step: string, detail: unknown) => {
   const entry = { step, elapsedMs: Date.now() - startedAt, detail };
   steps.push(entry); console.log(JSON.stringify(entry));
 };
-const connector = new CodexSessionConnector();
+const connector = new CodexSessionConnector({ workspaceRoot });
 const task: TaskInstructionsInput = {
   taskId: 'smoke-flow', planVersion: 1,
   goalSummary: { text: '사용 흐름 문서를 가입, 온보딩, 대시보드, 결제 섹션으로 만드세요.', sourceId: 'smoke-goal' },

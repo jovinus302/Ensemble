@@ -223,7 +223,8 @@ export class SessionRunner {
     run.timer = undefined;
     if (!run.turnId || run.blocked || run.finished) return;
     run.timedOut = true;
-    await this.block(run, `작업 제한 시간(${Math.round(limit / 6000) / 10}분)을 넘겨 중단했습니다`);
+    const duration = limit < 60_000 ? `${Math.max(0.1, Math.round(limit / 100) / 10)}초` : `${Math.round(limit / 6000) / 10}분`;
+    await this.block(run, `작업 제한 시간(${duration})을 넘겨 중단했습니다`);
     // The interrupt's own turn event is recorded as an observation; the task stays blocked.
     try { await this.connector.stop(run.agentId); } catch { /* A lost session cannot be interrupted; the task is already blocked. */ }
   }

@@ -37,7 +37,7 @@ export class CodexCliProvider implements LlmProvider {
         "-",
       ];
       const run = await runCli(this.options.executable ?? "codex", args, renderPrompt(request, { includeSystem: true }), {
-        cwd: dir, env: this.options.env, timeoutMs: this.options.timeoutMs ?? DEFAULT_CLI_TIMEOUT_MS, label: "Codex CLI" });
+        cwd: dir, env: this.options.env, timeoutMs: this.options.timeoutMs ?? DEFAULT_CLI_TIMEOUT_MS, label: "Codex CLI", signal: request.signal });
       const events = run.stdout.split("\n").flatMap(line => { try { return [JSON.parse(line) as CodexEvent]; } catch { return []; } });
       const failed = events.findLast(e => e.type === "turn.failed")?.error?.message ?? events.findLast(e => e.type === "error")?.message;
       const completed = events.findLast(e => e.type === "turn.completed");

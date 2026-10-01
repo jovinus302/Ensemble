@@ -1,0 +1,3 @@
+const {chromium}=require('playwright');
+const fs=require('node:fs');
+(async()=>{const b=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});const p=await b.newPage({viewport:{width:1440,height:1000}});await p.goto('http://127.0.0.1:3000');const button=p.getByRole('button',{name:'다음 발언',exact:true});await button.waitFor();const t=Date.now();let r; p.on('response',async resp=>{if(resp.url().endsWith('/api/scenario/next')){r={httpMs:Date.now()-t,status:resp.status()};fs.writeFileSync('/workspace/ensemble-qa/scenario-start-timing.json',JSON.stringify(r));}});await button.click();await p.screenshot({path:'/workspace/ensemble-qa/03-scenario-running.png',fullPage:true});console.log(await p.locator('body').innerText());await b.close();})();

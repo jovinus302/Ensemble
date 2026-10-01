@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Interview Loop · 로컬 시연</title>
+<style>
+:root{font-family:system-ui,'Malgun Gothic',sans-serif;color:#18342f;background:#f3f6f2;line-height:1.65}*{box-sizing:border-box}body{margin:0}header{max-width:1080px;margin:auto;padding:26px 28px;display:flex;justify-content:space-between;align-items:center}.brand{font-weight:800;font-size:22px;letter-spacing:-1px}.badge{font-size:12px;border:1px solid #bdd0c5;padding:5px 12px;border-radius:30px}main{max-width:1000px;margin:35px auto;padding:0 24px;display:grid;grid-template-columns:280px 1fr;gap:48px}aside h1{font-size:36px;line-height:1.3;letter-spacing:-1.7px;margin:14px 0}aside p{color:#526960;font-size:14px}.eyebrow{font-size:12px;color:#427462;font-weight:700;letter-spacing:2px}.steps{list-style:none;padding:0;margin:32px 0}.steps li{padding:12px 0;color:#6a7d73}.steps li.active{color:#176247;font-weight:800}.number{display:inline-grid;place-items:center;width:28px;height:28px;border:1px solid #c6d6ce;border-radius:50%;margin-right:10px}.active .number{background:#176247;color:white;border-color:#176247}.card{background:white;border:1px solid #dde6df;border-radius:20px;padding:34px;box-shadow:0 16px 45px #254d3810;min-height:445px}h2{font-size:26px;letter-spacing:-1px;line-height:1.4;margin:8px 0 12px}p{margin:10px 0 20px}.muted{font-size:14px;color:#64766c}.notice{background:#eff6f0;border-radius:12px;padding:15px;font-size:14px;margin:20px 0}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px}button{font:inherit;border:1px solid #c5d5cb;background:white;color:#234f40;padding:12px 18px;border-radius:10px;cursor:pointer;font-weight:650}button.primary{background:#176247;color:white;border-color:#176247}button:hover{filter:brightness(.95)}:focus-visible{outline:3px solid #b27d13;outline-offset:3px}label{display:block;font-size:14px;font-weight:650;margin-top:18px}input[type=text]{display:block;width:100%;font:inherit;padding:12px;border:1px solid #a8bfb2;border-radius:8px;margin-top:6px}input[aria-invalid=true]{border:2px solid #b13831}.error{color:#ac302b;font-size:14px;min-height:1.5em;margin:4px 0}.helper{font-size:12px;color:#697970}fieldset{border:0;padding:0;margin:22px 0}legend{font-weight:700;margin-bottom:12px}.slots{display:flex;gap:10px}.slot{margin:0;flex:1;cursor:pointer;border:1px solid #b9cdbf;border-radius:10px;padding:15px 8px;text-align:center}.slot:has(input:checked){background:#e4f2e7;border:2px solid #176247}.slot input{accent-color:#176247}.status{display:inline-block;background:#e4f2e7;color:#176247;padding:6px 12px;border-radius:30px;font-size:13px;font-weight:700}dl{margin:25px 0}dl div{display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid #e6ece7}dt{color:#6b7c72}dd{margin:0;text-align:right;overflow-wrap:anywhere}.amount{font-size:44px;font-weight:800;margin:20px 0 0}footer{max-width:1000px;margin:35px auto;padding:0 24px;color:#6b7c72;font-size:12px}summary{cursor:pointer}h2:focus{outline:none}@media(max-width:720px){header{padding:20px}main{grid-template-columns:1fr;gap:14px;margin:10px auto}aside h1{font-size:28px}aside p{display:none}.steps{display:flex;gap:18px;margin:18px 0}.steps li{font-size:13px}.number{margin-right:5px;width:24px;height:24px}.card{padding:24px;min-height:0}.slots{gap:6px}dl div{flex-direction:column;gap:2px}dd{text-align:left}}
+</style>
+</head>
+<body>
+<header><div class="brand">Interview Loop<span style="color:#69a47b"> ●</span></div><span class="badge">로컬 시연 · 가상 자료</span></header>
+<main><aside><span class="eyebrow">MAKE TIME TO LISTEN</span><h1>고객을 만나는<br>첫걸음을 가볍게.</h1><p>2~5명 제품팀을 위한 인터뷰 예약 체험. 가입부터 예약 확인까지 따라가 보세요.</p><ol class="steps" aria-label="예약 진행 단계"><li id="step1"><span class="number">1</span>가입</li><li id="step2"><span class="number">2</span>시간</li><li id="step3"><span class="number">3</span>확인</li></ol><div class="notice">실제 개인정보를 입력하지 마세요.<br>제공된 가상 값만 사용하세요.</div></aside><section id="screen" class="card" aria-label="예약 체험"></section></main>
+<footer><details><summary>로컬 실행 방법 · 시연 안내</summary><p>이 HTML 파일을 브라우저에서 직접 열면 됩니다. 설치와 인터넷 연결이 필요 없습니다. 가상 이름은 가상민지, 이메일은 minji.demo@example.com입니다. 오류 시험에는 공란 또는 minji.demo를 사용하세요. 새로고침하거나 ‘처음부터 체험’을 누르면 초기화됩니다.</p><p>가상 반응에 기반한 시연이며 실제 고객 반응 검증 결과가 아닙니다. 계정 생성, 예약, 메일 발송, 결제, 외부 연결 및 영구 저장을 하지 않습니다. 기능 확인 결과와 알려진 한계는 함께 제공되는 verification-v2.md에 있습니다.</p></details></footer>
+<script>
+'use strict';
+const state={page:'start',name:'',email:'',time:'',booked:false};
+const screen=document.getElementById('screen');
+const date='2026-10-05(월)';
+const zone='KST (Asia/Seoul, UTC+9)';
+const esc=s=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function heading(k,t){return `<span class="eyebrow">${k}</span><h2 tabindex="-1">${t}</h2>`;}
+function summary(){return `<dl><div><dt>가상 이름</dt><dd>${esc(state.name)}</dd></div><div><dt>가상 이메일</dt><dd>${esc(state.email)}</dd></div><div><dt>인터뷰 일정</dt><dd>${date}<br>${state.time} · ${zone}</dd></div></dl>`;}
+function go(page){state.page=page;render();screen.querySelector('h2').focus();}
+function reset(){Object.assign(state,{page:'start',name:'',email:'',time:'',booked:false});go('start');}
+function render(){
+ const step=({signup:1,time:2,summary:3})[state.page]||0;
+ [1,2,3].forEach(n=>{const el=document.getElementById('step'+n);el.className=n===step?'active':'';if(n===step)el.setAttribute('aria-current','step');else el.removeAttribute('aria-current');});
+ let html='';
+ if(state.page==='start')html=heading('WELCOME','첫 인터뷰 예약을 체험하세요')+`<p>가상 고객으로 가입하고, 가능한 시간을 골라 예약을 확인해 보세요.</p><div class="notice">가입하고 시간을 선택한 뒤 예약 요약을 확인하세요.</div><p class="muted">실제 계정이나 예약은 생성되지 않습니다. 모든 흐름은 가상 데이터로만 진행됩니다.</p><div class="actions"><button class="primary" data-go="signup">예약 체험 시작 →</button></div>`;
+ if(state.page==='signup')html=heading('01 / SIGN UP','가상 고객으로 시작하기')+`<p class="muted">제공된 가상 값으로 입력과 오류 복구를 체험하세요.</p><button type="button" id="fill">가상 값 채우기</button><form id="signup" novalidate autocomplete="off"><label for="name">가상 이름</label><input type="text" id="name" value="${esc(state.name)}" placeholder="가상민지" aria-describedby="name-help name-error"><div class="helper" id="name-help">시연 전용 값: 가상민지</div><p class="error" id="name-error" role="alert"></p><label for="email">가상 이메일</label><input type="text" id="email" value="${esc(state.email)}" placeholder="minji.demo@example.com" spellcheck="false" aria-describedby="email-help email-error"><div class="helper" id="email-help">정상: minji.demo@example.com · 오류 시험: minji.demo</div><p class="error" id="email-error" role="alert"></p><div class="actions"><button type="button" data-go="start">이전</button><button class="primary" type="submit">가입하고 시간 선택 →</button></div></form>`;
+ if(state.page==='time')html=heading('02 / CHOOSE A TIME','어느 시간이 좋으세요?')+`<p class="muted">고정된 가상 일정입니다. 실제 캘린더와 연결되지 않습니다.</p><fieldset><legend>${date}</legend><p class="muted">${zone}</p><div class="slots">${['10:00','14:00','16:00'].map(t=>`<label class="slot"><input type="radio" name="slot" value="${t}" ${state.time===t?'checked':''}> ${t}</label>`).join('')}</div></fieldset><p class="error" id="time-error" role="alert"></p><div class="actions"><button data-go="signup">이전</button><button class="primary" id="confirm">예약 확인 →</button></div>`;
+ if(state.page==='summary')html=heading('03 / CONFIRMED','인터뷰 일정이 정해졌어요')+`<span class="status">예약 완료(시연)</span>${summary()}<p class="muted">실제 예약이나 메일 발송은 없습니다.</p><div class="notice">예약 체험이 완료되었습니다. 시간을 바꾸거나 처음부터 다시 체험할 수 있습니다.</div><div class="actions"><button data-go="time">시간 바꾸기</button><button class="primary" id="restart">처음부터 체험</button></div>`;
+ screen.innerHTML=html;
+ screen.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.go)));
+ if(state.page==='signup'){
+ const name=document.getElementById('name'),email=document.getElementById('email');
+ name.addEventListener('input',()=>state.name=name.value);email.addEventListener('input',()=>state.email=email.value);
+ document.getElementById('fill').onclick=()=>{name.value=state.name='가상민지';email.value=state.email='minji.demo@example.com';};
+ document.getElementById('signup').onsubmit=e=>{e.preventDefault();state.name=name.value;state.email=email.value;let first=null;
+ const errors={name:!state.name.trim()?'이름을 입력해 주세요':state.name!=='가상민지'?'시연 전용 이름 가상민지만 사용해 주세요':'',email:! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.email)?'이메일 형식을 확인해 주세요':state.email!=='minji.demo@example.com'?'시연 전용 이메일 minji.demo@example.com만 사용해 주세요':''};
+ for(const id of ['name','email']){document.getElementById(id+'-error').textContent=errors[id];document.getElementById(id).setAttribute('aria-invalid',String(!!errors[id]));if(errors[id]&&!first)first=document.getElementById(id);}
+ if(first)first.focus();else go('time');};
+ }
+ if(state.page==='time'){
+ screen.querySelectorAll('[name=slot]').forEach(r=>r.onchange=()=>{state.time=r.value;document.getElementById('time-error').textContent='';});
+ document.getElementById('confirm').onclick=()=>{if(!state.time){document.getElementById('time-error').textContent='예약 시간을 선택해 주세요';screen.querySelector('[name=slot]').focus();return;}state.booked=true;go('summary');};
+ }
+ if(state.page==='summary')document.getElementById('restart').onclick=reset;
+}
+render();
+</script>
+</body></html>

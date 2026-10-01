@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { VmCard, VmDecisionCard, VmMember } from "../lib/view-model";
 import { DecisionRequestCard, type DecideRequest } from "./DecisionRequestCard";
 import { formatDateRange, formatHourRange } from "./format";
@@ -24,9 +24,12 @@ export function DecisionCard({ card, onDecide, onDecideRequest, members = [] }: 
 
 function ApprovalCard({ card, onDecide }: { card: VmCard; onDecide: (cardId: string, approve: boolean) => Promise<unknown> }) {
   const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
   const decide = async (approve: boolean) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setPending(true);
-    try { await onDecide(card.id, approve); } finally { setPending(false); }
+    try { await onDecide(card.id, approve); } finally { inFlight.current = false; setPending(false); }
   };
 
   return (

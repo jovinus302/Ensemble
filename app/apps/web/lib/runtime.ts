@@ -4,7 +4,7 @@ import { readFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { SqliteLedgerStore, type LedgerStore } from '@ensemble/store';
 import { loadEnv, modelFor, pmRuntimeFromEnv, type LlmProvider } from '@ensemble/llm';
-import { ClaudeSessionConnector, CodexSessionConnector, codexSettingsFromEnv, type SessionConnector } from '@ensemble/agents';
+import { ClaudeSessionConnector, CodexSessionConnector, CodexLlmProvider, codexSettingsFromEnv, type SessionConnector } from '@ensemble/agents';
 import { ProjectManager, type FreeStartResult } from '@ensemble/orchestrator';
 import { project, type AnyEvent, type LedgerEvent } from '@ensemble/core';
 import { continuousScenario, advanceScript, createRevisionGenerator, sceneEvents, SCENE_NOW, type ScriptProgress, type Condition, type RevisionGenerator } from '@ensemble/scenarios';
@@ -38,7 +38,7 @@ function liveAgents(runtime: 'codex' | 'claude') {
   if (!inRepo.startsWith('..') && !path.isAbsolute(inRepo)) throw new Error('ENSEMBLE_AGENT_WORKSPACE_ROOT must be outside the repository');
   // The model stays on the user's runtime default unless ENSEMBLE_MODEL_AGENT overrides it.
   const model = process.env.ENSEMBLE_MODEL_AGENT?.trim();
-  return { connector: runtime === 'codex' ? new CodexSessionConnector({ workspaceRoot }) : new ClaudeSessionConnector({ workspaceRoot, ...(model ? { model } : {}) }), turnTimeoutMs };
+  return { connector: runtime === 'codex' ? new CodexSessionConnector({ workspaceRoot, ...(model ? { model } : {}) }) : new ClaudeSessionConnector({ workspaceRoot, ...(model ? { model } : {}) }), turnTimeoutMs };
 }
 
 /** The PM already told the channel; the server log keeps the cause for diagnosis. */
@@ -66,6 +66,8 @@ export class WebRuntime {
   readonly store: LedgerStore;
   meta: Metadata;
   pm!: ProjectManager;
+  private pmLlm!: LlmProvider;
+  private pmModel = '';
   busy = false;
   private queue: Promise<unknown> = Promise.resolve();
   private intake: Promise<unknown> = Promise.resolve();
@@ -81,7 +83,6 @@ export class WebRuntime {
   private activityKind: Activity['kind'] = 'idle';
   private ready: Promise<void>;
   private readonly metaFile: string;
-  private pmProvider?: LlmProvider;
 
   constructor(private readonly options: { dataDir?: string; store?: LedgerStore; llm?: LlmProvider; connector?: SessionConnector; generateRevision?: RevisionGenerator } = {}) {
     loadEnv();
@@ -119,14 +120,21 @@ export class WebRuntime {
     await this.save();
   }
   /** ENSEMBLE_PM_RUNTIME picks the PM backend (api, codex, or claude); an injected provider wins. */
-  private pmLlm() { return this.options.llm ?? (this.pmProvider ??= pmRuntimeFromEnv().llm); }
   private createPm() {
     const runtime = process.env.ENSEMBLE_AGENT_RUNTIME ?? 'fake';
     if (!['fake', 'codex', 'claude'].includes(runtime)) throw new Error('ENSEMBLE_AGENT_RUNTIME must be fake, codex, or claude');
+    const pmRuntime = process.env.ENSEMBLE_PM_RUNTIME?.trim() || 'api';
+    if (!['api', 'codex', 'claude'].includes(pmRuntime)) throw new Error('ENSEMBLE_PM_RUNTIME must be api, codex, or claude');
+    const timeoutMs = process.env.ENSEMBLE_PM_TIMEOUT_MS ? Number(process.env.ENSEMBLE_PM_TIMEOUT_MS) : Number(process.env.ENSEMBLE_PM_TIMEOUT_MINUTES ?? 1.5) * 60_000;
+    this.pmLlm = this.options.llm ?? (pmRuntime === 'codex'
+      ? new CodexLlmProvider({ timeoutMs, effort: process.env.ENSEMBLE_PM_EFFORT?.trim() || 'low', onTiming: timing => console.info('[ensemble:pm-model]', JSON.stringify(timing)) })
+      : pmRuntimeFromEnv().llm);
+    this.pmModel = modelFor('pm', pmRuntime === 'codex' ? 'codex' : 'anthropic');
     // Agent results arrive as attachments recorded from the agent's workspace; the PM reads them from the ledger.
-    this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: this.pmLlm(), model: modelFor('pm'),
+    this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: this.pmLlm, model: this.pmModel,
+      onTiming: timing => console.info('[ensemble:pm-queue]', JSON.stringify(timing)),
       // The demo's third scene observes a change during construction; its simulated build ends after that change.
-      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' || runtime === 'claude' ? liveAgents(runtime) : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'), this.options.generateRevision ?? createRevisionGenerator(this.pmLlm(), modelFor('pm')), (agentId, version) => this.meta.mode !== 'scenario' || agentId !== 'prototype-agent' || version > 1, 2000,
+      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' || runtime === 'claude' ? liveAgents(runtime) : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'), this.options.generateRevision ?? createRevisionGenerator(this.pmLlm, this.pmModel), (agentId, version) => this.meta.mode !== 'scenario' || agentId !== 'prototype-agent' || version > 1, 2000,
         async taskId => project(await this.store.read({ projectId: this.meta.projectId })).tasks.get(taskId)?.spec) }),
       // Live scenario inputs and PM/agent replies share the store's wall clock.
       clock: () => new Date(),
@@ -210,7 +218,10 @@ export class WebRuntime {
     const limit = ['codex', 'claude'].includes(process.env.ENSEMBLE_AGENT_RUNTIME ?? '') ? codexSettingsFromEnv().turnTimeoutMs : 120_000;
     const agentStalled = starts.find(t => now - t.progress >= limit);
     const blocked = [...state.tasks.values()].find(t => t.status === 'blocked' && t.blocked);
-    const since = this.waiting ? new Date(this.waiting.since).toISOString() : starts.length ? new Date(Math.min(...starts.map(t => t.start))).toISOString() : this.activitySince;
+    const since = kind === 'pm_thinking' ? this.activitySince
+      : kind === 'scenario_waiting' && this.waiting ? new Date(this.waiting.since).toISOString()
+      : kind === 'agent_working' && starts.length ? new Date(Math.min(...starts.map(t => t.start))).toISOString()
+      : this.activitySince;
     const condition = this.waiting?.condition;
     const who = condition?.kind === 'taskOf' ? state.members.get(condition.assignee)?.displayName ?? '담당자' : undefined;
     const target = who ? `${who} 작업 상태를` : '다음 단계 조건을';
@@ -238,6 +249,8 @@ export class WebRuntime {
     const state = project(events);
     const exists = this.meta.mode === 'scenario' || !!state.plan || state.pendingPlans.size > 0 || (state.goal?.text !== '새 프로젝트' && !!state.goal) || events.some(e => e.type === 'message_recorded');
     if (exists && !confirmReplace) throw new RuntimeError('project_exists', '진행 중인 프로젝트가 있습니다. 기존 기록을 보관하고 새 프로젝트를 시작할까요?');
+    // A confirmed replacement cancels obsolete model work before draining the old PM queue.
+    if (!this.options?.llm) await this.pmLlm?.close?.();
     if (this.scenarioFlight) {
       this.scenarioAbort?.abort(); await this.scenarioFlight.catch(() => undefined);
     }
@@ -302,7 +315,7 @@ export class WebRuntime {
           const messageId = `script:${this.meta.projectId}:${step}:human`;
           await this.store.append([{ ...this.context(), actor: { kind: 'human', id: authorId }, type: 'message_recorded', idempotencyKey: messageId, payload: { messageId, authorId, text, attachmentIds: [] } }]);
         },
-        generateRevision: input => (this.options?.generateRevision ?? createRevisionGenerator(this.pmLlm(), modelFor('pm')))(input),
+        generateRevision: input => (this.options?.generateRevision ?? createRevisionGenerator(this.pmLlm, this.pmModel))(input),
         read: () => this.store.read({ projectId: this.meta.projectId }),
         recordStop: async reason => { await this.store.append([{ ...this.context(), actor: { kind: 'system', id: 'scenario' }, type: 'scenario_stopped', payload: { scenario: continuousScenario.key, step: this.meta.script!.step, reason } }]); },
       }, continuousScenario.steps, this.meta.script, continuousScenario.completion);
@@ -386,6 +399,7 @@ export class WebRuntime {
   }
   async stop() {
     this.scenarioAbort?.abort();
+    if (!this.options?.llm) await this.pmLlm?.close?.();
     await this.scenarioFlight?.catch(() => undefined);
     await this.intake;
     await this.pm.stop(); this.store.close(); this.listeners.clear();

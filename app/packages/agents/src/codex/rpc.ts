@@ -126,6 +126,7 @@ export class JsonRpcClient extends EventEmitter {
 
   async close(): Promise<void> {
     this.fail(new Error('Codex app-server client closed'));
-    await this.exited;
+    const force = setTimeout(() => this.child.kill('SIGKILL'), 1000);
+    try { await this.exited; } finally { clearTimeout(force); }
   }
 }

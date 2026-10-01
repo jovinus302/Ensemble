@@ -1,20 +1,23 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 export function FreeStart({ onStart, onCancel }: { onStart: (goal: string, deadline?: string) => Promise<void>; onCancel?: () => void }) {
   const [goal, setGoal] = useState("");
   const [deadline, setDeadline] = useState("");
   const [pending, setPending] = useState(false);
+  const submitting = useRef(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!goal.trim()) return;
+    if (!goal.trim() || submitting.current) return;
+    submitting.current = true;
     setPending(true);
     try {
       // 날짜 입력은 서울 기준 그날 자정으로 보낸다.
       await onStart(goal.trim(), deadline ? `${deadline}T00:00:00+09:00` : undefined);
     } finally {
+      submitting.current = false;
       setPending(false);
     }
   };

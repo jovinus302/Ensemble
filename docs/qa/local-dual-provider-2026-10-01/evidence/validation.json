@@ -1,0 +1,32 @@
+{
+  "codeCommit": "26658c0ab42a657b1bb54bed84bc219c426373d9",
+  "upstreamCommit": "bed2b2753f37b5b361518af4a7a16268c08b90fe",
+  "tests": {
+    "files": 70,
+    "passed": 623,
+    "exitCode": 0
+  },
+  "typecheck": {
+    "exitCode": 0
+  },
+  "build": {
+    "exitCode": 0
+  },
+  "browser": {
+    "desktop": true,
+    "mobile": true,
+    "counterArtifact": true,
+    "liveCancellationAndIsolation": true,
+    "sseReconnect": true,
+    "providers": [
+      "codex",
+      "claude"
+    ]
+  },
+  "github": {
+    "requiredRules": [],
+    "branchProtection": "not protected (404)",
+    "statusCheckRollup": [],
+    "requiredReviews": []
+  }
+}
