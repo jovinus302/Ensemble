@@ -390,6 +390,17 @@ button:disabled { opacity: .45; cursor: default; }
 .decision-option-head { display: flex; align-items: center; gap: var(--ens-space-2); }
 .decision-tradeoff { margin: 2px 0 0; }
 .decision-summary { margin: 2px 0 0; padding-left: var(--ens-space-4); }
+/* 답변형 카드: Agent가 내놓은 답을 바로 고르는 버튼. 추천안은 테두리로 강조하고 근거를 붙인다. */
+.answer-choices { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--ens-space-2); }
+.answer-choice { padding: var(--ens-space-2) var(--ens-space-3); border-radius: var(--ens-radius-md); background: var(--ens-surface-container-low); border: 1px solid transparent; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.answer-choice-recommended { background: var(--ens-primary-container); color: var(--ens-on-primary-container); border: 2px solid var(--ens-primary); }
+.answer-choice-recommended .badge-recommend { background: var(--ens-on-primary); color: var(--ens-primary); }
+.answer-choice > button { display: inline-flex; align-items: center; gap: var(--ens-space-1); max-width: 100%; text-align: left; }
+.answer-choice-text, .answer-choice-why { margin: 0; overflow-wrap: anywhere; }
+/* 긴 맥락은 앞부분만 보이고 "더 보기"로 펼친다. */
+.compact-text > p { margin: 0; }
+.compact-more > summary { cursor: pointer; color: var(--ens-primary); margin-top: 2px; }
+.compact-more[open] > summary { margin-bottom: 2px; }
 .decision-impact { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--ens-space-3); margin: 0; }
 .decision-impact dt { color: var(--ens-on-surface-variant); }
 .decision-impact dd { margin: 0; }

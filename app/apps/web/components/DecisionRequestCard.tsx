@@ -74,6 +74,8 @@ function EditForm({ card, members, pending, onSubmit, onCancel }: {
  * 버튼은 [추천대로 진행] [다른 안 선택] [고쳐서 승인] [보류] 네 가지다.
  * 자유 답변형(answerMode "text", 예: Agent 질문의 missing_info)은 답 없이 진행할 수 없다: 추천대로 진행·다른 안 선택 대신
  * 답변 입력란과 [답변 보내기] [보류]만 둔다. 답 없이 승인하면 요청이 닫히고 Agent는 오지 않을 답을 기다리게 된다.
+ * 답변형 카드의 선택지에 전달할 답(answerText)이 있으면 그 선택지를 바로 고르는 버튼으로 보이고(추천안을 강조하고 근거를 붙인다),
+ * 그 아래에 직접 답하는 입력란을 그대로 둔다. answerText가 하나도 없으면(예전 서버) 입력란만 둔다.
  */
 export function DecisionRequestCard({ card, members, onDecide }: { card: VmDecisionCard; members: VmMember[]; onDecide: DecideRequest }) {
   const [pending, setPending] = useState(false);
@@ -84,6 +86,9 @@ export function DecisionRequestCard({ card, members, onDecide }: { card: VmDecis
   const recommended = options.find(o => o.recommended);
   const others = options.filter(o => !o.recommended);
   const textMode = card.answerMode === "text";
+  const answerChoices = textMode ? options.filter(o => o.answerText) : [];
+  // 추천안이 답 버튼 중 하나면 그 버튼에 강조와 근거를 붙이고, 위쪽 추천 블록은 그리지 않는다(같은 안을 두 번 보이지 않는다).
+  const recommendedIsChoice = answerChoices.some(o => o.recommended);
   const canEdit = card.answerMode === "choose" && (card.editable?.length ?? 0) > 0;
   const delta = deadlineDeltaLabel(card.impact.deadlineDeltaDays);
 
@@ -101,7 +106,29 @@ export function DecisionRequestCard({ card, members, onDecide }: { card: VmDecis
       </header>
       <h3 className="card-title">{card.question}</h3>
 
-      {recommended && (
+      {answerChoices.length > 0 && !recommendedIsChoice && (
+        <p className="card-text">{card.recommendation.rationale}</p>
+      )}
+      {answerChoices.length > 0 && (
+        <ul className="answer-choices" aria-label="고를 수 있는 답">
+          {answerChoices.map(o => (
+            <li key={o.optionId} className={`answer-choice${o.recommended ? " answer-choice-recommended" : ""}`}>
+              <button type="button" className={o.recommended ? "btn-primary" : "btn-outlined"} disabled={pending}
+                onClick={() => void send({ action: "choose", optionId: o.optionId })}>
+                {o.recommended && <span className="badge badge-recommend">PM 추천</span>} {o.label}
+              </button>
+              {o.answerText !== o.label && <p className="small muted answer-choice-text">전달할 답: “{o.answerText}”</p>}
+              {o.recommended && <p className="small answer-choice-why">{card.recommendation.rationale}</p>}
+              {o.recommended && card.recommendation.evidence.length > 0 && (
+                <ul className="evidence small">{card.recommendation.evidence.map((e, i) => <li key={i}>{e}</li>)}</ul>
+              )}
+              {o.tradeoff && <p className="small muted decision-tradeoff">{o.tradeoff}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {recommended && answerChoices.length === 0 && (
         <div className="recommendation" aria-label="PM 추천안">
           <div className="recommendation-head">
             <span className="badge badge-recommend">PM 추천</span>
@@ -158,7 +185,7 @@ export function DecisionRequestCard({ card, members, onDecide }: { card: VmDecis
       )}
       {textMode ? (
         <form className="decision-form" onSubmit={e => { e.preventDefault(); if (text.trim()) void send({ action: "answer", text: text.trim() }); }}>
-          <label className="field">답변<textarea className="decision-text" value={text} onChange={e => setText(e.target.value)} rows={3} placeholder="Agent에게 그대로 전달돼요" required disabled={pending} /></label>
+          <label className="field">{answerChoices.length > 0 ? "직접 답하기" : "답변"}<textarea className="decision-text" value={text} onChange={e => setText(e.target.value)} rows={3} placeholder="Agent에게 그대로 전달돼요" required disabled={pending} /></label>
           <div className="card-actions decision-actions">
             <button type="button" className="btn-outlined" disabled={pending} onClick={() => void send({ action: "reject" })}>보류</button>
             <button type="submit" className="btn-primary" disabled={pending || !text.trim()}>답변 보내기</button>
