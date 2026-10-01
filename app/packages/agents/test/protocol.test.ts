@@ -150,7 +150,9 @@ describe("scope cuts (M11 T2)", () => {
     expect(text).toContain("## 3. 인계 조건\n- 가입·시간 선택·예약 확인·결제 화면으로 이동 가능 [출처: plan-3:h0]\n- 실제 개인정보 저장 금지 [출처: plan-3:h1]\n## 범위 제외·한정 (사람이 정한 범위)");
     expect(text).toContain("제외 범위 — 만들지 않습니다:\n- 결제 화면과 모의 결제 버튼 [출처: plan-3:x0]");
     expect(text).toContain("한정 범위 — 여기까지만 만듭니다:\n- 가입·시간 선택·예약 확인까지 [출처: plan-3:l0]");
-    expect(text).toContain("금지 제약은 범위와 관계없이 그대로 지킵니다");
+    expect(text).toContain('제외 범위와 무관한 금지 제약(예: "실제 개인정보 저장 없음", "외부 네트워크 호출 없음")은 범위와 관계없이 그대로 지킵니다.');
+    // M12 V1: a qualifier inside an excluded requirement goes with it.
+    expect(text).toContain('제외 범위를 요구하는 조건 안의 "실제 결제 연동 없이" 같은 수식은 그 조건과 함께 빠집니다.');
     expect(taskInstructions({ ...task, exclusions: [], limits: [] })).not.toContain("범위 제외·한정");
   });
 

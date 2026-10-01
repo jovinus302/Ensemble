@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { forecastFromState, project } from "../src/index.ts";
 import type { EventPayloads, EventType, LedgerEvent } from "../src/index.ts";
 
-it.each(['blocked', 'revising', 'submitted'] as const)('marks stopped %s work as uncertain and clears after resume', status => {
+it.each(['blocked'] as const)('marks stopped %s work as uncertain and clears after resume', status => {
   const state = project([]);
   const spec = { id: 'research', title: '조사', assignee: 'agent', dependsOn: [], handoffConditions: [] };
   state.plan = { version: 1, tasks: [spec], reason: '', approvedBy: 'owner' };
@@ -14,6 +14,20 @@ it.each(['blocked', 'revising', 'submitted'] as const)('marks stopped %s work as
   state.tasks.get('research')!.status = 'running';
   state.activeTurn.set('agent', 'research');
   expect(forecastFromState(state, now)).not.toHaveProperty('uncertainty');
+});
+
+it('W1 normal submitted review is not stopped; a technical review failure is stopped until a new result', () => {
+  const events: LedgerEvent[] = [];
+  const emit = <K extends EventType>(type: K, payload: EventPayloads[K]) => events.push({ type, payload, id: `${events.length}`, seq: events.length + 1, at: '2026-10-01T00:00:00Z', projectId: 'p', targetProductId: 'p', actor: { kind: 'system', id: 'pm' } });
+  emit('member_joined', { memberId: 'agent', kind: 'agent', displayName: 'Agent' });
+  emit('plan_committed', { version: 1, basedOn: null, tasks: [{ id: 'prototype', title: '프로토타입', assignee: 'agent', dependsOn: [], handoffConditions: [] }], reason: '', approvedBy: 'owner', sourceMessageIds: [] });
+  emit('result_submitted', { taskId: 'prototype', resultId: 'r', planVersion: 1, summary: '', artifactIds: [] });
+  const now = new Date('2026-10-01');
+  expect(forecastFromState(project(events), now).uncertainty).toBeUndefined();
+  emit('pm_considered', { considerationId: 'failure', triggerId: 'r', whoseAction: 'owner', alreadyKnows: 'no', evidence: ['r'], decision: 'speak', reason: '결과 내용이 아니라 판단 과정의 문제라 사람이 결과를 확인해야 한다', openTopics: [] });
+  expect(forecastFromState(project(events), now).uncertainty?.stoppedTaskIds).toEqual(['prototype']);
+  emit('result_submitted', { taskId: 'prototype', resultId: 'r2', planVersion: 1, summary: '', artifactIds: [] });
+  expect(forecastFromState(project(events), now).uncertainty).toBeUndefined();
 });
 
 it("reflects availability changes, checked work, agents, cancellation, and the goal deadline", () => {

@@ -108,7 +108,7 @@ const block = (value: object) => ["```" + REPORT_FENCE, JSON.stringify(value, nu
 
 /**
  * The scope people cut, kept apart from the handoff conditions (which are never rewritten): what not to
- * build, how far to go, and that prohibitions in the conditions still hold. Empty when nothing was cut.
+ * build, how far to go, and that prohibitions unrelated to the cut still hold (M12 V1). Empty when nothing was cut.
  */
 export function scopeSection(input: Pick<TaskInstructionsInput, "exclusions" | "limits">): string[] {
   const exclusions = input.exclusions ?? [];
@@ -119,7 +119,8 @@ export function scopeSection(input: Pick<TaskInstructionsInput, "exclusions" | "
     ...(exclusions.length ? ["제외 범위 — 만들지 않습니다:", ...exclusions.map((item) => `- ${cite(item)}`)] : []),
     ...(limits.length ? ["한정 범위 — 여기까지만 만듭니다:", ...limits.map((item) => `- ${cite(item)}`)] : []),
     "- 인계 조건 중 제외 범위(또는 한정 범위 밖)를 요구하는 조건이나 그 부분은 만들지 않습니다. 조건의 나머지 부분은 그대로 채웁니다.",
-    '- "…하지 않는다", "…없음", "금지" 같은 금지 제약은 범위와 관계없이 그대로 지킵니다.',
+    '- 제외 범위를 요구하는 조건 안의 "실제 결제 연동 없이" 같은 수식은 그 조건과 함께 빠집니다.',
+    '- 제외 범위와 무관한 금지 제약(예: "실제 개인정보 저장 없음", "외부 네트워크 호출 없음")은 범위와 관계없이 그대로 지킵니다.',
   ];
 }
 

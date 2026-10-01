@@ -21,7 +21,7 @@ type Judge = (taskId: string, files: string, request: LlmRequest) => Record<stri
 const met = (file: string, quote: string) => ({ conditions: [{ index: 1, met: true, file, quote }], decisionConflicts: [] });
 const gap = (missing: string) => ({ conditions: [{ index: 1, met: false, missing }], decisionConflicts: [] });
 const fileOf = (files: string) => /### 파일: ([^\n]+)/.exec(files)?.[1] ?? '';
-type Coordinated = { posts: { text: string; kind: 'fact' }[]; events: []; resolutions?: { taskId: string; action: 'accept' | 'retry' | 'recheck'; note?: string }[]; reopens?: { taskId: string; reason: string }[] };
+type Coordinated = { posts: { text: string; kind: 'fact' }[]; events: []; resolutions?: { taskId: string; action: 'accept' | 'retry' | 'recheck'; note?: string }[]; reopens?: { taskId: string; reason: string; announcement?: string }[] };
 
 async function fixture(options: { judge: Judge; seed?: (ctx: { projectId: string; targetProductId: string }) => NewLedgerEvent[] }) {
   const ctx = { projectId: `resolve-${++n}`, targetProductId: 'product' };
@@ -226,9 +226,101 @@ it('T3/U3: a person reopens a checked agent result; the agent revises it in a ne
   expect(done.map(p => p.text)).toContain('프로젝트 작업이 모두 확인됐어요.');
 });
 
+it('M12 V2: a scope cut after completion reopens the checked work with the coordinator announcement as the only PM line', async () => {
+  // Every condition passes, including the person's request added by the reopen.
+  const f = await fixture({ judge: (task, files, request) => ({ conditions: (request.messages[0]!.content.includes('\n2. 사용자 요청: ') ? [1, 2] : [1]).map(index => ({ index, met: true, file: fileOf(files), quote: task === 'flow' ? '가입 → 시간 선택 → 예약 확인' : '대안 A만 정리했습니다' })), decisionConflicts: [] }) });
+  await f.pm['dispatcher'].startReady('kickoff');
+  await f.settled(events => events.some(e => e.type === 'task_checked' && e.payload.taskId === 'research'));
+  await f.pm.postMessage('designer', '흐름 설계 올립니다', [{ name: 'flow.md', mimeType: 'text/markdown', content: '가입 → 시간 선택 → 예약 확인', taskId: 'flow' }]);
+  expect(await status(f, 'flow')).toBe('checked');
+  const announcement = '정리하면 결제를 이번 범위에서 뺍니다 — 조사를 다시 열어 결제를 빼도록 맡겼어요.';
+  f.coordinate({ reopens: [{ taskId: 'research', reason: '결제 제외 반영', announcement }] });
+  const posts = await f.pm.postMessage('owner', 'ㅇㅋ 결제는 이번엔 빼자');
+  expect(posts).toHaveLength(1);
+  expect(posts[0]!.text.startsWith(announcement)).toBe(true);
+  expect(['revising', 'running']).toContain(await status(f, 'research'));
+  // A person's checked task: the same one line, addressed to the assignee.
+  f.coordinate({ reopens: [{ taskId: 'flow', reason: '결제 제외 반영', announcement: '정리하면 결제를 이번 범위에서 뺍니다 — 흐름 설계를 다시 열어 결제를 빼도록 맡겼어요.' }] });
+  const human = await f.pm.postMessage('owner', '결제 흐름도 빼자');
+  expect(human.map(p => p.text)).toEqual([expect.stringMatching(/^@디자이너 정리하면 결제를 이번 범위에서 뺍니다 — 흐름 설계를 다시 열어 결제를 빼도록 맡겼어요\. 보완본을 이 작업에 첨부해 올려 주세요\./)]);
+});
+
 it('T3: only the decider or a downstream assignee reopens a checked result; the PM says so in Korean', async () => {
   const f = await fixture({ seed: researchChecked, judge: () => gap('x') });
   f.coordinate({ reopens: [{ taskId: 'flow', reason: '다시' }] });
   const posts = await f.pm.postMessage('designer', '흐름 다시 볼게요');
   expect(posts.map(p => p.text)).toEqual(['"흐름 설계" 작업은 아직 확인 전(시작 전)이라 다시 열 결과가 없어요.']);
+});
+
+// M12 W2 (QA5 Opus N4): '다시 검토' on a review that could not finish again said nothing and left no record.
+const stuckFlow = async (judge: Judge) => {
+  const f = await fixture({ seed: researchChecked, judge });
+  await f.pm.postMessage('designer', '흐름 설계 올립니다', [{ name: 'flow.md', mimeType: 'text/markdown', content: '가입 → 시간 선택 → 예약 확인', taskId: 'flow' }]);
+  expect(await status(f, 'flow')).toBe('submitted');
+  return f;
+};
+const spoken = async (f: { events: () => Promise<AnyEvent[]> }) => channel(await f.events());
+
+it('W2: a re-check that fails again says so in one line and records it, every time', async () => {
+  const f = await stuckFlow(() => new Error('proxy 502'));
+  const before = (await spoken(f)).length;
+  const first = await f.pm.resolveTask('flow', { action: 'recheck', by: 'owner' });
+  const line = '"흐름 설계" 결과를 다시 검토했지만 검토 응답을 받지 못한 문제 때문에 아직 확인되지 않았어요.';
+  expect(first.map(p => p.text)).toEqual([expect.stringContaining(line)]);
+  expect((await spoken(f)).slice(before)).toEqual([expect.stringContaining(line)]);
+  // Pressed again: again one line and one more record, never a silent no-op.
+  await f.pm.resolveTask('flow', { action: 'recheck', by: 'designer' });
+  expect((await spoken(f)).slice(before).filter(text => text.includes(line))).toHaveLength(2);
+  expect(await status(f, 'flow')).toBe('submitted');
+  // The web still recognizes the stuck result.
+  expect((await f.events()).some(e => e.type === 'pm_considered' && e.payload.reason === '결과 내용이 아니라 판단 과정의 문제라 사람이 결과를 확인해야 한다')).toBe(true);
+});
+
+it('W2: a re-check that passes is announced in the channel record, not only returned', async () => {
+  let broken = true;
+  const f = await stuckFlow((_t, files) => broken ? new Error('proxy 502') : met(fileOf(files), '가입 → 시간 선택 → 예약 확인'));
+  broken = false;
+  await f.pm.resolveTask('flow', { action: 'recheck', by: 'owner' });
+  expect(await status(f, 'flow')).toBe('checked');
+  expect(await spoken(f)).toContain('@디자이너 "흐름 설계" 결과를 확인했어요. 다음은 사용자가 "사용성 테스트"를 시작합니다.');
+});
+
+it('W2: a re-check that finds a gap says it was re-checked, then what to fix', async () => {
+  let broken = true;
+  const f = await stuckFlow(() => broken ? new Error('proxy 502') : gap('예약 확인 화면이 없습니다.'));
+  broken = false;
+  const posts = await f.pm.resolveTask('flow', { action: 'recheck', by: 'owner' });
+  expect(await status(f, 'flow')).toBe('revising');
+  const texts = posts.map(p => p.text);
+  expect(texts[0]).toBe('"흐름 설계" 결과를 다시 검토했지만 보완할 점 때문에 아직 확인되지 않았어요.');
+  expect(texts[1]).toMatch(/^@디자이너 흐름 설계 결과에 보완이 필요합니다\.\n- 조건 1\(가입부터 예약 확인까지 화면 목록\): 예약 확인 화면이 없습니다\./);
+  expect(await spoken(f)).toEqual(expect.arrayContaining(texts));
+});
+
+// M12 W4 (QA5 Codex C1): a file attached to a task under revision is its resubmission, whatever the sentence says.
+it('W4: "인터뷰 보완본을 다시 올립니다. 확인해 주세요" with a file on the assignee\'s revising task is a result, never a resolve request', async () => {
+  let fixed = false;
+  const f = await fixture({ seed: researchChecked, judge: (_t, files) => fixed ? met(fileOf(files), '가입 → 시간 선택 → 예약 확인') : gap('예약 확인 화면이 없습니다.') });
+  await f.pm.postMessage('designer', '흐름 설계 결과를 첨부합니다', [{ name: 'flow.md', mimeType: 'text/markdown', content: '가입 → 시간 선택', taskId: 'flow' }]);
+  expect(await status(f, 'flow')).toBe('revising');
+  fixed = true;
+  const onMessage = vi.spyOn(f.pm['coordinator'], 'onMessage');
+  // No task metadata on the file, and a sentence that reads like a request: still the resubmission.
+  const posts = await f.pm.postMessage('designer', '흐름 보완본을 다시 올립니다. 확인해 주세요.', [{ name: 'flow-v2.md', mimeType: 'text/markdown', content: '가입 → 시간 선택 → 예약 확인' }]);
+  expect(onMessage).not.toHaveBeenCalled();
+  expect(f.requests.some(r => r.forceTool === 'route_message')).toBe(false);
+  const events = await f.events();
+  expect(events.findLast(e => e.type === 'result_submitted')).toMatchObject({ actor: { id: 'designer' }, payload: { taskId: 'flow', summary: '흐름 보완본을 다시 올립니다. 확인해 주세요.' } });
+  expect(await status(f, 'flow')).toBe('checked');
+  expect(posts.map(p => p.text)[0]).toBe('@디자이너 "흐름 설계" 보완본을 확인했어요. 다음은 사용자가 "사용성 테스트"를 시작합니다.');
+});
+
+it('W4: the decider\'s file on a person\'s stopped task is reviewed on their behalf', async () => {
+  const f = await fixture({ seed: researchChecked, judge: (_t, files) => files.includes('예약 확인') ? met(fileOf(files), '가입 → 시간 선택 → 예약 확인') : gap('예약 확인 화면이 없습니다.') });
+  const submit = (i: number) => f.pm.postMessage('designer', `흐름 ${i}`, [{ name: `flow-${i}.md`, mimeType: 'text/markdown', content: '가입 → 시간 선택', taskId: 'flow' }]);
+  await submit(1); await submit(2); await submit(3);
+  expect(await status(f, 'flow')).toBe('blocked');
+  await f.pm.postMessage('owner', '보완본을 다시 올립니다. 확인해 주세요', [{ name: 'flow-fixed.md', mimeType: 'text/markdown', content: '가입 → 시간 선택 → 예약 확인' }]);
+  expect(await status(f, 'flow')).toBe('checked');
+  expect((await f.events()).findLast(e => e.type === 'result_submitted')).toMatchObject({ actor: { id: 'owner' }, payload: { taskId: 'flow' } });
 });

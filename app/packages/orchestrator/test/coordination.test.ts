@@ -68,6 +68,70 @@ it('answers using code-calculated seven-day delay and cites the forecast fact', 
 });
 
 const reduced = initialTasks.map(t => ({ ...t, handoffConditions: t.handoffConditions.filter(c => c !== '결제') }));
+it('V2 four checked tasks: records 결제 exclusion and reopens only the affected final output', async () => {
+  const tasks = [task('research', 'agent'), task('interview', 'owner'), { ...task('design', 'designer', ['가입·결제 흐름']), dependsOn: ['research', 'interview'] }, { ...task('prototype', 'agent', ['가입·모의결제 포함 HTML']), title: '프로토타입', dependsOn: ['design'] }];
+  const f = await fixture([interpret({ ops: [{ type: 'exclude_scope', taskId: 'design', item: '결제', sourceMessageIds: ['proposal', 'decision'] }] }), judge({ decision: 'silent', text: '', reason: '연산으로 반영' })], tasks, '시작', 'owner', false);
+  for (const t of tasks) { await f.add('result_submitted', { taskId: t.id, resultId: `r-${t.id}`, planVersion: 1, summary: t.title, artifactIds: [] }); await f.add('task_checked', { taskId: t.id, resultId: `r-${t.id}`, reason: '확인' }); }
+  await f.message('proposal', 'designer', '결제 쪽은 아직 애매해서 빼면 좋겠어요');
+  await f.message('decision', 'owner', 'ㅇㅋ 결제는 이번엔 빼자');
+  const r = await f.coordinator.onMessage('decision');
+  expect(project(await f.read()).tasks.get('prototype')).toMatchObject({ status: 'checked', spec: { exclusions: ['결제'] } });
+  expect(r.reopens).toEqual([{ taskId: 'prototype', reason: '결제 제외 반영', announcement: expect.stringMatching(/정리하면.*다시/) }]);
+  expect(r.posts).toEqual([]);
+  expect(project(await f.read()).tasks.get('design')?.spec.exclusions ?? []).toEqual([]);
+});
+
+it('V2 unknown affected output asks the decider instead of silently dropping the decision', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['m1'] }] }), judge({ decision: 'silent', text: '' })], [task('prototype', 'agent', ['일반 결과'])], 'ㅇㅋ 결제는 이번엔 빼자', 'owner', false);
+  await f.add('result_submitted', { taskId: 'prototype', resultId: 'r', planVersion: 1, summary: '일반 결과', artifactIds: [] });
+  await f.add('task_checked', { taskId: 'prototype', resultId: 'r', reason: '확인' });
+  const r = await f.coordinator.onMessage('m1');
+  expect(r.reopens ?? []).toEqual([]);
+  expect(r.posts.some(p => /어느 작업/.test(p.text))).toBe(true);
+});
+
+it.each(['agent', 'designer'])('V2 checked %s output can be limited, with original conditions and acceptance evidence intact', async assignee => {
+  const specs = [task('prototype', assignee, ['가입·예약·결제 포함', '개인정보 저장 없음'])];
+  const f = await fixture([interpret({ ops: [{ type: 'limit_scope', taskId: 'prototype', items: ['가입', '예약'], sourceMessageIds: ['m1'] }] }), judge({ decision: 'silent', text: '' })], specs, '가입과 예약까지만 하자', 'owner', false);
+  await f.add('result_submitted', { taskId: 'prototype', resultId: 'r', planVersion: 1, summary: '가입 예약 결제', artifactIds: [] });
+  await f.add('task_checked', { taskId: 'prototype', resultId: 'r', reason: '확인' });
+  const result = await f.coordinator.onMessage('m1');
+  expect(result.reopens).toEqual([{ taskId: 'prototype', reason: '가입·예약 범위 한정 반영', announcement: expect.stringContaining('정리하면') }]);
+  expect(result.posts).toEqual([]);
+  expect(project(await f.read()).tasks.get('prototype')).toMatchObject({ status: 'checked', checkedResultId: 'r', spec: { handoffConditions: specs[0]!.handoffConditions, limits: ['가입', '예약'] } });
+});
+
+it('V2 a designer proposal cannot reopen checked work before the decider approves', async () => {
+  const f = await fixture([interpret({ ops: [{ type: 'exclude_scope', taskId: 'prototype', item: '결제', sourceMessageIds: ['m1'] }] }), judge({ decision: 'silent', text: '' })], [task('prototype', 'agent', ['결제 포함'])], '결제 쪽은 아직 애매해서 빼면 좋겠어요', 'designer', false);
+  await f.add('result_submitted', { taskId: 'prototype', resultId: 'r', planVersion: 1, summary: '결제 포함', artifactIds: [] });
+  await f.add('task_checked', { taskId: 'prototype', resultId: 'r', reason: '확인' });
+  expect((await f.coordinator.onMessage('m1')).reopens ?? []).toEqual([]);
+  expect(project(await f.read()).plan?.version).toBe(1);
+});
+
+it('W5 이번 주 5시간 followed by 그럼 프로토타입이 밀리나 answers from recorded weekly capacity', async () => {
+  const f = await fixture([interpret({ conversation: { questionMessageId: 'question', waitingOnMemberIds: [], directedToPm: true }, ops: [{ type: 'set_availability', memberId: 'designer', weeklyHours: 5, period: 'unclear', sourceMessageIds: ['capacity'] } as PlanOp] }), judge({ evidence: ['forecast:current'], answerFactIds: ['forecast:current'], text: '이번 주만인가요, 매주인가요?' })], initialTasks, '시작');
+  await f.message('capacity', 'designer', '이번 주 5시간 가능해요');
+  await f.add('availability_updated', { memberId: 'designer', weeklyHours: 5, weekStart: '2026-09-28' });
+  await f.message('question', 'owner', '그럼 프로토타입이 밀리나?');
+  const r = await f.coordinator.onMessage('question');
+  expect(r.posts.map(p => p.text).join(' ')).not.toMatch(/이번 주만인가|매주.*인가/);
+  expect(r.posts.map(p => p.text).join(' ')).toMatch(/예상 종료|기한|일/);
+  expect(project(await f.read()).availability.get('designer')).toBe(10);
+});
+
+it('W5 a direct task-delay answer cannot contradict the calculated before/after availability forecast', async () => {
+  const specs = [{ ...task('design', 'designer'), title: '흐름 초안' }, { ...task('prototype', 'agent'), title: '프로토타입', dependsOn: ['design'] }];
+  const f = await fixture([interpret({ conversation: { questionMessageId: 'question', waitingOnMemberIds: [], directedToPm: true } }), judge({ evidence: ['forecast:current'], answerFactIds: ['forecast:current'], text: '프로토타입 자체 시작일은 바뀌지 않아요.' })], specs, '시작', 'owner', false);
+  await f.message('capacity', 'designer', '이번 주 5시간 가능해요');
+  await f.add('availability_updated', { memberId: 'designer', weeklyHours: 5, weekStart: '2026-09-28' });
+  await f.message('question', 'owner', '그럼 프로토타입이 밀리나?');
+  const result = await f.coordinator.onMessage('question');
+  expect(result.posts[0]?.text).toContain('프로토타입');
+  expect(result.posts[0]?.text).toContain('3.3일');
+  expect(result.posts[0]?.text).toContain('늦어');
+  expect(result.posts[0]?.text).not.toContain('바뀌지');
+});
 it.each([
   ['accept', '결제 화면 조건은 이제 필요 없어요. 이대로 확인해 주세요'],
   ['retry', '@프로토타입 Agent 다시 맡길게요. 결제 없이 다시 만들어 주세요'],
@@ -110,7 +174,9 @@ it.each([
   else if (action !== 'recheck') await f.add('task_blocked', { taskId: 'prototype', reason: '보완 한도' });
   const result = await f.coordinator.onMessage('m1');
   expect((result.resolutions?.length ?? 0) + (result.reopens?.length ?? 0)).toBe(allowed ? 1 : 0);
-  if (!allowed) expect(result.posts[0]?.text).toContain('권한');
+  // M12 X2: the refusal names who may do it, in the buttons' words.
+  if (!allowed) expect(result.posts[0]?.text).toMatch(action === 'accept' ? /^"이대로 확인"은 결정권자\(.+\)만 할 수 있어요\.$/
+    : action === 'retry' ? /^"다시 맡기기"는 결정권자, 담당자 또는 후행 작업 담당자만/ : /^확인된 결과의 보완은 결정권자나 후행 작업 담당자가/);
 });
 it('does not reuse a previous decider request to authorize a new recovery message', async () => {
   const f = await fixture([interpret({ ops: [{ type: 'resolve_task', taskId: 'prototype', action: 'accept', sourceMessageIds: ['m1'] }] }), judge()], initialTasks, '이대로 확인해 주세요');

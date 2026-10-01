@@ -29,8 +29,7 @@ export function forecastFromState(state: ProjectState, now: Date): ForecastResul
   });
   const stoppedTaskIds = (state.plan?.tasks ?? []).filter(spec => {
     const task = state.tasks.get(spec.id);
-    return task?.status === 'submitted' || task?.status === 'blocked' || (task?.status === 'revising' &&
-      (state.automation.limitReached || (state.members.get(spec.assignee)?.kind === 'agent' && state.activeTurn.get(spec.assignee) !== spec.id)));
+    return task?.status === 'blocked' || (task?.status === 'submitted' && !!task.reviewFailedResultId && task.reviewFailedResultId === task.results.at(-1)?.resultId);
   }).map(spec => spec.id);
   return withStopped(result, stoppedTaskIds);
 }

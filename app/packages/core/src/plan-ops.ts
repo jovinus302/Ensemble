@@ -79,14 +79,23 @@ function updateScope(task: TaskSpec): void {
   // Stored items are names only: a seeded "…까지" or "… 제외" would otherwise be doubled in the title.
   task.exclusions = uniqueScope((task.exclusions ?? legacy.marks.filter(mark => mark.endsWith('제외'))).map(mark => mark.replace(/\s*제외$/, '')));
   task.limits = uniqueScope(task.limits ?? legacy.marks.filter(mark => mark.endsWith('까지')).flatMap(mark => scopeItem(mark).split(/\s*·\s*/)));
-  task.title = withMarks(task.baseTitle, [
+  const displayBase = task.baseTitle.replace(/\s*\(([^()]*)\s+포함\)/g, (group, list: string) => {
+    const parts = list.split(/\s*[·,]\s*/);
+    const kept = parts.filter(part => !task.exclusions!.some(item => excludedNames(item).some(name => part.replace(/\s+/g, '').includes(name.replace(/\s+/g, '')))));
+    return kept.length === parts.length ? group : kept.length ? ` (${kept.join('·')} 포함)` : '';
+  });
+  task.title = withMarks(displayBase, [
     ...task.exclusions.map(item => `${item} 제외`),
     ...(task.limits.length ? [`${task.limits.join('·')}까지`] : []),
   ]);
 }
 
-/** Accepted artifacts describe completed work. New reductions constrain remaining work. */
-export function remainingScopeOps(state: ProjectState, ops: readonly PlanOp[]): PlanOp[] {
+export function scopeMentions(text: string, items: readonly string[]): boolean {
+  return items.some(item => excludedNames(item).some(name => text.replace(/\s+/g, '').includes(name.replace(/\s+/g, ''))));
+}
+
+/** Route reductions to remaining work, or the last affected completed output for explicit reopening. */
+export function remainingScopeOps(state: ProjectState, ops: readonly PlanOp[], outputText: ReadonlyMap<string, string> = new Map()): PlanOp[] {
   const checked = (id: string) => state.tasks.get(id)?.status === 'checked' || state.tasks.get(id)?.blocked?.prevStatus === 'checked';
   const downstream = (id: string): string[] => {
     const seen = new Set<string>([id]);
@@ -94,12 +103,23 @@ export function remainingScopeOps(state: ProjectState, ops: readonly PlanOp[]): 
       for (const task of state.tasks.values()) if (task.spec.dependsOn.includes(parent) && !seen.has(task.spec.id)) { seen.add(task.spec.id); visit(task.spec.id); }
     };
     visit(id);
-    return [...seen].filter(child => child !== id && !checked(child) && state.tasks.get(child)?.status !== 'cancelled');
+    return [...seen].filter(child => child !== id && state.tasks.get(child)?.status !== 'cancelled');
   };
   const routed = ops.flatMap(op => {
     if (!('taskId' in op) || !checked(op.taskId)) return [op];
     if (op.type === 'handoff_early') return [];
-    if (op.type === 'exclude_scope' || op.type === 'limit_scope') return downstream(op.taskId).map(taskId => ({ ...op, taskId }));
+    if (op.type === 'exclude_scope' || op.type === 'limit_scope') {
+      const descendants = downstream(op.taskId);
+      const remaining = descendants.filter(id => !checked(id));
+      if (remaining.length) return remaining.map(taskId => ({ ...op, taskId }));
+      const items = op.type === 'exclude_scope' ? [op.item] : op.items;
+      const affected = [op.taskId, ...descendants].filter(id => {
+        const spec = state.tasks.get(id)?.spec;
+        return spec && scopeMentions([spec.baseTitle ?? spec.title, ...spec.handoffConditions, outputText.get(id) ?? ''].join(' '), items);
+      });
+      const terminal = affected.filter(id => !downstream(id).some(child => affected.includes(child)));
+      return (terminal.length ? terminal : [op.taskId]).map(taskId => ({ ...op, taskId }));
+    }
     return [op];
   });
   const result = new Map<string, PlanOp>();

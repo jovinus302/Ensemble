@@ -103,6 +103,7 @@ function labeler(typed: readonly AnyEvent[], state: ProjectState, name: (id: str
     const colon = raw.indexOf(':'), prefix = colon > 0 ? raw.slice(0, colon) : '', rest = colon > 0 ? raw.slice(colon + 1) : raw;
     if (FORECAST_FACTS[raw]) return FORECAST_FACTS[raw]!;
     if (prefix === 'forecast') return '예측';
+    if (prefix === 'task' && state.tasks.has(rest)) return taskTitle(rest);
     if (prefix === 'msg') { const m = messages.get(rest); return m ? `메시지 · ${quote(m)}` : '메시지'; }
     if (prefix === 'availability') { const h = state.availability.get(rest); return `${name(rest)} 주간 가용 시간${h === undefined ? '' : ` ${h}시간`}`; }
     if (prefix === 'start') { const v = version(rest.split(':')[0]!); return v ? `계획 v${v} 승인 후 작업 시작 안내` : '작업 시작 안내'; }
@@ -119,13 +120,14 @@ function labeler(typed: readonly AnyEvent[], state: ProjectState, name: (id: str
     if (results.has(id)) return `${taskTitle(results.get(id)!)} 결과`;
     const type = events.get(id);
     if (type) return `작업 기록 · ${EVENT_LABEL[type] ?? '기타'}`;
-    if (UUID.test(raw) && raw.replace(UUID, '').replace(/[:\s]/g, '').length <= 8) return '작업 기록';
+    if (UUID.test(raw) && raw.replace(UUID, '').replace(/[:\s]/g, '').length === 0) return '작업 기록';
     return raw;
   };
   const humanize = (text: string) => {
-    const ids = [...results.keys()].flatMap(id => [`result:${id}`, id]).concat([...attachments.keys()].flatMap(id => [`attachment:${id}`, id]));
+    const operations: Record<string, string> = { exclude_scope: '범위 제외', limit_scope: '범위 한정', reopen_task: '작업 다시 열기', set_availability: '가용 시간 변경', handoff_early: '초안 인계', resolve_task: '작업 해결' };
+    const ids = [...results.keys()].flatMap(id => [`result:${id}`, id]).concat([...attachments.keys()].flatMap(id => [`attachment:${id}`, id]), [...state.tasks.keys()].map(id => `task:${id}`), [...state.members.keys()], Object.keys(operations));
     if (!ids.length) return text;
-    return text.replace(new RegExp(ids.sort((a, b) => b.length - a.length).map(escape).join('|'), 'g'), label);
+    return text.replace(new RegExp(`(?<![A-Za-z0-9_-])(?:${ids.sort((a, b) => b.length - a.length).map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g'), id => operations[id] ?? (state.members.has(id) ? name(id) : label(id)));
   };
   return { label, humanize, isMessage: (id: string) => messages.has(id), version, taskTitle };
 }
@@ -177,7 +179,7 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
       kind: authorId === 'pm' ? 'pm' as const : state.members.get(authorId)?.kind ?? 'system' as const,
       ...(e.type === 'message_recorded' && e.payload.threadId ? { threadId: e.payload.threadId } : {}),
       attachments: ids.flatMap(id => { const a = attachments.get(id); return a ? [{ id, name: a.name, url: `/api/attachments/${encodeURIComponent(id)}` }] : []; }),
-      ...(e.type === 'pm_spoke' ? { pm: { kind: e.payload.kind === 'ask' && /^(?:start:|handoff-notice:|turn-blocked:)/.test(e.payload.considerationId) ? 'nudge' : e.payload.kind, reason: REASONS[considered?.reason ?? ''] ?? considered?.reason ?? '', evidence: [...new Set((considered?.evidence ?? []).map(label))] } } : {}),
+      ...(e.type === 'pm_spoke' ? { pm: { kind: e.payload.kind === 'ask' && /^(?:start:|handoff-notice:|turn-blocked:)/.test(e.payload.considerationId) ? 'nudge' : e.payload.kind, reason: humanize(REASONS[considered?.reason ?? ''] ?? considered?.reason ?? ''), evidence: [...new Set((considered?.evidence ?? []).map(e => humanize(label(e))))] } } : {}),
     }];
   });
 
@@ -210,8 +212,8 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
     const key = JSON.stringify([p.triggerId, p.decision, reason, spokenText ?? '']);
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ triggerMessageId: p.triggerId, decision: p.decision, reason, whoseAction: p.whoseAction === null ? null : whoLabel(p.whoseAction, state),
-      alreadyKnows: KNOWS[p.alreadyKnows] ?? p.alreadyKnows, evidence: [...new Set(p.evidence.map(e => label(humanize(e))))], at: e.at,
+    return [{ triggerMessageId: p.triggerId, decision: p.decision, reason, whoseAction: p.whoseAction === null ? null : humanize(whoLabel(p.whoseAction, state)),
+      alreadyKnows: KNOWS[p.alreadyKnows] ?? p.alreadyKnows, evidence: [...new Set(p.evidence.map(e => humanize(label(e))))], at: e.at,
       ...(isMessage(p.triggerId) ? {} : { triggerLabel: label(p.triggerId) }), ...(spokenText ? { spokenText: humanize(stripTaskKeys(spokenText, taskIds)) } : {}) }];
   });
 

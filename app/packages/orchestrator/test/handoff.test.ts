@@ -100,7 +100,7 @@ it('normalizes markdown and whitespace; a citation still not in the file is re-j
     { index: 1, met: true, file: 'flow.md', quote: '가입 흐름을 확인한다.' },
     { index: 2, met: true, file: 'flow.md', quote: '**화면 목록** 세 개' },
   ], decisionConflicts: [] }), call({ conditions: [{ index: 2, met: true, file: 'flow.md', quote: '화면 목록 세 개' }], decisionConflicts: [] })]);
-  const outcome = await judge(llm, state(), { 'flow.md': '# 안내\n- **가입**\n 흐름을 확인한다.\n화면 목록이 없다.' });
+  const outcome = await judge(llm, state(), { 'flow.md': '# 안내(D1의 문제 ①)\n- **가입**\n 흐름을 확인한다.\n화면 목록이 없다.' });
   expect(outcome).toMatchObject({ ok: false, llmCalls: 2, error: expect.stringContaining('결과 내용이 아니라 검토 과정의 문제예요'), citationFailures: [
     { file: 'flow.md', quote: '**화면 목록** 세 개', reason: '기술적 검증 실패(재판단): 정규화 후에도 인용문이 결과 파일에 없음' },
     { file: 'flow.md', quote: '화면 목록 세 개', reason: '재판단 후에도 기술적 검증 실패: 정규화 후에도 인용문이 결과 파일에 없음' }] });
@@ -116,7 +116,7 @@ it('normalizes markdown and whitespace; a citation still not in the file is re-j
 
 // R5: the file is identified from the submission when the model leaves it out or names another one.
 const twoFiles: SubmittedResult = { ...result, resultId: 'r2', artifactIds: ['notes/interviews.txt', 'notes/summary.md'] };
-const twoContents = { 'notes/interviews.txt': '회원 4명 인터뷰\n## 핵심 예약 시나리오 (3화면 이내)', 'notes/summary.md': '요약: 화면 목록은 홈, 예약, 확인' };
+const twoContents = { 'notes/interviews.txt': '회원 4명 인터뷰: D1의 문제 ①\n## 핵심 예약 시나리오 (3화면 이내)', 'notes/summary.md': '요약: 화면 목록은 홈, 예약, 확인' };
 const judgeTwo = (llm: FakeLlm) => judgeHandoff({ state: state([], twoFiles), result: twoFiles, resultContent: twoContents, decisions: [], llm, model: 'fake-pm' });
 
 it('resolves an empty file name to the only result file when the quote is in it (QA N6/C7)', async () => {
@@ -148,7 +148,7 @@ it('re-judges a technical citation failure once and keeps it out of the revision
   expect(outcome).toMatchObject({ ok: true, llmCalls: 2, review: { verdict: 'sufficient', missing: [], met: ['D1의 문제 ①을 다룬다', '화면 목록이 있다'],
     citationFailures: [{ condition: 'D1의 문제 ①을 다룬다', file: '', reason: expect.stringMatching(/^기술적 검증 실패\(재판단\): 결과 파일을 지정하지 않았고/) }] } });
   const retry = llm.requests[1]!.messages[0]!.content;
-  expect(retry).toContain('인용 확인 실패');
+  expect(retry).toContain('근거 확인 실패');
   expect(retry).toContain('1. D1의 문제 ①을 다룬다');
   expect(retry).not.toContain('2. 화면 목록이 있다 —');
 });
@@ -314,9 +314,9 @@ it('T2: the judge gets the exclusions and the rule; the excluded part of "가입
   expect(outcome).toMatchObject({ ok: true, review: { verdict: 'sufficient', met: [FLOW] } });
   const request = llm.requests[0]!;
   expect(request.messages[0]!.content).toContain(`## 인계 조건\n1. ${FLOW}\n## 제외 범위 (요구하지 않음)\n- 결제`);
-  expect(request.system).toContain('제외 범위(또는 한정 범위 밖)를 요구하는 조건이나 그 부분은 요구하지 않은 것으로 본다');
-  expect(request.system).toContain('조건의 나머지 부분은 그대로 판단한다');
-  expect(request.system).toContain('금지 제약은 범위 제외와 관계없이 그대로 적용한다');
+  expect(request.system).toContain('조건이 제외 범위(또는 한정 범위 밖)의 존재·포함·동작을 요구하면 exempt=true다');
+  expect(request.system).toContain('조건의 일부만 제외 범위면 exempt=false로 두고 나머지 부분을 판단한다');
+  expect(request.system).toContain('제외 범위와 무관한 금지 제약(예: "실제 개인정보 저장 없음", "외부 네트워크 호출 없음")은 exempt=false');
   // Without the rest (no confirmation screen), the condition is still missing: only the payment part was waived.
   const partial = new FakeLlm([call({ conditions: [{ index: 1, met: false, missing: '예약 확인 화면으로 이동하는 흐름이 없습니다.' }], decisionConflicts: [] })]);
   expect(await judgeScope(partial, scopeState(['결제'], [FLOW]))).toMatchObject({ ok: true, review: { verdict: 'insufficient', missing: ['조건 1(가입·시간 선택·예약 확인·결제…): 예약 확인 화면으로 이동하는 흐름이 없습니다.'] } });
@@ -327,19 +327,20 @@ it('T2: the judge gets the exclusions and the rule; the excluded part of "가입
   expect(plain.requests[0]!.system).not.toContain('범위 제외·한정 규칙');
 });
 
-it('T2: a condition only about the excluded scope is waived without a quote; a prohibition never is', async () => {
+it('T2: a condition only about the excluded scope is waived without a quote; one without the cut\'s words never is', async () => {
   const PAY = '모의 결제 화면에는 결제 버튼과 확인 메시지가 포함';
-  const BAN = '실제 결제나 실제 개인정보 수집이 아님 문구';
+  const BAN = '실제 개인정보 수집이 아님 문구';
   const llm = new FakeLlm([
-    call({ conditions: [{ index: 1, met: true, excluded: true }, { index: 2, met: true, excluded: true }], decisionConflicts: [] }),
+    // M11's field name still reads as the same judgement.
+    call({ conditions: [{ index: 1, met: true, excluded: true }, { index: 2, met: true, exempt: true }], decisionConflicts: [] }),
     call({ conditions: [{ index: 2, met: true, file: 'proto.html', quote: '실제 결제나 개인정보 수집이 아닌 시연용입니다.' }], decisionConflicts: [] }),
   ]);
   const outcome = await judgeScope(llm, scopeState(['결제 화면과 모의 결제 버튼'], [PAY, BAN], ['가입·시간 선택·예약 확인까지']));
-  // The payment condition is waived; the prohibition had to be shown in the result (re-judged once, then cited).
+  // The payment condition is waived; the unrelated prohibition had to be shown in the result (re-judged once, then cited).
   expect(outcome).toMatchObject({ ok: true, llmCalls: 2, review: { verdict: 'sufficient', met: [PAY, BAN],
-    evidence: [`조건 1은 제외·한정 범위만 요구해 요구하지 않음: ${PAY}`, expect.stringContaining('proto.html')] } });
+    evidence: [`조건 1은 제외·한정한 범위(결제)를 요구해 요구하지 않음: ${PAY}`, expect.stringContaining('proto.html')] } });
   expect(llm.requests[0]!.messages[0]!.content).toContain('## 한정 범위 (여기까지만 요구)\n- 가입·시간 선택·예약 확인까지');
-  expect(llm.requests[1]!.messages[0]!.content).toContain('금지 제약이라 범위 제외로 면제할 수 없음');
+  expect(llm.requests[1]!.messages[0]!.content).toContain('2. 실제 개인정보 수집이 아님 문구 — 요구하지 않는다고 판단했지만 조건 문장에 제외·한정 범위');
   // Without any cut, "excluded" is not a way around a condition.
   const noCut = new FakeLlm([call({ conditions: [{ index: 1, met: true, excluded: true }], decisionConflicts: [] }), call({ conditions: [{ index: 1, met: false, missing: '결제 버튼이 없습니다.' }], decisionConflicts: [] })]);
   expect(await judgeScope(noCut, scopeState([], [PAY]))).toMatchObject({ ok: true, review: { verdict: 'insufficient' } });
@@ -351,4 +352,102 @@ it('U2: a short condition name never leaves a bracket open (QA4 Z7)', async () =
   expect(label).toBe('조건 1(5명의 가상 보호자 각각의 배경…)');
   expect(label.split('(').length).toBe(label.split(')').length);
   expect(conditionLabel(1, '(필수) 화면 목록과 화면별 주요 UI 요소가 모두 문서에 있다')).toBe('조건 2((필수) 화면 목록과 화면별 주요…)');
+});
+
+// M12 V1 (QA5 Opus N1/N7): the plan's prototype condition mixes the excluded payment with "…없이". After
+// "ㅇㅋ 결제는 이번엔 빼자" the result has no payment screen; the model judges the condition exempt and code
+// only checks that the cut's keyword is really in the condition.
+const V1_PAY = '결제 화면에 실제 결제 연동 없이 클릭 시 완료 상태로 전환되는 모의 결제 버튼이 존재한다';
+const V1_PRIVACY = '실제 개인정보 저장 없음';
+const V1_FLOW = '가입 → 시간 선택 → 예약 확인 순서로 화면이 전환된다';
+const v1Html = (extra = '') => ({ 'proto.html': `<!doctype html>\n<html lang="ko">\n<h1>요가 수업 예약</h1>\n<p>가입 → 시간 선택 → 예약 확인</p>\n<p class="demo">시연용 화면이에요. 입력한 정보는 저장하지 않습니다.</p>\n${extra}` });
+const judgeV1 = (llm: FakeLlm, content = v1Html(), exclusions = ['결제']) => judgeHandoff({ state: scopeState(exclusions, [V1_FLOW, V1_PAY, V1_PRIVACY]),
+  result: { ...result, artifactIds: ['proto.html'] }, resultContent: content, decisions: [], llm, model: 'fake-pm' });
+
+it('V1: "결제 화면에 실제 결제 연동 없이 … 모의 결제 버튼이 존재한다" is exempt under exclusions ["결제"]; the result without payment is checked', async () => {
+  const llm = new FakeLlm([call({ conditions: [
+    { index: 1, met: true, file: 'proto.html', quote: '가입 → 시간 선택 → 예약 확인' },
+    { index: 2, met: false, exempt: true, reason: '결제를 이번 범위에서 빼기로 해 모의 결제 버튼을 요구하지 않아요' },
+    { index: 3, met: true, file: 'proto.html', quote: '입력한 정보는 저장하지 않습니다.' },
+  ], decisionConflicts: [] })]);
+  const outcome = await judgeV1(llm);
+  expect(outcome).toMatchObject({ ok: true, llmCalls: 1, review: { verdict: 'sufficient', met: [V1_FLOW, V1_PAY, V1_PRIVACY], missing: [] } });
+  const evidence = outcome.ok ? outcome.review.evidence.join('\n') : '';
+  expect(evidence).toContain('결제를 이번 범위에서 빼기로 해 모의 결제 버튼을 요구하지 않아요');
+  // The judge is asked per condition; no word rule ("없이", "금지") blocks the exemption any more.
+  const system = llm.requests[0]!.system!;
+  expect(system).toContain('exempt');
+  expect(system).toContain('실제 결제 연동 없이');
+  expect(system).not.toContain('금지 제약에는 excluded를 쓰지 않는다');
+});
+
+it('V1: an unrelated prohibition ("실제 개인정보 저장 없음") is never exempt; violated, it is a revision without internal words', async () => {
+  const stores = v1Html('<script>localStorage.setItem("phone", phone)</script>');
+  const llm = new FakeLlm([
+    // The model tries to waive the prohibition: the cut ("결제") is not in that condition, so it is judged again.
+    call({ conditions: [
+      { index: 1, met: true, file: 'proto.html', quote: '가입 → 시간 선택 → 예약 확인' },
+      { index: 2, met: true, exempt: true, reason: '결제 제외' },
+      { index: 3, met: true, exempt: true, reason: '결제 제외로 저장 관련 요구가 사라짐' },
+    ], decisionConflicts: [] }),
+    call({ conditions: [{ index: 3, met: false, exempt: false, missing: '휴대폰 번호를 localStorage에 저장합니다(excluded로 면제되지 않음). 저장하지 않도록 고쳐 주세요.' }], decisionConflicts: [] }),
+  ]);
+  const outcome = await judgeV1(llm, stores);
+  expect(outcome).toMatchObject({ ok: true, llmCalls: 2, review: { verdict: 'insufficient', met: [V1_FLOW, V1_PAY] } });
+  expect(llm.requests[1]!.messages[0]!.content).toContain('3. 실제 개인정보 저장 없음 —');
+  expect(llm.requests[1]!.messages[0]!.content).not.toContain('2. 결제 화면에 실제 결제 연동 없이 클릭 시 완료 상태로 전환되는 모의 결제 버튼이 존재한다 —');
+  const missing = outcome.ok ? outcome.review.missing : [];
+  expect(missing).toEqual([expect.stringMatching(/^조건 3\(실제 개인정보 저장 없음\): 휴대폰 번호를 localStorage에 저장합니다/)]);
+  expect(missing.join('\n')).not.toMatch(/excluded|exempt|금지 제약/);
+});
+
+it('V1: a stop after a repeated wrong exemption says why in people words, from the judgement', async () => {
+  const llm = new FakeLlm([
+    call({ conditions: [{ index: 1, met: true, file: 'proto.html', quote: '가입 → 시간 선택 → 예약 확인' }, { index: 2, met: true, exempt: true, reason: '결제 제외' }, { index: 3, met: true, exempt: true }], decisionConflicts: [] }),
+    call({ conditions: [{ index: 3, met: true, exempt: true }], decisionConflicts: [] }),
+  ]);
+  const outcome = await judgeV1(llm);
+  expect(outcome).toMatchObject({ ok: false, llmCalls: 2 });
+  const text = outcome.ok ? '' : `${outcome.error}\n${outcome.cause}`;
+  expect(text).toContain('조건 3(실제 개인정보 저장 없음)');
+  expect(text).toContain('제외한 범위와 관계없는 조건');
+  expect(text).not.toMatch(/excluded|exempt|금지 제약/);
+  // Without any cut, an exemption is never a way around a condition.
+  const noCut = new FakeLlm([call({ conditions: [{ index: 1, met: true, file: 'proto.html', quote: '가입 → 시간 선택 → 예약 확인' }, { index: 2, met: false, exempt: true }, { index: 3, met: true, file: 'proto.html', quote: '입력한 정보는 저장하지 않습니다.' }], decisionConflicts: [] })]);
+  expect(await judgeV1(noCut, v1Html(), [])).toMatchObject({ ok: true, review: { verdict: 'insufficient', missing: [expect.stringContaining('조건 2(')] } });
+});
+
+// M12 W3 (QA5 Opus N5): the reopened prototype was checked on quotes unrelated to the conditions.
+const N5_SINGLE = '설계된 흐름(가입·수업 시간 선택·예약 확인·모의 결제)을 모두 포함하는 단일 HTML 파일로 구현되어 로컬 환경에서 브라우저로 열어 실행 가능';
+const N5_CLICK = '각 화면 간 클릭을 통한 전환이 가능하며, 실제 개인정보 수집이나 실제 결제 연동 없이 더미 데이터와 모의 결제 완료 화면만 표시';
+const n5Html = { 'yoga.html': [
+  '<!doctype html>', '<html lang="ko">', '<head>', '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
+  '<title>온유 요가 · 수업 예약 체험</title>', '<style>:root{font-family:system-ui;color:#243e36;background:#f5f4ef;line-height:1.6}*{box-sizing:border-box}body{margin:0}main{max-width:1000px;margin:36px auto;padding:0 24px}</style>',
+  '</head><body>', '<p class="demo">실제 개인정보를 받지 않는 더미 데이터 시연용 화면입니다.</p>', '<main>','<section id="signup"><h2>체험 회원으로 시작하기</h2></section>',
+  '<section id="confirm" hidden><h2>선택한 수업을 확인하세요</h2><p class="muted">예약 체험은 이 화면에서 끝납니다.</p></section>', '</main>',
+  '<script>const screens=["signup","time","confirm"];let screen="signup";const $=id=>document.getElementById(id);', 'function show(target){screen=target;screens.forEach(id=>$(id).hidden=id!==target);}',
+  '</script>', '</body></html>'].join('\n') };
+const judgeN5 = (llm: FakeLlm) => judgeHandoff({ state: scopeState([], [N5_SINGLE, N5_CLICK]), result: { ...result, artifactIds: ['yoga.html'] }, resultContent: n5Html, decisions: [], llm, model: 'fake-pm' });
+const n5Irrelevant = () => call({ conditions: [{ index: 1, met: true, file: 'yoga.html', quote: '<!doctype html>' }, { index: 2, met: true, file: 'yoga.html', quote: 'function show(target){screen=target;screens.forEach(id=>$(id).hidden=id!==target);' }], decisionConflicts: [] });
+
+it('W3: a met condition whose quote has none of its key words nearby is re-judged once; a relevant quote then counts', async () => {
+  const llm = new FakeLlm([n5Irrelevant(), call({ conditions: [
+    { index: 1, met: true, file: 'yoga.html', quote: '<section id="confirm" hidden><h2>선택한 수업을 확인하세요</h2>' },
+    { index: 2, met: true, file: 'yoga.html', quote: '실제 개인정보를 받지 않는 더미 데이터 시연용 화면입니다.' },
+  ], decisionConflicts: [] })]);
+  const outcome = await judgeN5(llm);
+  expect(outcome).toMatchObject({ ok: true, llmCalls: 2, review: { verdict: 'sufficient', met: [N5_SINGLE, N5_CLICK] } });
+  expect(llm.requests[1]!.messages[0]!.content).toContain('인용이 조건과 관련 없음');
+  expect(outcome.ok && outcome.review.citationFailures).toEqual([expect.objectContaining({ condition: N5_SINGLE, quote: '<!doctype html>' }), expect.objectContaining({ condition: N5_CLICK })]);
+});
+
+it('W3: still unrelated after the re-judgement, the condition is unverified and a person decides', async () => {
+  const outcome = await judgeN5(new FakeLlm([n5Irrelevant(), n5Irrelevant()]));
+  expect(outcome).toMatchObject({ ok: false, llmCalls: 2 });
+  expect(outcome.ok ? '' : outcome.cause).toContain('인용한 근거가 조건과 관련이 없는 문제');
+  // A quote with a key word of the condition in it, or right next to it, is relevant.
+  const { quoteRelevant } = await import('../src/handoff.ts');
+  expect(quoteRelevant(N5_CLICK, '<p class="demo">실제 개인정보를 받지 않는 더미 데이터 시연용 화면입니다.</p>', n5Html['yoga.html'])).toBe(true);
+  expect(quoteRelevant('대안 2개가 표로 비교되어 있다', '| B | 예약 흐름 |', '## 대안 비교\n| 이름 | 흐름 |\n|---|---|\n| A | 가입 |\n| B | 예약 흐름 |')).toBe(true);
+  expect(quoteRelevant(N5_SINGLE, '<!doctype html>', n5Html['yoga.html'])).toBe(false);
 });
