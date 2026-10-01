@@ -1,6 +1,6 @@
 // 장면 3 중간 상태의 가짜 뷰 모델. 서버 계약 필드(activity 등)가 붙기 전에 화면을 그려 보는 데 쓴다.
 // 디자이너가 가용 시간 감소를 알렸고, 사용자가 "프로토타입이 밀리나?"라고 물은 직후다.
-import type { VmActivity, VmCard, VmMember, VmMessage, VmPmJudgement, VmRoadmap, ViewModel } from "./view-model";
+import type { VmActivity, VmCard, VmDecisionCard, VmMember, VmMessage, VmPmJudgement, VmRoadmap, VmTaskDetail, VmWork, ViewModel } from "./view-model";
 
 export const mockMembers: VmMember[] = [
   { id: "owner", kind: "human", displayName: "사용자", role: "결정권자", weeklyHours: 20 },
@@ -47,6 +47,16 @@ const messages: VmMessage[] = [
       evidence: ["availability_updated: designer 10→5h", "task prototype dependsOn design(완료)", "forecast: 10/10–10/15, 기한 10/12"],
     },
   },
+  {
+    id: "m10", authorId: "pm", kind: "pm", at: "2026-09-30T01:06:00Z", attachments: [], taskIds: ["prototype-payment"], cardId: "decision-payment",
+    text: "결제 화면 작업은 디자이너 상세 설계를 기다려야 해요. 이번 범위에서 뺄지 결정이 필요해요.",
+    pm: { kind: "ask", reason: "범위 변경은 결정권자의 결정", evidence: ["결제 화면 작업이 상세 설계에 의존", "예측: 기한 최대 3일 초과"] },
+  },
+  {
+    id: "m11", authorId: "pm", kind: "pm", at: "2026-09-30T01:20:00Z", attachments: [], taskIds: ["prototype-signup"], cardId: "decision-retry",
+    text: "프로토타입 Agent가 가입 오류 처리 기준을 묻고 있어요.",
+    pm: { kind: "ask", reason: "Agent가 이 답 없이는 가입 화면을 마칠 수 없음", evidence: ["Agent 질문: 비밀번호 오류 재시도 횟수"] },
+  },
 ];
 
 const allCards: VmCard[] = [
@@ -72,6 +82,104 @@ const allCards: VmCard[] = [
     changeKinds: ["reschedule"],
   },
 ];
+
+// 결정 요청 카드 2개: 범위 결정(선택형)과 Agent 질문(자유 답변형). 둘 다 추천안이 있다.
+const decisionCards: VmDecisionCard[] = [
+  {
+    kind: "decision", id: "decision-payment", forMemberId: "owner", requestKind: "plan_change",
+    question: "결제 화면 프로토타입을 이번 범위에서 빼고 가입 흐름만으로 고객 반응을 볼까요?",
+    recommendation: { optionId: "drop-payment", rationale: "상세 설계가 다음 주로 밀려 결제 화면을 기다리면 기한을 최대 3일 넘겨요. 고객 반응 확인에는 가입 흐름으로 충분해요.", evidence: ["디자이너 이번 주 가용 시간 10→5시간", "예상 종료 10월 10일–15일, 기한 10월 12일"] },
+    options: [
+      { optionId: "drop-payment", label: "결제 화면 빼기", tradeoff: "결제 반응은 다음 단계에서 확인", summary: ["결제 화면 작업 취소", "사용자 검토는 가입 흐름만"] },
+      { optionId: "keep-payment", label: "그대로 두기", tradeoff: "기한을 최대 3일 넘길 수 있음", summary: ["결제 화면은 상세 설계 후 진행"] },
+      { optionId: "hold", label: "보류", tradeoff: "결정 전까지 결제 화면 작업이 멈춰 있음", summary: ["변경 없음"] },
+    ],
+    impact: { taskTitles: ["결제 화면", "사용자 검토"], blockedTitles: ["결제 화면"], deadlineDeltaDays: -3 },
+    editable: ["include"], answerMode: "choose",
+  },
+  {
+    kind: "decision", id: "decision-retry", forMemberId: "owner", requestKind: "missing_info",
+    question: "가입 화면에서 비밀번호를 몇 번 틀리면 잠글까요?",
+    recommendation: { optionId: "five", rationale: "흐름 초안에 기준이 없고, 비교한 서비스 3곳 중 2곳이 5회예요.", evidence: ["comparison.md: 예약 서비스 3곳 비교", "flow-v2.md 오류 흐름"] },
+    options: [
+      { optionId: "five", label: "5회", tradeoff: "", summary: ["Agent에게 \"5회\"로 전달"] },
+      { optionId: "later", label: "나중에 정하기", tradeoff: "잠금 없이 시안을 만들고 검토 때 정함", summary: ["Agent에게 잠금 없이 진행하라고 전달"] },
+    ],
+    impact: { taskTitles: ["가입 화면"], blockedTitles: ["가입 화면"] },
+    answerMode: "text",
+  },
+];
+
+// 작업 패널: 작업 6개(상위 작업 "프로토타입"과 하위 작업 2개 포함). id는 내부 값이며 화면에 키로 보이지 않는다.
+const work: VmWork = {
+  items: [
+    {
+      id: "design", title: "흐름 초안", ownerId: "designer", ownerKind: "human", status: "done", priority: "normal", childIds: [],
+      routingNote: "디자인 판단이 필요해 디자이너에게 맡겼어요", handoffConditions: ["가입 정상 흐름과 오류 흐름이 모두 있음"],
+    },
+    {
+      id: "prototype", title: "프로토타입", ownerId: "prototype-agent", ownerKind: "agent", status: "in_progress", priority: "high", childIds: ["prototype-signup", "prototype-payment"],
+      routingNote: "Agent가 할 수 있는 일이라 바로 맡겼어요",
+      brief: {
+        why: "2주 안에 고객 반응을 보려면 실제로 눌러 볼 수 있는 화면이 필요해요.",
+        sources: [{ messageId: "m2", excerpt: "2주 안에 고객 반응을 확인하고 싶어요." }],
+        decisions: [{ id: "d1", summary: "흐름 초안 기준으로 먼저 진행" }],
+        attachments: [{ id: "a2", name: "flow-v2.md", url: "#flow-v2.md" }],
+        constraints: ["실제 결제 연동은 하지 않음"],
+      },
+      origin: { createdByName: "사용자", messageIds: ["m2"] },
+    },
+    {
+      id: "prototype-signup", parentId: "prototype", title: "가입 화면", ownerId: "prototype-agent", ownerKind: "agent", status: "waiting_human", priority: "high", childIds: [],
+      waitingOn: { memberId: "owner", requestId: "decision-retry" }, routingNote: "Agent가 할 수 있는 일이라 바로 맡겼어요",
+      brief: {
+        why: "고객이 처음 만나는 가입 흐름을 프로토타입으로 보여 주기 위해서예요.",
+        sources: [{ messageId: "m5", excerpt: "오류 흐름도 보완했어요." }], decisions: [],
+        attachments: [{ id: "a2", name: "flow-v2.md", url: "#flow-v2.md" }], constraints: ["오류 흐름 포함"],
+      },
+      origin: { createdByName: "PM", messageIds: ["m5"] },
+      handoffConditions: ["정상·오류 흐름 화면이 모두 있음"], exclusions: [], limits: [],
+    },
+    {
+      id: "prototype-payment", parentId: "prototype", title: "결제 화면", ownerId: "prototype-agent", ownerKind: "agent", status: "waiting_human", priority: "normal", childIds: [],
+      waitingOn: { memberId: "owner", requestId: "decision-payment" }, routingNote: "Agent가 할 수 있는 일이라 바로 맡겼어요",
+      handoffConditions: ["결제 확인 화면이 있음"],
+    },
+    {
+      id: "review", title: "사용자 검토", ownerId: "reviewer", ownerKind: "human", status: "todo", priority: "normal", childIds: [],
+      routingNote: "고객을 직접 만나야 해서 검토자에게 맡겼어요", handoffConditions: ["고객 5명 이상 반응 기록"],
+    },
+    {
+      id: "detail", title: "상세 설계", ownerId: "designer", ownerKind: "human", status: "blocked", priority: "low", childIds: [],
+      routingNote: "디자인 판단이 필요해 디자이너에게 맡겼어요",
+    },
+  ],
+  team: [
+    { memberId: "owner", state: "결정 2건 대기", openDecisions: 2 },
+    { memberId: "designer", currentItemId: "detail", state: "막힘: 이번 주 가용 시간 부족", openDecisions: 0 },
+    { memberId: "reviewer", currentItemId: "review", state: "할 일", openDecisions: 0 },
+    { memberId: "prototype-agent", currentItemId: "prototype-signup", state: "사용자 결정 대기", openDecisions: 0 },
+    { memberId: "research-agent", state: "쉬는 중", openDecisions: 0 },
+  ],
+};
+
+/** 작업 상세(`GET /api/tasks/:id`) 목업. 없는 id면 undefined. */
+export function mockTaskDetail(id: string): VmTaskDetail | undefined {
+  const item = work.items.find(i => i.id === id);
+  if (!item) return undefined;
+  const requested = item.waitingOn ? [{ at: "2026-09-30T01:06:00Z", kind: "decision_requested" as const, actorId: "pm", text: "사용자에게 결정을 요청했어요" }] : [];
+  return {
+    item,
+    activity: [
+      { at: "2026-09-29T05:45:00Z", kind: "created", actorId: "pm", text: "PM이 대화에서 작업을 만들었어요", ...(item.origin ? { messageId: item.origin.messageIds[0] } : {}) },
+      { at: "2026-09-29T05:46:00Z", kind: "assigned", actorId: "pm", text: item.routingNote ?? "담당을 정했어요" },
+      ...requested,
+    ],
+    comments: [
+      { id: `c-${id}`, authorId: "designer", kind: "human", text: "오류 문구는 flow-v2.md 기준으로 맞춰 주세요.", at: "2026-09-29T06:10:00Z", threadId: `task:${id}`, attachments: [] },
+    ],
+  };
+}
 
 const roadmap: VmRoadmap = {
   planVersion: 1,
@@ -112,6 +220,8 @@ export function buildMockViewModel(me: string): ViewModel {
     members: mockMembers,
     messages,
     cards: allCards.filter(c => c.forMemberId === me),
+    decisionCards: decisionCards.filter(c => c.forMemberId === me),
+    work,
     roadmap,
     pmLog,
     scenario: {

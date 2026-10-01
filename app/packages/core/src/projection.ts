@@ -1,6 +1,8 @@
 import type { Id, LedgerEvent } from "./ledger.ts";
 import type { AnyEvent, EventPayloads, TaskSpec } from "./events.ts";
 import { isAutomationAction } from './action-limit.ts';
+import { applyWorkEvent, emptyTaskMeta, isParentTask, rollupParents, type TaskMeta } from './work.ts';
+import { applyDecisionEvent, decisionApproved, type DecisionRequestState } from './decision-requests.ts';
 
 export type UpdateStatus = "sent" | "acknowledged" | "rejected";
 export interface TaskUpdate { updateId: Id; toVersion: number; status: UpdateStatus; droppedItems: string[] }
@@ -14,6 +16,14 @@ export interface TaskState {
   reviewFailedResultId?: Id;
   blocked?: { reason: string; unblockBy?: Id; prevStatus: TaskStatus };
   updates: TaskUpdate[];
+  // Work-item fields. `project()` always sets them; they are optional only so hand-built states stay valid.
+  /** Creation order, 1-based. Internal sort/log value, never shown as a key. */
+  ordinal?: number;
+  meta?: TaskMeta;
+  /** Tasks whose spec.parentId is this task, in plan order. */
+  children?: Id[];
+  /** Times plan_committed changed the assignee. */
+  reassignCount?: number;
 }
 export interface ProjectMessage { messageId: Id; authorId: Id; text: string; threadId?: Id; seq: number }
 export interface ProjectState {
@@ -39,6 +49,7 @@ export interface ProjectState {
   pendingPlans: Map<Id, EventPayloads["plan_proposed"]>;
   /** `${changeId}:${recipientId}` pairs already notified. */
   notified: Set<string>;
+  decisionRequests: Map<Id, DecisionRequestState>;
 }
 export function isStaleResult(task: TaskState, resultId: Id): boolean {
   const result = task.results.find((item) => item.resultId === resultId);
@@ -62,6 +73,7 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
     estimates: new Map(), activeTurn: new Map(), sessions: new Map(), reservedStartKeys: new Set(),
     automation: { actionsSinceResume: 0, limitReached: false },
     messages: [], openTopics: [], decisions: new Map(), pendingAuthority: new Map(), pendingPlans: new Map(), notified: new Set(),
+    decisionRequests: new Map(),
   };
   const concludedMessages = new Set<string>();
   for (const original of events) {
@@ -75,7 +87,8 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
     const authorityApproved = event.type === 'authority_granted' && event.payload.granted
       && state.pendingAuthority.get(event.payload.requestId)?.personId === event.payload.personId
       && state.members.get(event.payload.personId)?.kind === 'human';
-    if ((conclusion && conclusion.length > 0) || cardApproved || authorityApproved) {
+    const requestAnswered = decisionApproved(state, event);
+    if ((conclusion && conclusion.length > 0) || cardApproved || authorityApproved || requestAnswered) {
       state.automation = { actionsSinceResume: 0, limitReached: false };
       if (conclusion) conclusion.forEach(id => concludedMessages.add(id));
     }
@@ -92,10 +105,11 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
         for (const [id, task] of state.tasks) if (!ids.has(id)) task.status = "cancelled";
         for (const spec of p.tasks) {
           const task = state.tasks.get(spec.id);
-          if (!task) state.tasks.set(spec.id, { spec, specVersion: p.version, status: "waiting", results: [], updates: [] });
+          if (!task) state.tasks.set(spec.id, { spec, specVersion: p.version, status: "waiting", results: [], updates: [], ordinal: state.tasks.size + 1, meta: emptyTaskMeta(), children: [], reassignCount: 0 });
           else if (JSON.stringify(task.spec) !== JSON.stringify(spec)) {
             const substantive = (s: TaskSpec) => { const { title, baseTitle, exclusions, limits, ...rest } = s; return rest; };
             const scopeOnly = (spec.baseTitle ?? spec.title) === (task.spec.baseTitle ?? task.spec.title) && JSON.stringify(substantive(task.spec)) === JSON.stringify(substantive(spec));
+            if (spec.assignee !== task.spec.assignee) task.reassignCount = (task.reassignCount ?? 0) + 1;
             task.spec = spec;
             task.specVersion = p.version;
             if (!scopeOnly) {
@@ -105,8 +119,13 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
             }
           }
         }
+        for (const task of state.tasks.values()) task.children = [];
+        for (const spec of p.tasks) if (spec.parentId !== undefined) state.tasks.get(spec.parentId)?.children?.push(spec.id);
+        applyWorkEvent(state, event);
         break;
       }
+      case "task_meta_set": applyWorkEvent(state, event); break;
+      case "decision_requested": case "decision_resolved": applyDecisionEvent(state, event); break;
       case "availability_updated": {
         const { memberId, weeklyHours, weekStart } = event.payload;
         if (weekStart) {
@@ -137,7 +156,7 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
         if (typeof p.messageId !== "string" || typeof p.text !== "string" || state.messages.some((m) => m.messageId === p.messageId)) break;
         const authorId = event.type === "message_recorded" ? event.payload.authorId : event.actor.id;
         if (typeof authorId !== "string") break;
-        const threadId = event.type === "message_recorded" ? event.payload.threadId : undefined;
+        const threadId = event.payload.threadId;
         state.messages.push({ messageId: p.messageId, authorId, text: p.text, ...(threadId !== undefined ? { threadId } : {}), seq: event.seq });
         break;
       }
@@ -200,8 +219,9 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
         break;
       }
     }
+    rollupParents(state);
     for (const task of state.tasks.values()) {
-      if (task.status === "waiting" || task.status === "ready") task.status = task.spec.dependsOn.every((id) => state.tasks.get(id)?.status === "checked") ? "ready" : "waiting";
+      if ((task.status === "waiting" || task.status === "ready") && !isParentTask(state, task)) task.status = task.spec.dependsOn.every((id) => state.tasks.get(id)?.status === "checked") ? "ready" : "waiting";
     }
   }
   return state;
