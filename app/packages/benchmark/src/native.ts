@@ -1,18 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { CodexSessionConnector, ClaudeSessionConnector, type SessionConnector, type TaskInstructionsInput, type UpdateInstructionsInput } from '@ensemble/agents';
+import { CodexSessionConnector, ClaudeSessionConnector, type SessionConnector } from '@ensemble/agents';
 import { project, type NewLedgerEvent } from '@ensemble/core';
 import { CodexCliProvider, ClaudeCliProvider, type LlmProvider } from '@ensemble/llm';
 import { ProjectManager, buildTaskContext } from '@ensemble/orchestrator';
 import { MemoryLedgerStore } from '@ensemble/store';
 import { PROMPT_B_INITIAL } from './protocol.ts';
-
-// Per-process restrictions only: never mutate the user's CLI configuration.
-const CODEX_RESTRICTIONS = [
-  '-c', 'mcp_servers.node_repl.enabled=false',
-  '-c', 'features.multi_agent=false',
-  '-c', 'features.multi_agent_v2=false',
-  '-c', 'web_search="disabled"',
-];
+import { createDirectDriver } from './direct.ts';
+import { CLAUDE_DISALLOWED, CODEX_RESTRICTIONS, codexWorkerArgs, DEVELOPMENT_SYSTEM } from './runtime-config.ts';
 
 export interface NativeDriverOptions {
   provider: 'codex' | 'claude'; ensemble: boolean; model: string; effort: string;
@@ -28,6 +22,7 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
 }> {
   if (!options.model.trim() || !/^[a-z]+$/.test(options.effort)) throw new Error('Explicit model and effort required');
   if (options.provider === 'claude' && !['low', 'medium', 'high', 'xhigh', 'max'].includes(options.effort)) throw new Error('Unsupported Claude effort');
+  if (!options.ensemble) return createDirectDriver(options);
   const controller = new AbortController();
   const signal = AbortSignal.any([options.signal, controller.signal]);
   const store = new MemoryLedgerStore();
@@ -49,8 +44,7 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
       dependsOn: [], handoffConditions, exclusions: [], limits: ['No publishing, commits, payments, authentication or permission changes.'] }],
       reason: 'Preregistered single-task benchmark', approvedBy: 'owner', sourceMessageIds: [] }),
   ]);
-  // Both arms use exactly this protocol scaffold and the native prototype system prompt.
-  const initialTask: TaskInstructionsInput = buildTaskContext(project(await store.read()), taskId, await store.read());
+  // Ensemble reporting is part of the treatment; direct bypasses this entire ledger/scaffold.
   let raw: SessionConnector | undefined;
   let connector: SessionConnector | undefined;
   let provider: LlmProvider | undefined;
@@ -64,7 +58,6 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
   const active = new Set<string>();
   const turnStarts = new Map<string, number>();
   const prepared = new Set<string>();
-  let deferred: UpdateInstructionsInput | undefined;
   let unsubscribe = () => {};
   const check = () => { signal.throwIfAborted(); if (stopped) throw new Error('Driver stopped'); if (failure) throw failure; };
   const run = async <T>(role: 'pm' | 'worker' | 'judge', operation: () => Promise<T>): Promise<T> => {
@@ -72,11 +65,6 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
     try { return await options.meter(role, async () => { check(); return operation(); }); }
     catch (error) { failure = error; throw error; }
     finally { pending--; }
-  };
-  const deliverDeferred = async () => {
-    if (!deferred || active.size || !connector || stopped) return;
-    const update = deferred; deferred = undefined;
-    await connector.continueTask!(agentId, { taskId, planVersion: 1, update, task: initialTask });
   };
   const stop = (): Promise<void> => {
     if (stopPromise) return stopPromise;
@@ -103,9 +91,9 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
       check(); if (started) throw new Error('Driver already started'); started = true;
       raw = options.provider === 'codex'
         ? new CodexSessionConnector({ model: options.model, workspaceRoot: options.workspaceRoot,
-          rpc: { args: ['app-server', ...CODEX_RESTRICTIONS, '-c', `model_reasoning_effort="${options.effort}"`] } })
+          instructionsFor: () => DEVELOPMENT_SYSTEM, rpc: { args: codexWorkerArgs(options.effort) } })
         : new ClaudeSessionConnector({ model: options.model, effort: options.effort as 'medium', workspaceRoot: options.workspaceRoot,
-          allowedTools: [], disallowedTools: ['Agent', 'Task', 'WebSearch', 'WebFetch'] });
+          instructionsFor: () => DEVELOPMENT_SYSTEM, allowedTools: [], disallowedTools: CLAUDE_DISALLOWED });
       unsubscribe = raw.onEvent(event => {
         options.record({ type: 'native_session', at: new Date().toISOString(), event, usage: null, underlyingApiCalls: null });
         if (event.type !== 'turn') return;
@@ -118,7 +106,6 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
           turnStarts.delete(event.turnId);
           if (event.status === 'completed') completedTurns++;
           else if (!stopped) failure = new Error(event.reason ?? `Worker ${event.status}`);
-          if (!options.ensemble && !failure) void deliverDeferred().catch(error => { failure = error; });
         }
       });
       connector = {
@@ -139,7 +126,7 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
         workerUsage: null, underlyingApiCalls: null, callUnit: 'top-level CLI requests plus worker turns and Codex steer requests',
         workerMeterElapsedMeaning: 'submission latency only; native_worker_duration records full turn wall time',
         permissions: options.provider === 'codex' ? 'native workspace-write; approval never; node_repl MCP, multi_agent/multi_agent_v2 and web_search disabled per invocation' : 'native acceptEdits; no additional auto-approved tools; Agent/Task/WebSearch/WebFetch denied; isolated project settings' });
-      if (options.ensemble) {
+      {
         provider = options.provider === 'codex' ? new CodexCliProvider({ model: options.model, effort: options.effort, executableArgs: [...CODEX_RESTRICTIONS] }) : new ClaudeCliProvider({ model: options.model, effort: options.effort });
         const llm: LlmProvider = { complete: request => {
           const role = request.forceTool === 'record_handoff_review' ? 'judge' : 'pm';
@@ -158,9 +145,6 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
           await pm.sessions.startSession(agentId);
           await pm.sessions.startTask(agentId, buildTaskContext(project(await store.read()), taskId, await store.read()));
         }
-      } else {
-        await connector.startSession(agentId, options.projectId);
-        await connector.startTask(agentId, initialTask);
       }
     },
     async change(prompt) {
@@ -173,18 +157,10 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
         if (!active.size && completedTurns === before && task?.status === 'checked') throw new Error('Requirement change did not reopen the completed Ensemble task');
         return;
       }
-      completedTurns = 0;
-      if (deferred) throw new Error('A requirement change is already pending');
-      const update: UpdateInstructionsInput = { updateId: randomUUID(), fromVersion: 1, toVersion: 1, keep: [], change: [prompt], drop: [], reason: 'Requirement change after externally verified checkpoint' };
-      if (active.size && options.provider === 'codex') {
-        const sent = await connector.sendUpdate(agentId, update);
-        if (sent.sent) return;
-      }
-      deferred = update;
-      await deliverDeferred();
+      throw new Error('ProjectManager not started');
     },
     async settled() {
-      check(); if (!started || pending || active.size || deferred || pm?.isProcessing) return false;
+      check(); if (!started || pending || active.size || pm?.isProcessing) return false;
       if (pm) {
         await pm.flush(); check();
         if (pending || active.size || pm.isProcessing) return false;
@@ -194,7 +170,7 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
         if (state.pendingAuthority.size || [...state.decisionRequests.values()].some(request => request.status === 'open')) throw new Error('Ensemble requires human intervention');
         return tasks.length > 0 && tasks.every(task => task.status === 'checked');
       }
-      return completedTurns > 0;
+      return false;
     },
     stop,
   };

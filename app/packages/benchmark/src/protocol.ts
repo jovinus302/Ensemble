@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 
 export const BASE_SHA = 'a6bfc345bde634422421c500fad264419bc04ec9';
+/** New neutral-role experiment; never pool with legacy prototype-role pilot observations. */
+export const PROTOCOL_REVISION = 'development-brief-v2';
 export const LIMITS: Readonly<{ totalMs: number; calls: number }> = Object.freeze({ totalMs: 20 * 60_000, calls: 24 });
 export type Provider = 'codex' | 'claude';
 export type Task = 'A' | 'B';

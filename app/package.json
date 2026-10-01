@@ -8,6 +8,8 @@
   ],
   "scripts": {
     "benchmark:plan": "tsx packages/benchmark/scripts/run.ts",
+    "benchmark:preflight": "tsx packages/benchmark/scripts/preflight.ts",
+    "benchmark:schema-repro": "tsx packages/benchmark/scripts/reproduce-schema.ts",
     "benchmark:fixture": "tsx packages/benchmark/scripts/run.ts --fixture",
     "benchmark:live": "tsx packages/benchmark/scripts/run.ts --live",
     "benchmark:browser": "node packages/benchmark/browser/smoke.mjs",

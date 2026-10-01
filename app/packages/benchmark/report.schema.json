@@ -7,6 +7,7 @@
   "required": ["schemaVersion", "mode", "cell", "blindId", "baseSha", "rubricHash", "model", "effort", "cacheState", "starterHash", "status", "error", "preparationMs", "taskMs", "totalMs", "checkpointMs", "changeMs", "afterChangeMs", "humanInterventions", "humanRequests", "checks", "calls", "events", "usage", "costUsd", "underlyingApiCalls", "actualModelInvocations"],
   "properties": {
     "schemaVersion": {"const": 1},
+    "protocolRevision": {"type": "string", "description": "Missing means legacy prototype-role-v1; never pool revisions."},
     "mode": {"enum": ["fixture", "live"]},
     "cell": {"type": "object", "additionalProperties": false, "required": ["task", "provider", "ensemble", "ordinal", "id"], "properties": {
       "task": {"enum": ["A", "B"]}, "provider": {"enum": ["codex", "claude"]}, "ensemble": {"type": "boolean"}, "ordinal": {"type": "integer", "minimum": 1, "maximum": 8}, "id": {"type": "string"}
@@ -17,7 +18,7 @@
     "starterHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "model": {"type": "string"}, "effort": {"type": "string"},
     "cacheState": {"enum": ["cold", "warm", "unknown"]},
-    "status": {"enum": ["passed", "failed", "timeout", "call_limit", "checkpoint_failed"]},
+    "status": {"enum": ["passed", "failed", "timeout", "call_limit", "checkpoint_failed", "interrupted"]},
     "error": {"type": ["string", "null"]},
     "preparationMs": {"type": "number", "minimum": 0},
     "taskMs": {"type": "number", "minimum": 0},

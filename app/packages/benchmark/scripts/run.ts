@@ -3,10 +3,11 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
-import { approval, BASE_SHA, LIMITS, plan, RUBRIC, RUBRIC_HASH } from '../src/protocol.ts';
+import { approval, BASE_SHA, LIMITS, plan, PROTOCOL_REVISION, RUBRIC, RUBRIC_HASH } from '../src/protocol.ts';
 import { APP_ROOT, localServices, PACKAGE_ROOT, treeHash } from '../src/local.ts';
-import { runCell, type Report } from '../src/harness.ts';
+import { assertSameProtocol, isBatchPaused, runCell, type Report } from '../src/harness.ts';
 import { pendingCells } from '../src/resume.ts';
+import { assertCodexSchemaReady } from '../src/preflight.ts';
 
 const args = process.argv.slice(2);
 const value = (flag: string) => { const i = args.indexOf(flag); return i < 0 ? undefined : args[i + 1]; };
@@ -19,7 +20,7 @@ const starterHash = await treeHash(path.join(PACKAGE_ROOT, 'starter'));
 const evaluatorHash = await treeHash(path.join(PACKAGE_ROOT, 'browser'));
 const implementationHash = createHash('sha256').update(await treeHash(path.join(PACKAGE_ROOT, 'src')))
   .update(await treeHash(path.join(PACKAGE_ROOT, 'scripts'))).digest('hex');
-const manifest = { baseSha: BASE_SHA, rubricHash: RUBRIC_HASH, starterHash, evaluatorHash, implementationHash, rubric: RUBRIC, limits: LIMITS, cells: plan() };
+const manifest = { protocolRevision: PROTOCOL_REVISION, baseSha: BASE_SHA, rubricHash: RUBRIC_HASH, starterHash, evaluatorHash, implementationHash, rubric: RUBRIC, limits: LIMITS, cells: plan() };
 if (!live && !fixture) {
   console.log(JSON.stringify({ mode: 'plan-only', ...manifest }, null, 2));
 } else {
@@ -35,6 +36,7 @@ if (!live && !fixture) {
     if (actualBase !== BASE_SHA) throw new Error('Checkout is not based on pinned main');
     const changed = (await git('git', ['diff', '--name-only', BASE_SHA, '--', 'packages/agents', 'packages/core', 'packages/llm', 'packages/orchestrator', 'packages/store'], { cwd: APP_ROOT, windowsHide: true })).stdout.trim();
     if (changed) throw new Error(`Production benchmark dependencies differ from pinned main: ${changed}`);
+    await assertCodexSchemaReady();
     const configFile = value('--config');
     if (!configFile) throw new Error('Explicit pinned provider models/efforts config required');
     config = JSON.parse(await readFile(path.resolve(configFile), 'utf8'));
@@ -49,6 +51,7 @@ if (!live && !fixture) {
   if (resume) {
     if (!value('--output')) throw new Error('Resume requires the exact previous output directory');
     const previous = JSON.parse(await readFile(path.join(outputRoot, 'manifest.json'), 'utf8'));
+    assertSameProtocol(previous);
     for (const key of ['baseSha', 'rubricHash', 'starterHash', 'evaluatorHash'] as const) {
       if (previous[key] !== manifest[key]) throw new Error(`Resume changed frozen ${key}`);
     }
@@ -75,19 +78,29 @@ if (!live && !fixture) {
     await writeFile(path.join(outputRoot, 'manifest.json'), JSON.stringify({ ...manifest, mode: fixture ? 'fixture' : 'live', config }, null, 2));
   }
   process.env.BENCH_APP_ROOT = APP_ROOT;
+  const cancellation = new AbortController();
+  const interrupt = () => cancellation.abort(new Error('user interrupted'));
+  process.on('SIGINT', interrupt); process.on('SIGTERM', interrupt);
+  try {
   for (const cell of cells) {
+    // Soft pause is checked immediately before constructing services or launching each next cell.
+    if (cancellation.signal.aborted || isBatchPaused(outputRoot)) {
+      console.error('Batch paused: no next cell started. Remove PAUSE only after renewed authorization.');
+      process.exitCode = 1; break;
+    }
     process.env.BENCH_TASK = cell.task;
     const selected = config[cell.provider] ?? { model: 'fixture-reference', effort: 'none' };
     const report = await runCell(cell, localServices(cell, { mode: fixture ? 'fixture' : 'live', outputRoot, ...selected }), {
-      mode: fixture ? 'fixture' : 'live', ...selected, starterHash, cacheState: 'unknown', outputDir: path.join(outputRoot, 'reports'),
+      mode: fixture ? 'fixture' : 'live', ...selected, starterHash, cacheState: 'unknown', outputDir: path.join(outputRoot, 'reports'), signal: cancellation.signal,
     });
     reports.push(report); console.log(`${cell.id} ${report.mode} ${report.status} ${report.totalMs}ms`);
     await writeFile(path.join(outputRoot, 'summary.json'), JSON.stringify({ mode: fixture ? 'fixture' : 'live', exploratoryOnly: true,
       warning: fixture ? 'Harness reference smoke tests, NOT model performance results' : 'n=1 exploratory; compare within provider only', reports,
       notRun: plan().filter(c => !reports.some(r => r.cell.id === c.id)).map(c => c.id) }, null, 2));
-    if (report.events.some(e => (e as { type?: string })?.type === 'cleanup-error')) {
-      console.error('Batch stopped: cleanup incomplete. Remaining cells are unrun, not successful.'); break;
+    if (report.status === 'interrupted' || report.events.some(e => (e as { type?: string })?.type === 'cleanup-error')) {
+      console.error(`Batch stopped: ${report.status === 'interrupted' ? 'user interrupted' : 'cleanup incomplete'}. Remaining cells are unrun, not successful.`); break;
     }
   }
+  } finally { process.off('SIGINT', interrupt); process.off('SIGTERM', interrupt); }
   if (reports.some(r => r.status !== 'passed')) process.exitCode = 1;
 }

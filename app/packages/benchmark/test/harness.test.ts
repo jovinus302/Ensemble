@@ -1,6 +1,9 @@
 import { expect, it } from 'vitest';
-import { approval, BASE_SHA, Budget, plan, RUBRIC_HASH } from '../src/protocol.ts';
-import { runCell, type Services } from '../src/harness.ts';
+import { approval, BASE_SHA, Budget, plan, PROTOCOL_REVISION, RUBRIC_HASH } from '../src/protocol.ts';
+import { assertSameProtocol, isBatchPaused, runCell, type Services } from '../src/harness.ts';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 const cell = plan()[4]!;
 const options = { mode: 'fixture' as const, model: 'fixture', effort: 'none', starterHash: 'test', pollMs: 1 };
@@ -88,4 +91,50 @@ it('does not freeze a workspace when cleanup failed', async () => {
   const report = await runCell(plan()[0]!, f.services, options);
   expect(report.status).toBe('failed'); expect(f.log).not.toContain('freeze');
   expect(report.events).toContainEqual(expect.objectContaining({ type: 'artifact-unstable' }));
+});
+
+it('already aborted never prepares or launches a provider', async () => {
+  const controller = new AbortController(); controller.abort(new Error('owner cancelled'));
+  let launched = false;
+  const f = fake({ async driver() { launched = true; throw Error('must not launch'); } });
+  const report = await runCell(cell, f.services, { ...options, signal: controller.signal });
+  expect(report.status).toBe('interrupted'); expect(launched).toBe(false);
+  expect(f.log).not.toContain('prepare'); expect(report.calls).toHaveLength(0);
+});
+
+it('abort preserves a hung startup attempt journal and JSON despite hung stop', async () => {
+  const outputDir = await mkdtemp(path.join(tmpdir(), 'ensemble-abort-'));
+  const controller = new AbortController(); let cleaned = false;
+  let entered!: () => void; const starting = new Promise<void>(resolve => { entered = resolve; });
+  const f = fake({ async driver({ meter }) { return {
+    async start() { await meter('worker', async () => { entered(); return new Promise<void>(() => {}); }); },
+    async change() {}, async settled() { return false; }, stop: () => new Promise<void>(() => {}),
+  }; }, async cleanup() { cleaned = true; } });
+  try {
+    const pending = runCell(cell, f.services, { ...options, mode: 'live', outputDir, signal: controller.signal, limits: { calls: 24, totalMs: 100 } });
+    await starting;
+    const journal = await readFile(path.join(outputDir, `${cell.id}.events.jsonl`), 'utf8');
+    expect(JSON.parse(journal.trim()).event).toMatchObject({ type: 'call-attempt', role: 'worker', count: 1, startMs: expect.any(Number) });
+    controller.abort(new Error('owner cancelled'));
+    const report = await pending;
+    expect(report.status).toBe('interrupted'); expect(cleaned).toBe(true);
+    expect(report.calls).toHaveLength(1); expect(report.calls[0]!.status).toBe('running');
+    expect(JSON.parse(await readFile(path.join(outputDir, `${cell.id}.json`), 'utf8')).status).toBe('interrupted');
+    expect(report.events).toContainEqual(expect.objectContaining({ type: 'cleanup-error' }));
+  } finally { await rm(outputDir, { recursive: true, force: true }); }
+});
+
+it('PAUSE sentinel prevents the next cell without touching existing reports', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'ensemble-pause-'));
+  try {
+    expect(isBatchPaused(root)).toBe(false);
+    await writeFile(path.join(root, 'PAUSE'), 'User paused the live batch');
+    expect(isBatchPaused(root)).toBe(true);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it('never resumes legacy observations into the revised development protocol', () => {
+  expect(() => assertSameProtocol({})).toThrow('different protocol');
+  expect(() => assertSameProtocol({ protocolRevision: 'prototype-role-v1' })).toThrow('different protocol');
+  expect(() => assertSameProtocol({ protocolRevision: PROTOCOL_REVISION })).not.toThrow();
 });
