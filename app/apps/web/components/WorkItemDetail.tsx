@@ -7,10 +7,25 @@ import { Avatar } from "./Message";
 import { ScopeLists, TaskResolution, type ResolveTask } from "./TaskResolution";
 import type { ActionResult, LoadTaskResult } from "./use-view-model";
 import { WorkStatusChip } from "./WorkPanel";
-import { taskDetailRevision, waitingLabel } from "./work-view";
+import { briefPreview, taskDetailRevision, waitingLabel } from "./work-view";
 
 function when(iso: string): string {
   return `${formatDate(iso)} ${formatTime(iso)}`.trim();
+}
+
+/** 긴 글은 앞부분만 보이고 나머지는 "더 보기"로 펼친다(장면 작업의 맥락이 목표 문단 전체일 때). */
+function CompactText({ text, className }: { text: string; className: string }) {
+  const { head, rest } = briefPreview(text);
+  if (!rest) return <p className={className}>{head}</p>;
+  return (
+    <div className={`compact-text ${className}`}>
+      <p>{/[.!?。]$/.test(head) ? head : `${head}…`}</p>
+      <details className="compact-more">
+        <summary className="small">더 보기</summary>
+        <p>{rest}</p>
+      </details>
+    </div>
+  );
 }
 
 /**
@@ -124,7 +139,7 @@ export function WorkItemDetail({ taskId, items, members, me, messages, refreshKe
               <h3 className="section-label">PM이 정리한 맥락</h3>
               {item.brief ? (
                 <>
-                  <p className="card-text">{item.brief.why}</p>
+                  <CompactText className="card-text" text={item.brief.why} />
                   {item.brief.sources.length > 0 && (
                     <div className="small"><span className="muted">원 대화</span>
                       <ul className="detail-list">{item.brief.sources.map(s => (
@@ -161,7 +176,7 @@ export function WorkItemDetail({ taskId, items, members, me, messages, refreshKe
                   )}
                 </p>
                 {item.origin.messageIds[0] && sourceText(item.origin.messageIds[0]) && (
-                  <blockquote className="detail-quote small">{sourceText(item.origin.messageIds[0])}</blockquote>
+                  <blockquote className="detail-quote small"><CompactText className="" text={sourceText(item.origin.messageIds[0])!} /></blockquote>
                 )}
               </section>
             )}

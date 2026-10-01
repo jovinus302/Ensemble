@@ -1,6 +1,6 @@
 // 작업 패널의 보기 계산(순수 함수). 화면 컴포넌트는 이 결과만 그린다.
 // 작업 id는 내부 값이다. 여기서 만드는 어떤 문구에도 id를 넣지 않는다(사용자에게 작업 키를 보이지 않는다).
-import type { VmActivity, VmCard, VmDecisionCard, VmMember, VmMessage, VmPlanTask, VmWork, VmWorkItem, VmWorkStatus, VmWorkTeamRow } from "../lib/view-model";
+import type { ViewModel, VmActivity, VmCard, VmDecisionCard, VmMember, VmMessage, VmPlanTask, VmWork, VmWorkItem, VmWorkStatus, VmWorkTeamRow } from "../lib/view-model";
 
 export const WORK_STATUS_LABEL: Record<VmWorkStatus, string> = {
   todo: "할 일", in_progress: "진행 중", in_review: "검토 중", waiting_human: "사람 대기",
@@ -69,14 +69,23 @@ export function waitingLabel(item: VmWorkItem, members: VmMember[], me: string):
   return `${name}님 결정 대기`;
 }
 
+/**
+ * PM 줄의 상태. 서버가 PM 행을 주지 않으므로 지금 하는 일(activity)로 정한다: PM이 판단 중일 때만 "작업을 정리하는 중"이고,
+ * 일이 다 끝났거나 다른 멤버가 일하는 동안에는 쉬고 있다. activity가 없는 예전 서버에서는 busy로 가늠한다.
+ */
+export function pmTeamState(pm?: Pick<ViewModel, "activity" | "busy">): string {
+  const thinking = pm?.activity ? pm.activity.kind === "pm_thinking" : !!pm?.busy;
+  return thinking ? "작업을 정리하는 중" : "쉬는 중";
+}
+
 /** 팀 탭 한 줄. 멤버 순서는 PM → 사람 → Agent. 서버 행이 없는 멤버도 한 줄로 보인다. */
 export interface TeamLine { member: VmMember; row: VmWorkTeamRow; current?: VmWorkItem }
 const KIND_ORDER = { pm: 0, human: 1, agent: 2 } as const;
-export function teamLines(work: VmWork | undefined, members: VmMember[]): TeamLine[] {
+export function teamLines(work: VmWork | undefined, members: VmMember[], pm?: Pick<ViewModel, "activity" | "busy">): TeamLine[] {
   const rows = new Map((work?.team ?? []).map(r => [r.memberId, r]));
   const items = new Map((work?.items ?? []).map(i => [i.id, i]));
   return [...members].sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]).map(member => {
-    const row = rows.get(member.id) ?? { memberId: member.id, state: member.kind === "pm" ? "작업을 정리하는 중" : member.busy ? "작업 중" : "쉬는 중", openDecisions: 0 };
+    const row = rows.get(member.id) ?? { memberId: member.id, state: member.kind === "pm" ? pmTeamState(pm) : member.busy ? "작업 중" : "쉬는 중", openDecisions: 0 };
     const current = row.currentItemId ? items.get(row.currentItemId) : undefined;
     return { member, row, ...(current ? { current } : {}) };
   });
@@ -140,4 +149,25 @@ export function stallGuidance(stalled: NonNullable<VmActivity["stalled"]>, canRe
   if (buttons) return `대본이 멈췄어요. 아래 ${buttons} 버튼으로 이어 가세요.`;
   if (canResolveTasks && stalled.tasks?.length) return "작업이 멈췄어요. 아래에서 그 작업의 처리 방법을 골라 주세요.";
   return "진행이 멈췄어요. 아래 이유를 확인하고 채널에서 PM에게 알려 주세요.";
+}
+
+/**
+ * 긴 맥락 글(예: 장면 작업의 목표 문단 전체)을 짧게 보이기 위한 나눔: 앞 두 문장(최대 140자)을 먼저 보이고 나머지는 펼쳐 본다.
+ * 짧은 글이면 rest가 없다.
+ */
+export function briefPreview(text: string, maxChars = 140): { head: string; rest?: string } {
+  const t = text.trim();
+  const sentences = t.match(/[^.!?。\n]+(?:[.!?。]+|\n+|$)/g) ?? [t];
+  let head = "";
+  for (const s of sentences.slice(0, 2)) {
+    if (head && (head + s).trim().length > maxChars) break;
+    head += s;
+  }
+  head = head.trim();
+  if (head.length > maxChars) {
+    const cut = head.slice(0, maxChars), space = cut.lastIndexOf(" ");
+    head = (space > maxChars / 2 ? cut.slice(0, space) : cut).trim();
+  }
+  const rest = t.startsWith(head) ? t.slice(head.length).trim() : "";
+  return rest ? { head, rest } : { head: t };
 }

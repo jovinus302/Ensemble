@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { availabilityWeek, type EventPayloads, type EventType, type LedgerEvent, type TaskSpec } from "@ensemble/core";
-import { buildViewModel, projectTitle, refreshTodo, stripTaskKeys } from "../lib/build-view-model";
+import { buildTaskDetail, buildViewModel, projectTitle, refreshTodo, sanitizeMachineText, stripTaskKeys } from "../lib/build-view-model";
 import { buildMockViewModel } from "../lib/mock-view-model";
 
 const NOW = new Date("2026-10-01T00:00:00Z");
@@ -246,4 +246,49 @@ it('plan approval card carries parentId so the card can render the plan hierarch
   if (card?.kind !== 'plan_approval') throw new Error('plan card missing');
   expect(card.tasks[1]!.parentId).toBe(tasks[0]!.id);
   expect(card.tasks[0]!.parentId).toBeUndefined();
+});
+
+describe("R1 QA: 사람에게 보이는 글의 마지막 방어선", () => {
+  it("직렬화된 JSON 덩어리와 UUID를 지우고, 뺀 것이 없으면 원문을 그대로 둔다", () => {
+    expect(sanitizeMachineText('결과 정리 {"status":"done","files":[{"name":"flow@v3.md"}]} 끝')).toBe("결과 정리 끝");
+    expect(sanitizeMachineText(`요청 ${PROPOSAL} 처리: {"a":"}"}`)).toBe("요청 처리");
+    expect(sanitizeMachineText('[{"k":1}]')).toBe("");
+    const plain = "할 일: 없음\n선택지: ";
+    expect(sanitizeMachineText(plain)).toBe(plain);
+    expect(sanitizeMachineText("{이름} 칸은 비워 둬요")).toBe("{이름} 칸은 비워 둬요");
+  });
+
+  it("Agent 결과·멈춤 사유·활동 기록에 JSON·UUID가 보이지 않는다", () => {
+    const l = approved();
+    l.emit("task_started", { taskId: "research", turnId: "t1" });
+    l.emit("reply_recorded", { memberId: "research-agent", taskId: "research", text: '{"status":"done","artifacts":["comparison.md#v2"]}' });
+    l.emit("task_blocked", { taskId: "research", reason: `도구 오류 {"code":"E_TOOL","detail":{"file":"a@v3"}} 요청 ${PROPOSAL}` });
+    const vm = buildViewModel(l.events, { me: "owner", mode: "free", busy: false, now: NOW });
+    const reply = vm.messages.filter(m => m.authorId === "research-agent").at(-1)!;
+    expect(reply.text).toBe("결과를 남겼어요");
+    const detail = buildTaskDetail(l.events, "research", { me: "owner" })!;
+    expect(detail.activity.find(a => a.kind === "blocked")!.text).toBe("멈췄어요: 도구 오류 요청");
+    const shown = JSON.stringify([vm.messages.map(m => m.text), detail.activity.map(a => a.text)]);
+    expect(shown).not.toMatch(/\{"|E_TOOL|8f1c2d3e/);
+  });
+
+  it("답변형 결정 요청의 선택지에 answerText가 있으면 카드 선택지로 그대로 옮긴다(없으면 넣지 않는다)", () => {
+    const l = approved();
+    const request = {
+      requestId: "ask-research", kind: "missing_info", targetMemberId: "owner", question: "research 작업에서 묻습니다: 몇 곳을 비교할까요?", sourceMessageIds: [],
+      options: [
+        { optionId: "three", label: "3곳", answerText: "3곳만 비교해 주세요.", effects: [{ type: "answer", taskId: "research" }], tradeoff: "빠르게 끝나요" },
+        { optionId: "answer", label: "답하기", effects: [{ type: "answer", taskId: "research" }], tradeoff: "" },
+        { optionId: "hold", label: "보류", effects: [{ type: "none" }], tradeoff: "" },
+      ],
+      recommendation: { optionId: "three", rationale: "기한 안에 끝내려면 3곳이 알맞아요", evidence: [] },
+      impact: { taskIds: ["research"], blockedTaskIds: ["research"] },
+    } as unknown as EventPayloads["decision_requested"];
+    l.emit("decision_requested", request);
+    const card = buildViewModel(l.events, { me: "owner", mode: "free", busy: false, now: NOW }).decisionCards!.find(c => c.id === "ask-research")!;
+    expect(card.answerMode).toBe("text");
+    expect(card.question).toBe("경쟁 서비스 조사 작업에서 묻습니다: 몇 곳을 비교할까요?");
+    expect(card.options.map(o => [o.optionId, o.answerText])).toEqual([["three", "3곳만 비교해 주세요."], ["answer", undefined], ["hold", undefined]]);
+    expect(card.options[1]).not.toHaveProperty("answerText");
+  });
 });
