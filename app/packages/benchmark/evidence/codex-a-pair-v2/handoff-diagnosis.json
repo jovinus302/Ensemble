@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "kind": "posthoc-read-only-diagnosis",
+  "experiment": "codex-a-pair-v2",
+  "additionalModelCalls": 0,
+  "originalOutcomesChanged": false,
+  "conclusion": "The Ensemble run was blocked by its internal evidence gate before the external build/browser stage. This is not evidence that the submitted UI failed those external checks.",
+  "observedRun": {
+    "cell": "pilot-01",
+    "status": "failed",
+    "totalMs": 570437,
+    "topLevelAttempts": { "pm": 2, "worker": 3, "judge": 3, "total": 8 },
+    "externalBrowserExecutedDuringOriginalRun": false,
+    "handoffReviews": [
+      {
+        "ledgerSeq": 20,
+        "sourceLine": 1134,
+        "verdict": "insufficient",
+        "missingParaphrase": "Evidence tying the specified fixture dates/times to behavior, successful build, usable unclipped 390/1440px layout, and reported files/limitations.",
+        "revisionRequestedSeq": 21
+      },
+      {
+        "ledgerSeq": 35,
+        "sourceLine": 1443,
+        "verdict": "insufficient",
+        "missingParaphrase": "The completion report must distinguish build/browser verification status and remaining functional limitations.",
+        "revisionRequestedSeq": 36
+      },
+      {
+        "ledgerSeq": 49,
+        "sourceLine": 1732,
+        "verdict": "insufficient",
+        "missingParaphrase": "Source alone does not establish successful build and unclipped usability at 390/1440px.",
+        "revisionRequestedSeq": 50
+      }
+    ],
+    "blocked": { "ledgerSeq": 51, "sourceLine": 1777, "reason": "Two revision requests exhausted without satisfying handoff conditions." },
+    "workerResultReportLines": [269, 470, 650],
+    "workerLimitations": "All three result reports already state that external build/browser verification had not run; the final worker turn added completion/verification limitations to source comments. These are self-reports, not external verification results."
+  },
+  "mechanism": [
+    {
+      "finding": "Task A uses the entire task prompt as one handoff condition, mixing source requirements, runtime/layout verification and reporting instructions.",
+      "reference": "app/packages/benchmark/src/native.ts:34"
+    },
+    {
+      "finding": "Ensemble settled requires every task to be checked by its internal judge.",
+      "reference": "app/packages/benchmark/src/native.ts:171"
+    },
+    {
+      "finding": "The harness waits for settled before running the external build and browser acceptance. The judge can therefore demand evidence that this ordering prevents from existing yet.",
+      "references": ["app/packages/benchmark/src/harness.ts:108", "app/packages/benchmark/src/harness.ts:125", "app/packages/benchmark/src/harness.ts:127"]
+    },
+    {
+      "finding": "The submitted-result payload retains summary and artifact IDs but not the report's limitations field. The handoff judge reads summary and attachment contents; an already-declared report limitation can consequently be absent from its evidence input.",
+      "references": ["app/packages/orchestrator/src/session-runner.ts:352", "app/packages/orchestrator/src/handoff.ts:248"]
+    }
+  ],
+  "futureRepairProposal": [
+    "Separate source handoff readiness, functional/runtime acceptance, and reporting completeness into explicit criteria instead of one prompt-sized condition.",
+    "Preserve worker limitations in the judge input, with provenance, without treating self-reports as proof of runtime behavior.",
+    "Either run the frozen external checks on a submitted artifact before the final judge and attach their evidence, or explicitly defer those external criteria to the independent harness after source handoff. Preserve identical external acceptance for both conditions.",
+    "Version any such change as a future experiment; do not overwrite these outcomes, rerun consumed attempts, or claim superiority from this exploratory pair."
+  ],
+  "supplementalUsage": {
+    "provenance": "Posthoc cumulative token_count records from exactly the two worker session logs resolved through read-only thread metadata restricted to the two experiment workspace paths. Other project content and credentials were not read.",
+    "workerSessions": [
+      {
+        "cell": "pilot-01",
+        "threadId": "01a0f99d-03e9-7ff2-a2cb-b7def3f73101",
+        "source": "~/.codex/sessions/2026/10/02/rollout-2026-10-02T07-36-53-01a0f99d-03e9-7ff2-a2cb-b7def3f73101.jsonl",
+        "sourceLine": 114,
+        "sourceSha256": "215fb40b7152262655ee77407dd2c754efdb2037b3646498a71dcfb5480ae884",
+        "timestamp": "2026-10-01T22:45:29.203Z",
+        "inputTokens": 474296,
+        "cachedInputTokensSubset": 427264,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 14347,
+        "reasoningOutputTokensSubset": 475,
+        "totalTokens": 488643
+      },
+      {
+        "cell": "pilot-02",
+        "threadId": "01a0f9a5-3f5d-7322-89cc-b44c7a52cd7e",
+        "source": "~/.codex/sessions/2026/10/02/rollout-2026-10-02T07-45-52-01a0f9a5-3f5d-7322-89cc-b44c7a52cd7e.jsonl",
+        "sourceLine": 49,
+        "sourceSha256": "7228e2b0ede58fcb02351bfc5cbd76f59aaae67d50a316d71a153e43f399700a",
+        "timestamp": "2026-10-01T22:48:33.714Z",
+        "inputTokens": 141628,
+        "cachedInputTokensSubset": 113024,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 4556,
+        "reasoningOutputTokensSubset": 58,
+        "totalTokens": 146184
+      }
+    ],
+    "ensemblePmAndJudge": {
+      "source": "pilot-01.json native_usage events",
+      "coveredCompletedTopLevelCalls": 5,
+      "inputTokens": 162067,
+      "outputTokens": 1111,
+      "totalTokens": 163178,
+      "cachedInputTokens": null
+    },
+    "observedCombinedTotals": { "pilot-01": 651821, "pilot-02": 146184 },
+    "underlyingApiCallCounts": null,
+    "costUsd": null,
+    "limits": "These are CLI/session-reported token counts, not independently verified billing. Cached input and reasoning output are subsets, not additional totals. Worker-session counters cover all recorded worker turns; PM/judge counters come from five separate recorded CLI completions. Model-internal request counts remain unknown. Different observed outcomes and cache coverage prevent interpreting totals as equivalent successful-task cost. Original report null usage fields are preserved."
+  },
+  "sourceHashes": {
+    "app/packages/benchmark/.local/codex-a-pair-v2/reports/pilot-01.json": "82feadb70e16cbd0a547738744beb44110c34061e0bcd9daf3adff2bdd2d053f",
+    "app/packages/benchmark/.local/codex-a-pair-v2/reports/pilot-02.json": "1fd432c8e164657ea400cdf5dcb66dffa98f21c87163c946eb34160bdee68a51",
+    "app/packages/benchmark/src/native.ts": "90da377b53342a41220483068c8863583769f4ad58fe4110f58e37ee7228b65c",
+    "app/packages/benchmark/src/harness.ts": "f234987e48ba69d330a122e3b703b554f08d5b04a6e0c8f43825067e1532607b",
+    "app/packages/orchestrator/src/session-runner.ts": "4b5dd042c5f0d488c262d4d85f65375ae069bed6ed636f1b82c10b9da2f15fab",
+    "app/packages/orchestrator/src/handoff.ts": "559ba3a473268e5524be0ac55d80a201084ca6c2e153116dee08479b480c730e"
+  }
+}

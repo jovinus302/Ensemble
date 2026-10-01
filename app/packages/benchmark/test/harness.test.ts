@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { approval, BASE_SHA, Budget, plan, PROTOCOL_REVISION, RUBRIC_HASH } from '../src/protocol.ts';
+import { approval, BASE_SHA, Budget, pairedPlan, plan, PROTOCOL_REVISION, RUBRIC_HASH } from '../src/protocol.ts';
 import { assertSameProtocol, isBatchPaused, runCell, type Services } from '../src/harness.ts';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -33,13 +33,30 @@ it('requires explicit provenance and exact frozen protocol for live runs', () =>
   for (const value of [null, {}, { liveEightRuns: true }, { liveEightRuns: true, baseSha: BASE_SHA, rubricHash: 'wrong', source: 'parent', approvedBy: 'owner' }]) {
     expect(() => approval(value)).toThrow();
   }
-  expect(() => approval({ liveEightRuns: true, baseSha: BASE_SHA, rubricHash: RUBRIC_HASH, source: 'explicit parent authorization', approvedBy: 'owner' })).not.toThrow();
-  const a = { liveEightRuns: true, baseSha: BASE_SHA, rubricHash: RUBRIC_HASH, source: 'parent', approvedBy: 'owner', toolsMatched: true,
+  expect(() => approval({ liveEightRuns: true, baseSha: BASE_SHA, rubricHash: RUBRIC_HASH, source: 'explicit parent authorization', approvedBy: 'owner' }, undefined, 'codex')).toThrow();
+  const a = { livePairedRuns: 2, provider: 'codex', task: 'A', previousConservativeAttempts: 5, totalAuthorizedSlots: 8, reruns: false,
+    baseSha: BASE_SHA, rubricHash: RUBRIC_HASH, source: 'parent', approvedBy: 'owner', toolsMatched: true,
     starterHash: 'starter', evaluatorHash: 'evaluator', implementationHash: 'implementation' };
   const hashes = { starterHash: 'starter', evaluatorHash: 'evaluator', implementationHash: 'implementation' };
-  expect(() => approval(a, hashes)).not.toThrow();
-  expect(() => approval({ ...a, toolsMatched: false }, hashes)).toThrow('toolsMatched');
-  expect(() => approval({ ...a, evaluatorHash: 'changed' }, hashes)).toThrow('hashes');
+  expect(() => approval(a, hashes, 'codex')).not.toThrow();
+  expect(() => approval(a, hashes)).toThrow('Full eight-cell');
+  expect(() => approval({ ...a, toolsMatched: false }, hashes, 'codex')).toThrow('toolsMatched');
+  expect(() => approval({ ...a, evaluatorHash: 'changed' }, hashes, 'codex')).toThrow('hashes');
+  for (const mismatch of [{ livePairedRuns: 3 }, { provider: 'claude' }, { task: 'B' }, { previousConservativeAttempts: 4 },
+    { previousConservativeAttempts: 7 }, { totalAuthorizedSlots: 9 }, { reruns: true }, { liveEightRuns: true }]) {
+    expect(() => approval({ ...a, ...mismatch }, hashes, 'codex')).toThrow();
+  }
+});
+it('paired plans select only the two preregistered Task A conditions', () => {
+  expect(pairedPlan('codex').map(c => c.id)).toEqual(['pilot-01', 'pilot-02']);
+  expect(pairedPlan('claude').map(c => c.id)).toEqual(['pilot-03', 'pilot-04']);
+  for (const provider of ['codex', 'claude']) {
+    const cells = pairedPlan(provider); expect(cells).toHaveLength(2);
+    expect(cells.every(c => c.task === 'A' && c.provider === provider)).toBe(true);
+    expect(new Set(cells.map(c => c.ensemble)).size).toBe(2);
+    expect(8 - 5 - cells.length).toBe(1);
+  }
+  expect(() => pairedPlan('other')).toThrow();
 });
 it('reserves concurrent calls before executing and retains failed calls', async () => {
   const b = new Budget(new AbortController().signal, () => 0, { calls: 2, totalMs: 100 });

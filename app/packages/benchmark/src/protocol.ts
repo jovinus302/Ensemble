@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
-export const BASE_SHA = 'a6bfc345bde634422421c500fad264419bc04ec9';
+export const HISTORICAL_BASE_SHA = 'a6bfc345bde634422421c500fad264419bc04ec9';
+export const BASE_SHA = 'b34b00888b6fc79f5d349a5de195cf942c42f4e2';
 /** New neutral-role experiment; never pool with legacy prototype-role pilot observations. */
 export const PROTOCOL_REVISION = 'development-brief-v2';
 export const LIMITS: Readonly<{ totalMs: number; calls: number }> = Object.freeze({ totalMs: 20 * 60_000, calls: 24 });
@@ -30,9 +31,19 @@ export function plan(): Cell[] {
   ].map(([task, provider, ensemble], i) => ({ task: task as Task, provider: provider as Provider,
     ensemble: ensemble as boolean, ordinal: i + 1, id: `pilot-${String(i + 1).padStart(2, '0')}` }));
 }
-export function approval(value: unknown, hashes?: { starterHash: string; evaluatorHash: string; implementationHash: string }): void {
+/** The only newly authorized live subset: exactly two original-order Task A cells. */
+export function pairedPlan(provider: string): Cell[] {
+  if (provider !== 'codex' && provider !== 'claude') throw new Error('--pair must be codex or claude');
+  return plan().filter(cell => cell.task === 'A' && cell.provider === provider);
+}
+export function approval(value: unknown, hashes?: { starterHash: string; evaluatorHash: string; implementationHash: string }, provider?: string): void {
   const a = value as Record<string, unknown> | null;
-  if (!a || a.liveEightRuns !== true || a.baseSha !== BASE_SHA || a.rubricHash !== RUBRIC_HASH
+  if (!provider) throw new Error('Full eight-cell live execution is not authorized; an explicitly approved --pair is required');
+  const cells = pairedPlan(provider);
+  if (!a || a.livePairedRuns !== 2 || a.liveEightRuns !== undefined || a.provider !== provider || a.task !== 'A'
+    || a.previousConservativeAttempts !== 5 || a.totalAuthorizedSlots !== 8 || a.reruns !== false
+    || Number(a.previousConservativeAttempts) + cells.length > Number(a.totalAuthorizedSlots)
+    || a.baseSha !== BASE_SHA || a.rubricHash !== RUBRIC_HASH
     || typeof a.approvedBy !== 'string' || !a.approvedBy.trim() || typeof a.source !== 'string' || !a.source.trim()) {
     throw new Error('Live execution requires explicit approval provenance matching this base and rubric; never generate approval automatically');
   }

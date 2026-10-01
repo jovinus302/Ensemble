@@ -1,0 +1,147 @@
+{
+  "kind": "POSTHOC_DIAGNOSTIC_NOT_PRIMARY_RESULT",
+  "mode": "provider-free",
+  "modelCalls": 0,
+  "primaryResultsUnchanged": true,
+  "originalEvaluatorSha256": "e60598a215a568b61ca144afd2862ec568960f82c68b7ed97c5807f0e89ec70b",
+  "interpretation": "Original frozen evaluator is rerun unchanged on copied final artifacts. The separate semantic probe tests retained confirmation and exact restored date/time/guest controls, allowing localized visible dates. This does not turn an orchestration handoff failure into a primary pass or retroactively change the rubric.",
+  "results": [
+    {
+      "cell": "pilot-01",
+      "frozenArtifactPath": "evidence/codex-a-pair-v2/artifacts/pilot-01",
+      "sourceSha256": "2c2ab1f924a04a01c7934577516be3006af427ae4b55fefe51340f5bc32ded32",
+      "originalAcceptance": {
+        "checks": [
+          {
+            "id": "checkpoint.selection",
+            "pass": true
+          },
+          {
+            "id": "required-fields.blocked",
+            "pass": true
+          },
+          {
+            "id": "party.one-through-six",
+            "pass": true
+          },
+          {
+            "id": "sold-out",
+            "pass": true
+          },
+          {
+            "id": "service-error",
+            "pass": true
+          },
+          {
+            "id": "confirmation.persistence",
+            "pass": true
+          },
+          {
+            "id": "invalid-party.blocked",
+            "pass": true
+          },
+          {
+            "id": "viewport.390",
+            "pass": true
+          },
+          {
+            "id": "viewport.1440",
+            "pass": true
+          },
+          {
+            "id": "console.clean",
+            "pass": true
+          }
+        ],
+        "passed": true
+      },
+      "semanticPersistence": {
+        "selected": {
+          "date": "2030-06-17",
+          "time": "19:00",
+          "guests": "6"
+        },
+        "beforeReload": "✓\nYou’re on the list.\n\nYour table is confirmed. We look forward to welcoming you.\n\nDate\nMonday, June 17, 2030\n2030-06-17\nTime\n19:00\nGuests\n6 guests\nEdit reservation\n↗\n\nKeep these details handy for your visit.",
+        "afterReload": "✓\nYou’re on the list.\n\nYour table is confirmed. We look forward to welcoming you.\n\nDate\nMonday, June 17, 2030\n2030-06-17\nTime\n19:00\nGuests\n6 guests\nEdit reservation\n↗\n\nKeep these details handy for your visit.",
+        "restoredControls": {
+          "date": "2030-06-17",
+          "time": "19:00",
+          "guests": "6"
+        },
+        "passed": true,
+        "exactIsoInVisibleConfirmation": true,
+        "confirmationTextUnchanged": true,
+        "controlValuesMatch": true
+      }
+    },
+    {
+      "cell": "pilot-02",
+      "frozenArtifactPath": "evidence/codex-a-pair-v2/artifacts/pilot-02",
+      "sourceSha256": "b6966959fecfa1e25a86c722d730b5b21c2f7eba403d9fb8ddbe7f62080a8247",
+      "originalAcceptance": {
+        "checks": [
+          {
+            "id": "checkpoint.selection",
+            "pass": true
+          },
+          {
+            "id": "required-fields.blocked",
+            "pass": true
+          },
+          {
+            "id": "party.one-through-six",
+            "pass": true
+          },
+          {
+            "id": "sold-out",
+            "pass": true
+          },
+          {
+            "id": "service-error",
+            "pass": true
+          },
+          {
+            "id": "confirmation.persistence",
+            "pass": false,
+            "detail": "Confirmation does not match selected reservation"
+          },
+          {
+            "id": "invalid-party.blocked",
+            "pass": true
+          },
+          {
+            "id": "viewport.390",
+            "pass": true
+          },
+          {
+            "id": "viewport.1440",
+            "pass": true
+          },
+          {
+            "id": "console.clean",
+            "pass": true
+          }
+        ],
+        "passed": false
+      },
+      "semanticPersistence": {
+        "selected": {
+          "date": "2030-06-17",
+          "time": "19:00",
+          "guests": "6"
+        },
+        "beforeReload": "✓\nYour table is ready.\n\nYour reservation is confirmed. We look forward to welcoming you.\n\nDATE\nMonday, June 17, 2030\nTIME\n19:00\nPARTY\n6 guests\nEdit reservation\n↗",
+        "afterReload": "✓\nYour table is ready.\n\nYour reservation is confirmed. We look forward to welcoming you.\n\nDATE\nMonday, June 17, 2030\nTIME\n19:00\nPARTY\n6 guests\nEdit reservation\n↗",
+        "restoredControls": {
+          "date": "2030-06-17",
+          "time": "19:00",
+          "guests": "6"
+        },
+        "passed": true,
+        "exactIsoInVisibleConfirmation": false,
+        "confirmationTextUnchanged": true,
+        "controlValuesMatch": true
+      }
+    }
+  ]
+}
