@@ -1,0 +1,28 @@
+{
+  "provider": "claude",
+  "tasks": [
+    {
+      "id": "research",
+      "title": "버튼 방식과 키보드 방식 가상 설계 비교 Markdown 작성",
+      "status": "checked"
+    },
+    {
+      "id": "interview",
+      "title": "클릭 카운터 가상 인터뷰 노트 작성",
+      "status": "checked"
+    },
+    {
+      "id": "flow",
+      "title": "클릭 카운터 버튼 동작 명세 작성",
+      "status": "checked"
+    },
+    {
+      "id": "prototype",
+      "title": "로컬 counter.html 클릭 카운터 구현 (감소(-1) 버튼 제외)",
+      "status": "checked"
+    }
+  ],
+  "desktop": true,
+  "mobile": true,
+  "pageErrors": []
+}

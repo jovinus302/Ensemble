@@ -1,0 +1,31 @@
+{
+  "elapsedMs": 18308,
+  "activity": {
+    "kind": "idle",
+    "label": "입력을 기다리는 중",
+    "since": "2026-10-01T13:57:00.295Z"
+  },
+  "prototype": {
+    "id": "prototype",
+    "title": "로컬 counter.html 클릭 카운터 구현 (감소(-1) 버튼 제외, +1 버튼·초기화 버튼까지)",
+    "assigneeName": "프로토타입 Agent",
+    "status": "checked",
+    "exclusions": [
+      "감소(-1) 버튼"
+    ],
+    "limits": [
+      "+1 버튼",
+      "초기화 버튼"
+    ],
+    "startDay": 0,
+    "endDayMin": 0,
+    "endDayMax": 0,
+    "hours": {
+      "min": 0.2,
+      "max": 0.5
+    },
+    "handoffConditions": [
+      "최종 산출물은 외부 의존성 없이 로컬에서 열리는 counter.html 하나로, 최초 0 표시와 +1·-1·초기화 버튼이 명세대로 동작하며 시연용 가상 자료만 사용하고 외부 API 호출·개인정보 수집·배포 관련 기능을 포함하지 않는다."
+    ]
+  }
+}
