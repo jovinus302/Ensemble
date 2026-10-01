@@ -109,4 +109,3 @@ Route (app)
 
 ?? (Static)   prerendered as static content
 ?  (Dynamic)  server-rendered on demand
-
