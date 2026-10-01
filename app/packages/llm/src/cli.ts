@@ -120,6 +120,16 @@ export function strictSchema(schema: Schema): Schema {
     else if (HINTED.includes(key)) hints.push(`${key}=${JSON.stringify(value)}`);
     else if (KEPT.has(key) && key !== "properties" && key !== "required" && key !== "additionalProperties") out[key] = value;
   }
+  // JSON Schema permits an untyped literal; Codex structured output requires an
+  // explicit type. Infer only from actual values, never coerce or add enum members.
+  if ('enum' in schema && (!Array.isArray(schema.enum) || schema.enum.length === 0)) {
+    throw new Error('Strict schema enum must be a non-empty array');
+  }
+  const literals = 'const' in schema ? [schema.const] : Array.isArray(schema.enum) ? schema.enum : undefined;
+  if (literals) {
+    const types = [...new Set(literals.map(literalType))];
+    if (out.type === undefined) out.type = types.length === 1 ? types[0] : types;
+  }
   if (schema.properties) {
     const properties = schema.properties as Record<string, Schema>;
     const required = new Set((schema.required as string[] | undefined) ?? []);
@@ -134,7 +144,17 @@ export function strictSchema(schema: Schema): Schema {
   return out;
 }
 
+function literalType(value: unknown): string {
+  if (value === null) return 'null';
+  if (typeof value === 'string' || typeof value === 'boolean') return typeof value;
+  if (typeof value === 'number' && Number.isFinite(value)) return 'number';
+  // Object/array literals need structural schemas in the strict subset. Refuse
+  // them here rather than synthesizing properties or silently widening values.
+  throw new Error('Strict schema const/enum members must be finite JSON primitives');
+}
+
 function nullable(schema: Schema): Schema {
+  if ('const' in schema || 'enum' in schema) return allowsNull(schema) ? schema : { anyOf: [schema, { type: 'null' }] };
   if (Array.isArray(schema.type)) return schema.type.includes("null") ? schema : { ...schema, type: [...schema.type, "null"] };
   if (typeof schema.type === "string" && !schema.enum) return { ...schema, type: [schema.type, "null"] };
   return { anyOf: [schema, { type: "null" }] };
@@ -165,6 +185,9 @@ export function dropStrictNulls(value: unknown, schema: Schema): unknown {
 }
 
 function allowsNull(schema: Schema): boolean {
+  if (schema.type !== undefined && schema.type !== 'null' && !(Array.isArray(schema.type) && schema.type.includes('null'))) return false;
+  if ('const' in schema) return schema.const === null;
+  if (Array.isArray(schema.enum)) return schema.enum.includes(null);
   if (schema.type === "null" || (Array.isArray(schema.type) && schema.type.includes("null"))) return true;
   if (Array.isArray(schema.enum) && schema.enum.includes(null)) return true;
   const union = (schema.oneOf ?? schema.anyOf) as Schema[] | undefined;

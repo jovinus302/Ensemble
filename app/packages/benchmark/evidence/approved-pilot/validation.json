@@ -1,0 +1,43 @@
+{
+  "kind": "offline-validation-after-pause",
+  "checkedAtUtc": "2026-10-01T22:26:25.9024772Z",
+  "actualModelCalls": 0,
+  "protocolRevision": "development-brief-v2",
+  "historicalBaseline": "a6bfc345bde634422421c500fad264419bc04ec9",
+  "productionDifference": "Only llm/src/cli.ts strict schema normalization plus its regression test; historical live source remains unchanged",
+  "tests": {
+    "failed": 0,
+    "includesPrevious714": true,
+    "files": 84,
+    "passed": 726
+  },
+  "typecheck": "passed",
+  "build": {
+    "status": "passed",
+    "warnings": "Three existing Turbopack dynamic filesystem tracing warnings in agent runtime"
+  },
+  "schema": {
+    "fixedPositivePassed": true,
+    "liveProviderAcceptanceValidated": false,
+    "legacyUntypedLiteralPaths": 22,
+    "exactLegacyNegativeReproduced": true
+  },
+  "fixture": {
+    "actualModelCalls": 0,
+    "earlierFailedSmoke": "Wrong BENCH_PLAYWRIGHT_MODULE env variable; corrected to documented BENCH_PLAYWRIGHT and reran fixtures only; failed evidence retained",
+    "BChecks": 13,
+    "AChecks": 10,
+    "source": ".local/fixture-1790893072801/summary.json",
+    "cells": 8,
+    "passed": 8
+  },
+  "browser": {
+    "referenceA": "10/10",
+    "originalStarter": "expected checkpoint failure",
+    "brokenB": "expected time-clear failure",
+    "referenceB": "13/13"
+  },
+  "livePaused": true,
+  "newValidLiveRuns": 0,
+  "outstanding": "New reviewed baseline, composed-prompt/tool preflight and explicit direction/budget required before any new live batch"
+}

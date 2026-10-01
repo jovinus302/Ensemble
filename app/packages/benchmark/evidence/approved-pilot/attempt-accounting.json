@@ -1,0 +1,350 @@
+{
+  "schemaVersion": 1,
+  "kind": "raw-attempt-accounting",
+  "protocolRevision": "prototype-role-v1",
+  "scope": "Only this pilot reports/events/work directories and its two run logs; no external runtime logs consulted.",
+  "accounting": {
+    "approvedCellSlots": 8,
+    "conservativelyConsumedStartedCellSlots": 5,
+    "finalizedCellReports": 4,
+    "startedWithoutFinalReport": 1,
+    "remainingOriginalSlots": 3,
+    "unrunCellIds": [
+      "pilot-06",
+      "pilot-07",
+      "pilot-08"
+    ],
+    "newValidEightCellBatchAdditionalSlotsNeeded": 5,
+    "newTotalSlotsIfApproved": 13
+  },
+  "providerAccounting": {
+    "confirmedMeteredTopLevelAttempts": 7,
+    "roles": {
+      "pm": 3,
+      "worker": 3,
+      "judge": 1
+    },
+    "scope": "Final reports for cells 01 through 04 only. These rows are top-level request/turn attempts, not successful inference or underlying API-call counts.",
+    "cell05ProviderRequestCount": null,
+    "cell05PmInvocationConfirmed": false,
+    "actualModelInvocations": null,
+    "underlyingApiCalls": null,
+    "reason": "Cell 05 has native_config only and no persisted request-start row. Startup is not proof of provider invocation. Hidden CLI requests/retries are not enumerated."
+  },
+  "interpretation": {
+    "livePaused": true,
+    "newRunsAuthorized": false,
+    "validEnsembleComparison": false,
+    "legacyAndV2MustNotBePooled": true
+  },
+  "inventory": {
+    "reportJsonFiles": 4,
+    "eventJsonlFiles": 5,
+    "workDirectories": [
+      "pilot-01",
+      "pilot-02",
+      "pilot-03",
+      "pilot-04",
+      "pilot-05"
+    ]
+  },
+  "sources": [
+    {
+      "path": ".local/live-approved-pilot/manifest.json",
+      "bytes": 2235,
+      "sha256": "091697132a7be153ef216604730b09c17069f81f27b62b740689bc9f644ecce3"
+    },
+    {
+      "path": ".local/live-approved-run.log",
+      "bytes": 377,
+      "sha256": "ee0285d4b8e00c0ed35643cbbf541b647031c55f341f9469d0a0700af1e85fcd"
+    },
+    {
+      "path": ".local/live-resume-run.log",
+      "bytes": 316,
+      "sha256": "da2a84ef95a60490a7172bf8f7194d4ade9d0590a03112707a9cca84da37406b"
+    }
+  ],
+  "cells": [
+    {
+      "id": "pilot-01",
+      "slotAccounting": "consumed-finalized",
+      "reportPresent": true,
+      "eventFilePresent": true,
+      "workDirectoryPresent": true,
+      "workFileCount": 5,
+      "finalStatus": "failed",
+      "totalMs": 10454,
+      "acceptance": {
+        "passed": 0,
+        "total": 0
+      },
+      "meteredTopLevelAttempts": 1,
+      "roles": [
+        {
+          "role": "pm",
+          "status": "failed",
+          "startMs": 833.9302,
+          "endMs": 8959.688
+        }
+      ],
+      "eventTypes": {
+        "native_config": 1,
+        "native_pm_timing": 1,
+        "native_ledger": 1
+      },
+      "sources": [
+        {
+          "path": ".local/live-approved-pilot/reports/pilot-01.json",
+          "bytes": 11536,
+          "sha256": "a9d3d968b3cbe79939f7263a36bab187b862ef295aabf6d4bfe9bf0ebf412e70"
+        },
+        {
+          "path": ".local/live-approved-pilot/reports/pilot-01.events.jsonl",
+          "bytes": 7657,
+          "sha256": "3222565fefab390262500c5551267b60c611fb77a66d0649d6576bb800846175"
+        }
+      ]
+    },
+    {
+      "id": "pilot-02",
+      "slotAccounting": "consumed-finalized",
+      "reportPresent": true,
+      "eventFilePresent": true,
+      "workDirectoryPresent": true,
+      "workFileCount": 13,
+      "finalStatus": "failed",
+      "totalMs": 86530,
+      "acceptance": {
+        "passed": 3,
+        "total": 10
+      },
+      "meteredTopLevelAttempts": 1,
+      "roles": [
+        {
+          "role": "worker",
+          "status": "completed",
+          "startMs": 2108.9644000000008,
+          "endMs": 2138.9712999999992
+        }
+      ],
+      "eventTypes": {
+        "native_config": 1,
+        "native_session": 5,
+        "native_worker_duration": 1,
+        "native_ledger": 1
+      },
+      "sources": [
+        {
+          "path": ".local/live-approved-pilot/reports/pilot-02.json",
+          "bytes": 18337,
+          "sha256": "2e77c3dfb0833d9c9e1b5d7708ce4dd93531e9b66449747416a67985c43372b5"
+        },
+        {
+          "path": ".local/live-approved-pilot/reports/pilot-02.events.jsonl",
+          "bytes": 7754,
+          "sha256": "b3ffb03ab0486146493d685dd8d00487d6e9312c6388dfa5ec19f78741582db1"
+        }
+      ]
+    },
+    {
+      "id": "pilot-03",
+      "slotAccounting": "consumed-finalized",
+      "reportPresent": true,
+      "eventFilePresent": true,
+      "workDirectoryPresent": true,
+      "workFileCount": 13,
+      "finalStatus": "passed",
+      "totalMs": 231847,
+      "acceptance": {
+        "passed": 10,
+        "total": 10
+      },
+      "meteredTopLevelAttempts": 1,
+      "roles": [
+        {
+          "role": "worker",
+          "status": "completed",
+          "startMs": 289.7709000000001,
+          "endMs": 310.7591000000001
+        }
+      ],
+      "eventTypes": {
+        "native_config": 1,
+        "native_session": 7,
+        "native_worker_duration": 1,
+        "native_ledger": 1
+      },
+      "sources": [
+        {
+          "path": ".local/live-approved-pilot/reports/pilot-03.json",
+          "bytes": 16608,
+          "sha256": "9c4f1c478f0470a0bdc6350ea5663cd68fcdcfcd97dad0665cd0db3a41ee3b6b"
+        },
+        {
+          "path": ".local/live-approved-pilot/reports/pilot-03.events.jsonl",
+          "bytes": 12698,
+          "sha256": "4840a6bf74140089dd8f35470e437ce78f8f23db6ccb713f7df7a6b79ab919e4"
+        }
+      ]
+    },
+    {
+      "id": "pilot-04",
+      "slotAccounting": "consumed-finalized",
+      "reportPresent": true,
+      "eventFilePresent": true,
+      "workDirectoryPresent": true,
+      "workFileCount": 13,
+      "finalStatus": "passed",
+      "totalMs": 416862,
+      "acceptance": {
+        "passed": 10,
+        "total": 10
+      },
+      "meteredTopLevelAttempts": 4,
+      "roles": [
+        {
+          "role": "pm",
+          "status": "completed",
+          "startMs": 15.78139999997802,
+          "endMs": 15814.852799999993
+        },
+        {
+          "role": "pm",
+          "status": "completed",
+          "startMs": 15816.282899999991,
+          "endMs": 30514.551000000007
+        },
+        {
+          "role": "worker",
+          "status": "completed",
+          "startMs": 30526.977199999994,
+          "endMs": 30552.665799999988
+        },
+        {
+          "role": "judge",
+          "status": "completed",
+          "startMs": 368387.59090000007,
+          "endMs": 412357.5679
+        }
+      ],
+      "eventTypes": {
+        "native_config": 1,
+        "native_usage": 3,
+        "native_pm_timing": 9,
+        "native_session": 8,
+        "native_worker_duration": 1,
+        "native_ledger": 1
+      },
+      "sources": [
+        {
+          "path": ".local/live-approved-pilot/reports/pilot-04.json",
+          "bytes": 55523,
+          "sha256": "a87128e63c0d01035c6bdf02d5e4327b1c671e1f4bbe656258a9e8415524c5a9"
+        },
+        {
+          "path": ".local/live-approved-pilot/reports/pilot-04.events.jsonl",
+          "bytes": 45963,
+          "sha256": "46ba4f8165d1c8198f534e2883684dd08d15fe9fba1d5f62ef503bd7734dbb03"
+        }
+      ]
+    },
+    {
+      "id": "pilot-05",
+      "slotAccounting": "consumed-started-without-final-report",
+      "reportPresent": false,
+      "eventFilePresent": true,
+      "workDirectoryPresent": true,
+      "workFileCount": 5,
+      "finalStatus": null,
+      "totalMs": null,
+      "acceptance": null,
+      "meteredTopLevelAttempts": null,
+      "roles": null,
+      "eventTypes": {
+        "native_config": 1
+      },
+      "sources": [
+        {
+          "path": ".local/live-approved-pilot/reports/pilot-05.events.jsonl",
+          "bytes": 478,
+          "sha256": "77f1e18915ecfc6136ba28ca3889cb7d48bbfbfda1b65b08d37b25d4c792336e"
+        }
+      ],
+      "workFiles": [
+        {
+          "path": ".local/live-approved-pilot/work/pilot-05/build.mjs",
+          "bytes": 724,
+          "sha256": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa"
+        },
+        {
+          "path": ".local/live-approved-pilot/work/pilot-05/index.html",
+          "bytes": 259,
+          "sha256": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839"
+        },
+        {
+          "path": ".local/live-approved-pilot/work/pilot-05/package.json",
+          "bytes": 132,
+          "sha256": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e"
+        },
+        {
+          "path": ".local/live-approved-pilot/work/pilot-05/server.mjs",
+          "bytes": 1457,
+          "sha256": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f"
+        },
+        {
+          "path": ".local/live-approved-pilot/work/pilot-05/src/App.jsx",
+          "bytes": 1089,
+          "sha256": "1312191a05101be74ef6ae8327003f93253ae0cc805a917f3608db9a6f5becfe"
+        }
+      ],
+      "interruptionEvidence": "Native configuration recorded at elapsedMs=10 and prepared workspace remain, but no final report. Consistent with the parent-reported interrupted stop; raw files alone do not prove the interruption reason or any provider request.",
+      "providerRequestConfirmed": false
+    },
+    {
+      "id": "pilot-06",
+      "slotAccounting": "unused-no-observed-start",
+      "reportPresent": false,
+      "eventFilePresent": false,
+      "workDirectoryPresent": false,
+      "workFileCount": 0,
+      "finalStatus": null,
+      "totalMs": null,
+      "acceptance": null,
+      "meteredTopLevelAttempts": null,
+      "roles": null,
+      "eventTypes": {},
+      "sources": []
+    },
+    {
+      "id": "pilot-07",
+      "slotAccounting": "unused-no-observed-start",
+      "reportPresent": false,
+      "eventFilePresent": false,
+      "workDirectoryPresent": false,
+      "workFileCount": 0,
+      "finalStatus": null,
+      "totalMs": null,
+      "acceptance": null,
+      "meteredTopLevelAttempts": null,
+      "roles": null,
+      "eventTypes": {},
+      "sources": []
+    },
+    {
+      "id": "pilot-08",
+      "slotAccounting": "unused-no-observed-start",
+      "reportPresent": false,
+      "eventFilePresent": false,
+      "workDirectoryPresent": false,
+      "workFileCount": 0,
+      "finalStatus": null,
+      "totalMs": null,
+      "acceptance": null,
+      "meteredTopLevelAttempts": null,
+      "roles": null,
+      "eventTypes": {},
+      "sources": []
+    }
+  ]
+}

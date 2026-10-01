@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jovinus302/Ensemble/benchmark-report-v1",
+  "title": "Paired exploratory benchmark run (fixture and live are distinct)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "mode", "cell", "blindId", "baseSha", "rubricHash", "model", "effort", "cacheState", "starterHash", "status", "error", "preparationMs", "taskMs", "totalMs", "checkpointMs", "changeMs", "afterChangeMs", "humanInterventions", "humanRequests", "checks", "calls", "events", "usage", "costUsd", "underlyingApiCalls", "actualModelInvocations"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "protocolRevision": {"type": "string", "description": "Missing means legacy prototype-role-v1; never pool revisions."},
+    "mode": {"enum": ["fixture", "live"]},
+    "cell": {"type": "object", "additionalProperties": false, "required": ["task", "provider", "ensemble", "ordinal", "id"], "properties": {
+      "task": {"enum": ["A", "B"]}, "provider": {"enum": ["codex", "claude"]}, "ensemble": {"type": "boolean"}, "ordinal": {"type": "integer", "minimum": 1, "maximum": 8}, "id": {"type": "string"}
+    }},
+    "blindId": {"type": "string", "format": "uuid"},
+    "baseSha": {"const": "a6bfc345bde634422421c500fad264419bc04ec9"},
+    "rubricHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "starterHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "model": {"type": "string"}, "effort": {"type": "string"},
+    "cacheState": {"enum": ["cold", "warm", "unknown"]},
+    "status": {"enum": ["passed", "failed", "timeout", "call_limit", "checkpoint_failed", "interrupted"]},
+    "error": {"type": ["string", "null"]},
+    "preparationMs": {"type": "number", "minimum": 0},
+    "taskMs": {"type": "number", "minimum": 0},
+    "totalMs": {"type": "number", "minimum": 0},
+    "checkpointMs": {"type": ["number", "null"], "minimum": 0},
+    "changeMs": {"type": ["number", "null"], "minimum": 0},
+    "afterChangeMs": {"type": ["number", "null"], "minimum": 0},
+    "humanInterventions": {"type": "array", "items": {"type": "object"}},
+    "humanRequests": {"type": "array", "description": "Requested help, separate from actual interventions.", "items": {"type": "object"}},
+    "checks": {"type": "array", "items": {"type": "object", "required": ["id", "pass"], "additionalProperties": false, "properties": {"id": {"type": "string"}, "pass": {"type": "boolean"}, "detail": {"type": "string"}}}},
+    "calls": {"type": "array", "maxItems": 24, "items": {"type": "object", "required": ["role", "startMs", "endMs", "status"], "additionalProperties": false, "properties": {
+      "role": {"enum": ["pm", "worker", "judge"]}, "startMs": {"type": "number", "minimum": 0}, "endMs": {"type": ["number", "null"], "minimum": 0}, "status": {"enum": ["running", "completed", "failed"]}
+    }}},
+    "events": {"type": "array"},
+    "usage": {"type": "null", "description": "Complete aggregate unavailable; native_usage events preserve partial provider usage."},
+    "costUsd": {"type": "null", "description": "No inferred prices or estimated dollar totals."},
+    "underlyingApiCalls": {"type": "null", "description": "CLI internal requests/retries are not exposed."},
+    "actualModelInvocations": {"type": ["integer", "null"], "minimum": 0}
+  },
+  "allOf": [
+    {"if": {"properties": {"mode": {"const": "fixture"}}}, "then": {"properties": {"actualModelInvocations": {"const": 0}}}},
+    {"if": {"properties": {"status": {"const": "checkpoint_failed"}}}, "then": {"properties": {"changeMs": {"type": "null"}, "afterChangeMs": {"type": "null"}}}}
+  ]
+}
