@@ -11,6 +11,7 @@ export interface TaskState {
   status: TaskStatus;
   results: { resultId: Id; planVersion: number }[];
   checkedResultId?: Id;
+  reviewFailedResultId?: Id;
   blocked?: { reason: string; unblockBy?: Id; prevStatus: TaskStatus };
   updates: TaskUpdate[];
 }
@@ -93,11 +94,15 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
           const task = state.tasks.get(spec.id);
           if (!task) state.tasks.set(spec.id, { spec, specVersion: p.version, status: "waiting", results: [], updates: [] });
           else if (JSON.stringify(task.spec) !== JSON.stringify(spec)) {
+            const substantive = (s: TaskSpec) => { const { title, baseTitle, exclusions, limits, ...rest } = s; return rest; };
+            const scopeOnly = (spec.baseTitle ?? spec.title) === (task.spec.baseTitle ?? task.spec.title) && JSON.stringify(substantive(task.spec)) === JSON.stringify(substantive(spec));
             task.spec = spec;
             task.specVersion = p.version;
-            delete task.checkedResultId;
-            if (task.status === "checked") task.status = "waiting";
-            if (task.blocked?.prevStatus === "checked") task.blocked.prevStatus = "waiting";
+            if (!scopeOnly) {
+              delete task.checkedResultId;
+              if (task.status === "checked") task.status = "waiting";
+              if (task.blocked?.prevStatus === "checked") task.blocked.prevStatus = "waiting";
+            }
           }
         }
         break;
@@ -136,7 +141,12 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
         state.messages.push({ messageId: p.messageId, authorId, text: p.text, ...(threadId !== undefined ? { threadId } : {}), seq: event.seq });
         break;
       }
-      case "pm_considered": state.openTopics = event.payload.openTopics; break;
+      case "pm_considered":
+        state.openTopics = event.payload.openTopics;
+        if (event.payload.reason === '결과 내용이 아니라 판단 과정의 문제라 사람이 결과를 확인해야 한다') {
+          for (const task of state.tasks.values()) if (task.status === 'submitted' && task.results.at(-1)?.resultId === event.payload.triggerId) task.reviewFailedResultId = event.payload.triggerId;
+        }
+        break;
       case "decision_recorded": state.decisions.set(event.payload.decisionId, event.payload); break;
       case "authority_requested": state.pendingAuthority.set(event.payload.requestId, event.payload); break;
       case "authority_granted": state.pendingAuthority.delete(event.payload.requestId); break;
@@ -158,6 +168,7 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
           }
           case "task_started": task.status = "running"; break;
           case "result_submitted":
+            delete task.reviewFailedResultId;
             task.results.push({ resultId: event.payload.resultId, planVersion: event.payload.planVersion });
             task.status = "submitted"; break;
           case "task_checked":

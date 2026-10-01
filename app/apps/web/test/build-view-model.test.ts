@@ -4,6 +4,15 @@ import { buildViewModel, projectTitle, refreshTodo, stripTaskKeys } from "../lib
 import { buildMockViewModel } from "../lib/mock-view-model";
 
 const NOW = new Date("2026-10-01T00:00:00Z");
+it('X1 translates internal names in PM reasons and evidence', () => {
+  const l = approved();
+  l.emit('pm_considered', { considerationId: 'scope', triggerId: 'm', whoseAction: 'owner', alreadyKnows: 'no', evidence: ['task:flow', 'owner exclude_scope task:flow'], decision: 'silent', reason: 'owner가 task:flow에 exclude_scope를 결정', openTopics: [] });
+  const vm = buildViewModel(l.events, { me: 'owner', mode: 'free', busy: false, now: NOW });
+  const row = vm.pmLog.at(-1)!;
+  expect(JSON.stringify(row)).not.toMatch(/owner|task:flow|exclude_scope/);
+  expect(row.reason).toContain('사용 흐름 설계');
+  expect(row.evidence).toContain('사용 흐름 설계');
+});
 it('keeps payment exclusion and booking limit separate from untouched conditions and labels the demo clock', () => {
   const l = approved();
   const scoped = tasks.map(t => ({ ...t, exclusions: ['결제 화면과 모의 결제 버튼'], limits: ['가입·시간 선택·예약 확인까지'] }));

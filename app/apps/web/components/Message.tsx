@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { VmMember, VmMessage } from "../lib/view-model";
-import { formatTime, initial } from "./format";
+import { attachmentAction, formatTime, initial } from "./format";
 
 // Agent voice는 1~8 중 id 해시로 고른다(그린은 PM 전용).
 function voiceOf(id: string): number {
@@ -68,7 +68,7 @@ export function MessageItem({ message, author, grouped }: { message: VmMessage; 
                   <a className="attachment" href={a.url} target="_blank" rel="noreferrer">
                     <span className="attachment-icon" aria-hidden>📄</span>
                     <span className="attachment-name">{a.name}</span>
-                    <span className="attachment-open">열기</span>
+                    <span className="attachment-open">{attachmentAction(a.name)}</span>
                   </a>
                 ) : (
                   <span className="attachment">

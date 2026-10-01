@@ -96,7 +96,7 @@ const STATUS: Record<string, { label: string; tone: Tone }> = {
   ready: { label: "시작 가능", tone: "needs" },
   reserved: { label: "예약됨", tone: "working" },
   running: { label: "진행 중", tone: "working" },
-  submitted: { label: "확인 중", tone: "needs" },
+  submitted: { label: "검토 중", tone: "needs" },
   revising: { label: "보완 중", tone: "needs" },
   checked: { label: "확인됨", tone: "done" },
   blocked: { label: "막힘", tone: "needs" },
@@ -127,3 +127,4 @@ export function koreanOr(message: unknown, fallback: string): string {
 export function sceneLabel(name: string): string {
   return /장면\s*\d+/.exec(name)?.[0] ?? "시나리오";
 }
+export const attachmentAction = (name: string): string => /\.html?$/i.test(name) ? '다운로드' : '열기';
