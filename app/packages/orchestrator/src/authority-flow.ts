@@ -1,6 +1,7 @@
 import { project, opAuthority, type AnyEvent, type EventContext, type EventPayloads, type PlanOp } from '@ensemble/core';
 import type { LedgerStore } from '@ensemble/store';
-import { Coordinator, validOp } from './coordination.ts';
+import { Coordinator } from './coordination.ts';
+import { validOp } from './op-validation.ts';
 import { planningNotice } from './planning.ts';
 import type { PmPost } from './pm.ts';
 

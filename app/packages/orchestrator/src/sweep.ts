@@ -8,7 +8,8 @@ import {
 } from '@ensemble/core';
 import type { LedgerStore } from '@ensemble/store';
 import { channelText, particle } from './channel-text.ts';
-import { validOp, type CoordinationResult } from './coordination.ts';
+import type { CoordinationResult } from './coordination.ts';
+import { opsApplicable } from './op-validation.ts';
 import type { DecideExtra } from './decision-flow.ts';
 
 type PmPost = CoordinationResult['posts'][number];
@@ -26,19 +27,6 @@ export interface SweepOptions {
    * When false the decider is asked instead. Default `HUMAN_ASSIGNMENT_NEEDS_ACCEPTANCE` (true).
    */
   humanAssignmentNeedsAcceptance?: boolean;
-}
-
-/**
- * Whether these plan ops would pass the decision flow if `by` approved them: the same validation and
- * authority checks the coordinator applies. Options the current code cannot apply are never offered.
- */
-export function opsApplicable(state: ProjectState, ops: readonly PlanOp[], by: Id): boolean {
-  if (!state.plan || !state.goal) return false;
-  const probe = structuredClone(state);
-  const messageId = `probe:${by}`;
-  probe.messages.push({ messageId, authorId: by, text: '', seq: state.lastSeq + 1 });
-  const sourced = ops.map(op => ({ ...op, sourceMessageIds: [messageId] }) as PlanOp);
-  return !planOpsProblems(probe, sourced).length && sourced.every(op => validOp(op, probe) && opAuthority(probe, op).allowed);
 }
 
 const name = (state: ProjectState, id: Id) => state.members.get(id)?.displayName ?? id;

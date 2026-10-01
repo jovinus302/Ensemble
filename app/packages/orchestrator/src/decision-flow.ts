@@ -7,7 +7,8 @@ import {
   type AnyEvent, type DecisionAnswer, type DecisionEffect, type DecisionSettings, type EventContext, type Id, type NewLedgerEvent, type PlanOp, type ProjectState,
 } from '@ensemble/core';
 import type { LedgerStore } from '@ensemble/store';
-import { validOp, type Coordinator, type CoordinationResult } from './coordination.ts';
+import type { Coordinator, CoordinationResult } from './coordination.ts';
+import { validOp } from './op-validation.ts';
 import type { Dispatcher } from './dispatch.ts';
 
 type PmPost = CoordinationResult['posts'][number];
@@ -94,6 +95,11 @@ export async function decideRequest(options: DecisionFlowOptions, requestId: Id,
   try { resolved = resolveDecision(state, requestId, answer, context, options.settings ?? DEFAULT_DECISION_SETTINGS); }
   catch (error) { throw new DecisionRequestError('invalid_input', error instanceof Error ? error.message : '답을 처리할 수 없어요.'); }
   const effects: DecisionEffect[] = resolved.effects;
+  // An option that relays the person's words (missing_info "답하기") needs those words: approving or picking it
+  // without an answer would close the request and leave the agent waiting for an answer that never comes.
+  if (!closing && answer.action !== 'answer' && effects.some(effect => effect.type === 'answer')) {
+    throw new DecisionRequestError('invalid_input', '이 질문에는 답을 적어 주세요. 적은 답이 Agent에게 그대로 전달돼요.');
+  }
   // Whose authority the effects carry: the person who answered; an expiry that applies the recommendation
   // (only under the non-default Q3 setting) acts on the target's standing consent given by that setting.
   const authority = closing ? request.targetMemberId : answer.by;
