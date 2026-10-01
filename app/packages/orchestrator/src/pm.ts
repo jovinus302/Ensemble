@@ -82,7 +82,7 @@ export class ProjectManager {
     this.context = { projectId: options.projectId, targetProductId: options.targetProductId };
     this.sessions = new SessionRunner(options.connector, options.store, this.context, { turnTimeoutMs: options.turnTimeoutMs,
       onBlocked: blocked => { void this.enqueue(() => this.blockedNotice(blocked)).then(posts => { this.background.push(...posts); }).catch(error => this.failures.push(error)); } });
-    this.dispatcher = new Dispatcher({ store: options.store, llm: options.llm, model: options.model, context: this.context, clock: options.clock,
+    this.dispatcher = new Dispatcher({ store: options.store, llm: options.llm, model: options.model, context: this.context, clock: options.clock, decisionSettings: options.decisionSettings,
       connector: { startTask: async (agentId, input) => {
         await this.sessions.startSession(agentId);
         return this.sessions.startTask(agentId, input);

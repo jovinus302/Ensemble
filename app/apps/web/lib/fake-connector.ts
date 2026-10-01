@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ContinueTaskInput, Report, SessionConnector, SessionEvent, TaskInstructionsInput, UpdateInstructionsInput } from '@ensemble/agents';
 import type { LlmProvider, LlmRequest, LlmResponse } from '@ensemble/llm';
+import { quoteInText, quoteRelevant } from '@ensemble/orchestrator';
 import type { RevisionGenerator } from '@ensemble/scenarios';
 
 const research = `# 조사 보고서
@@ -186,7 +187,11 @@ export class FakeConnector implements SessionConnector {
 /** "로그인 화면도 만들어 줘" → "로그인 화면": a request for new work in the demo's own words. */
 export const FAKE_NEW_WORK = /^(.+?)(?:도|을|를)?\s*(?:새로\s*)?만들어\s*(?:줘|줄래|주세요|주실래요)/;
 
+/** "결제는 이번엔 빼자" → "결제": the decider dropping one item from the work under way. */
+export const FAKE_EXCLUDE = /^(?:(?:ㅇㅋ|ok|오케이|좋아요?|네|그래요?)[,.!]?\s*)?(\S+?)(?:은|는|을|를)\s*(?:이번엔|이번에는|일단)?\s*(?:빼자|빼\s*(?:줘|주세요)|제외하자|제외해\s*(?:줘|주세요))/i;
+
 type Facts = Record<string, unknown>;
+interface FactTask { spec: { id: string; title: string; handoffConditions: string[] }; status: string }
 interface FactMessage { messageId: string; authorId: string; text: string; threadId?: string }
 interface FactMember { memberId: string; kind: string; displayName: string; role?: string }
 const shortGoal = (goal: unknown) => (typeof goal === 'string' ? goal : '목표').replace(/^시연용 가상 자료(?:입니다)?[.。]?\s*/, '').split(/[.!?。\n]/)[0]!.trim().slice(0, 30) || '목표';
@@ -234,6 +239,8 @@ export class FakePmLlm implements LlmProvider {
     const messages = Array.isArray(facts.messages) ? facts.messages as FactMessage[] : [];
     const message = messages.find(m => m.messageId === facts.messageId);
     const base = { category: 'chat', summary: '일반 대화', ops: [] as unknown[], conflicts: [], conversation: { questionMessageId: null, waitingOnMemberIds: [], directedToPm: false }, factMentions: [] };
+    const scope = message && this.exclusion(facts, messages, message);
+    if (scope) return { ...base, category: 'decision', summary: `범위 제외: ${scope.item}`, ops: [{ type: 'exclude_scope', ...scope }] };
     // Work comments stay with their work item; only channel requests create work.
     const match = message && !message.threadId ? FAKE_NEW_WORK.exec(message.text.trim()) : null;
     const title = match?.[1]?.trim();
@@ -253,6 +260,24 @@ export class FakePmLlm implements LlmProvider {
       brief: { why: `채널에서 "${title}" 작업이 목표에 필요하다는 요청이 나왔어요.`, decisionIds: [], attachmentIds: [], constraints: [] },
     }] };
   }
+  /**
+   * The decider drops an item in the channel ("ㅇㅋ 결제는 이번엔 빼자"): one exclude_scope on the work that item
+   * belongs to — the work whose text names it, else the agent work under way. Whether it applies is the real code's call.
+   */
+  private exclusion(facts: Facts, messages: FactMessage[], message: FactMessage) {
+    const goal = facts.goal as { decider?: string } | undefined;
+    const item = message.threadId || message.authorId !== goal?.decider ? undefined : FAKE_EXCLUDE.exec(message.text.trim())?.[1];
+    if (!item) return undefined;
+    const tasks = Array.isArray(facts.taskStates) ? facts.taskStates as FactTask[] : [];
+    const open = tasks.filter(t => !['checked', 'cancelled'].includes(t.status));
+    const turns = new Set(Array.isArray(facts.activeTurns) ? (facts.activeTurns as [string, string][]).map(([, taskId]) => taskId) : []);
+    const task = open.find(t => [t.spec.title, ...t.spec.handoffConditions].some(text => text.includes(item))) ?? open.find(t => turns.has(t.spec.id));
+    if (!task) return undefined;
+    // The proposal the decider agreed to ("결제 쪽은 … 빼면 좋겠어요") is part of the source.
+    const at = messages.findIndex(m => m.messageId === message.messageId);
+    const proposal = messages.slice(0, at).findLast(m => !m.threadId && m.authorId !== message.authorId && m.text.includes(item));
+    return { taskId: task.spec.id, item, sourceMessageIds: [...(proposal ? [proposal.messageId] : []), message.messageId] };
+  }
   private review(body: string) {
     const lines = body.split('\n');
     const start = lines.indexOf('## 인계 조건');
@@ -262,7 +287,18 @@ export class FakePmLlm implements LlmProvider {
       const m = /^\d+\.\s(.*)$/.exec(line);
       if (m) conditions.push(m[1]!);
     }
-    // The fake agents write every condition into their file ("### n. condition"), so the quote is checkable.
-    return { conditions: conditions.map((condition, i) => ({ index: i + 1, met: true, quote: condition })), decisionConflicts: [] };
+    // Result files are the body's last section ("### 파일: path" then its text).
+    const files = body.slice(body.indexOf('\n## 결과 파일\n') + 1).split(/^### 파일: [^\n]*\n/m).slice(1);
+    // The fake agents write every condition into their file ("### n. condition"), so the condition itself is quotable.
+    // A person's upload is quoted by its first line that is evidence for the condition, as the real check reads it.
+    const quote = (condition: string) => {
+      for (const text of files) {
+        const line = text.split('\n').map(l => l.trim()).find(l => l.length >= 8 && quoteInText(l, text) && quoteRelevant(condition, l, text));
+        if (line) return line;
+      }
+      return condition;
+    };
+    return { conditions: conditions.map((condition, i) => ({ index: i + 1, met: true, quote: quote(condition) })), decisionConflicts: [] };
   }
+
 }
