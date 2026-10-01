@@ -113,6 +113,31 @@ it('the stuck card offers cancelling work nothing depends on, and choosing it ca
   expect(state.decisionRequests.get(request!.requestId)?.status).toBe('chose_other');
 });
 
+it('the stuck card offers another capable agent when routing finds one; the recommendation stays retry', async () => {
+  const f = await fixture();
+  await f.store.append([{ ...f.ctx, type: 'member_joined', actor: { kind: 'human', id: 'owner' }, at: iso(-48), payload: { memberId: 'research-agent-2', kind: 'agent', displayName: '조사 Agent 2', role: 'research-agent' } }]);
+  await f.blockResearch(0);
+  await f.pm.sweep(at(5));
+  const [request] = requestsOf(await f.events());
+  expect(request!.options.map(o => o.optionId)).toEqual(['retry', 'reassign', 'hold']);
+  expect(request!.recommendation.optionId).toBe('retry');
+  const reassign = request!.options.find(o => o.optionId === 'reassign')!;
+  expect(reassign.label).toBe('조사 Agent 2에게 맡기기');
+  expect(reassign.effects).toEqual([{ type: 'plan_ops', ops: [{ type: 'reassign', taskId: 'research', assignee: 'research-agent-2', sourceMessageIds: [] }] }]);
+
+  await f.pm.decideRequest(request!.requestId, { by: 'owner', action: 'choose', optionId: 'reassign' });
+  const state = await f.state();
+  expect(state.plan!.tasks.find(t => t.id === 'research')?.assignee).toBe('research-agent-2');
+  expect(state.decisionRequests.get(request!.requestId)?.status).toBe('chose_other');
+});
+
+it('no reassignment option when no other agent can do the work', async () => {
+  const f = await fixture({ tasks: [TASKS[0]!] });
+  await f.blockResearch(0);
+  await f.pm.sweep(at(5));
+  expect(requestsOf(await f.events())[0]!.options.some(o => o.optionId === 'reassign')).toBe(false);
+});
+
 it('work others depend on is never offered for cancelling (the plan would break)', async () => {
   const f = await fixture();
   await f.blockResearch(0);
@@ -147,6 +172,21 @@ it('an unanswered request is reminded once at remindAt, then expires and its wor
   expect(state.plan!.version).toBe(1);
   expect(pausedTaskIds(state).has('research')).toBe(true);
   expect(await f.pm.sweep(at(50))).toEqual([]);
+});
+
+it('work held by an expired request is never started automatically (Q3 default); other ready work still starts', async () => {
+  const f = await fixture({ tasks: [...TASKS, { id: 'compare', title: '경쟁 서비스 비교', assignee: 'proto-agent', dependsOn: [], handoffConditions: ['비교표'] }] });
+  await f.request(reassignRequest('research'), 0);
+  await f.pm.sweep(at(25));
+  await f.pm.sweep(at(49));
+  expect((await f.state()).decisionRequests.get('req-move')?.status).toBe('expired');
+
+  await f.pm['dispatcher'].startReady('kickoff');
+
+  const state = await f.state();
+  expect(state.tasks.get('research')?.status).toBe('ready');
+  expect(state.tasks.get('compare')?.status).toBe('running');
+  expect(f.connector.starts.map(s => s.input.taskId)).toEqual(['compare']);
 });
 
 it('one setting switches expiry to applying the recommendation (Q3 apply_recommendation)', async () => {
