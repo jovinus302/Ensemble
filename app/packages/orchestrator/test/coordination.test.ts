@@ -13,13 +13,13 @@ const initialTasks = [task('prototype', 'agent', ['초안', '결제']), task('de
 const interpret = (patch: Partial<CoordinationInterpretation> = {}): CoordinationInterpretation => ({ category: 'question', summary: '결제 제외, 초안으로 계속', ops: [], conflicts: [], conversation: { questionMessageId: null, waitingOnMemberIds: [], directedToPm: false }, factMentions: [], ...patch });
 const exclusions = (sourceMessageIds = ['m1']): PlanOp[] => initialTasks.map(t => ({ type: 'exclude_scope', taskId: t.id, item: '결제', sourceMessageIds }));
 const judge = (patch: Partial<CoordinationJudgement> = {}): CoordinationJudgement => ({ whoseAction: 'designer: 다음 작업 선택', alreadyKnows: 'no', evidence: ['forecast:current'], decision: 'speak', reason: '계산된 영향으로 다음 행동을 고른다', openTopics: [], text: '계산 결과를 확인해 주세요.', targetMemberIds: ['designer'], changesOpenQuestionAnswer: false, answerFactIds: [], ...patch });
-function fake(responses: (object | null | ((r: LlmRequest) => object | null))[]) {
+function fake(responses: (object | null | ((r: LlmRequest) => object | null | Promise<object | null>))[]) {
   responses = [...responses];
   const calls: LlmRequest[] = [];
   const llm: LlmProvider = { async complete(request): Promise<LlmResponse> {
     calls.push(request);
     const next = responses.shift();
-    const input = typeof next === 'function' ? next(request) : next;
+    const input = await (typeof next === 'function' ? next(request) : next);
     return { text: '', toolCalls: input ? [{ name: request.forceTool!, input: input as Record<string, unknown> }] : [], model: 'fake', responseId: `r${calls.length}`, usage: { inputTokens: 0, outputTokens: 0 } };
   } };
   return { llm, calls };
@@ -283,6 +283,29 @@ it('asks the decider about another person’s deadline proposal and leaves the p
   expect(r.posts[0]?.kind).toBe('ask');
   expect(project(await f.read()).plan?.version).toBe(1);
   expect(f.connector.sendUpdate).not.toHaveBeenCalled();
+});
+
+it.each(['owner', 'designer'])('checks a new %s message after delayed interpretation before spending a judgement call', async authorId => {
+  let release!: (value: object) => void;
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const delayed = new Promise<object>(resolve => { release = resolve; });
+  const f = await fixture([() => { entered(); return delayed; }, judge()]);
+  let settled = false;
+  const pending = f.coordinator.onMessage('m1').finally(() => { settled = true; });
+  await started;
+  await f.message('m2', authorId, 'A correction arrived while the model was pending');
+  expect((await f.read()).some(e => e.type === 'message_recorded' && e.payload.messageId === 'm2')).toBe(true);
+  expect(settled).toBe(false);
+  release(interpret());
+  const result = await pending;
+  if (authorId === 'owner') {
+    expect(f.calls.map(c => c.forceTool)).toEqual(['interpret_coordination']);
+    expect(result.posts).toEqual([]);
+    expect(result.events).toEqual([expect.objectContaining({ type: 'pm_considered', payload: expect.objectContaining({ considerationId: 'superseded:m1' }) })]);
+  } else {
+    expect(f.calls.map(c => c.forceTool)).toEqual(['interpret_coordination', 'judge_coordination']);
+  }
 });
 
 it('does not repeat an answer supported by the same evidence', async () => {
