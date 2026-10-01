@@ -156,3 +156,10 @@ describe("작업 키를 보이지 않는다", () => {
     for (const label of ["PM이 정리한 맥락", "출처", "이 대화에서 생김", "활동 기록", "댓글", "하위 작업", "실제 결제 연동은 하지 않음"]) expect(out).toContain(label);
   });
 });
+
+ it("keeps real roadmap tasks visible until the work projection is available", () => {
+  const live = { ...vm, work: undefined, roadmap: { ...vm.roadmap, tasks: [{ ...vm.roadmap.tasks[0]!, id: "live-task", title: "Live worker result", status: "checked" }] } };
+  const markup = html(createElement(WorkPanel, { vm: live, tab: "work", onTab: () => {}, onOpenTask: () => {}, onDecide: noop, onDecideRequest: noop, onSetAvailability: noop }));
+  expect(markup).toContain("Live worker result");
+  expect(markup).not.toContain("아직 작업 항목이 없어요");
+ });
