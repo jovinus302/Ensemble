@@ -110,7 +110,7 @@ export function useViewModel(): UseViewModelResult {
       return;
     }
     if (currentMe.current !== me) return;
-    setFetchDown(false);
+    setFetchDown(!response.ok);
     try {
       if (!response.ok) throw new Error();
       const next = await response.json() as ViewModel;
@@ -119,6 +119,14 @@ export function useViewModel(): UseViewModelResult {
   }, [me]);
 
   useEffect(() => {
+    // The PC tunnel does not carry SSE. Sites uses bounded polling; local stays on SSE.
+    if (process.env.NEXT_PUBLIC_ENSEMBLE_POLLING === 'true') {
+      let active = true;
+      let timer: ReturnType<typeof setTimeout>;
+      const poll = async () => { await refresh(); if (active) timer = setTimeout(poll, 3000); };
+      void poll();
+      return () => { active = false; clearTimeout(timer); revision.current++; };
+    }
     let events: EventSource | null = null;
     let polling: ReturnType<typeof setInterval> | undefined;
     let reopen: ReturnType<typeof setTimeout> | undefined;
