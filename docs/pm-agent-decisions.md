@@ -71,3 +71,33 @@
 - PM 자동 행동의 상한(몇 번까지 사람 개입 없이 진행하나)
 - 사람의 가용 시간·예상 소요를 누가 어떻게 입력하나
 - 시연의 통과 기준
+
+## 5. 작업 항목·결정 요청 (이슈 #26, 2026-10-02 반영)
+
+> 설계는 이슈 #26, 병합된 코드 기준의 확정본은 `docs/work-model.md`다. 여기에는 정한 것과 그 이유만 적는다.
+
+### 5.1 구조 결정
+| 항목 | 결정 | 이유 |
+|---|---|---|
+| 작업 항목 엔티티 | 새 Ticket 엔티티를 만들지 않고 기존 Task를 작업 항목으로 키운다. 계층은 `TaskSpec.parentId`(깊이 최대 2) | 상태 기계·시작 예약·인계 판단·steer·예측이 모두 `TaskState`에 묶여 있어 병렬 모델은 전부를 두 번 맞춰야 한다. 화면 용어는 "작업", 코드 식별자는 `task` 그대로 둔다 |
+| 구조와 메타 | 생성·분할·취소·담당 변경은 계획 버전(`plan_committed` v+1), 우선순위·라우팅 사유·출처·맥락 브리프는 별도 이벤트 `task_meta_set` | 메타를 `TaskSpec`에 넣으면 spec 차이로 `specVersion`이 올라 결과가 stale이 되고 `checked`가 `waiting`으로 되돌아간다. 두 이벤트는 같은 트랜잭션에 쓴다 |
+| 사람 호출 | 새 경로(작업 생성 승인, 사람 배정 수락, Agent 질문, 정체 처리)는 모두 `decision_requested`/`decision_resolved` 하나로. 추천안·선택지(2~4개, 보류 포함)·근거 필수 | 사람에게는 기획·결정만 묻고, 물을 때는 PM이 먼저 답을 제안한다 |
+| 기존 카드 이벤트 | `plan_proposed`/`authority_requested`는 이관하지 않는다. `openDecisions` 어댑터가 같은 모양으로 보여 주고 `cards/:id` API도 유지한다 | 원장 호환. 기존 원장을 다시 쓰지 않는다 |
+| JIRA 모양 | 사용자에게 작업 키를 보이지 않는다. 칸반·작업 생성 양식을 만들지 않는다 | JIRA 연동·복제가 아니다. 사람은 채널에서 말하고 결정 카드에 답할 뿐이다 |
+
+### 5.2 사용자 확인 항목 (Q1~Q4) 기본값
+별도 답이 오기 전까지 #26 §7의 추천안을 기본값으로 구현했고, 각각 설정 하나로 바꿀 수 있다.
+
+| 항목 | 기본값 | 바꾸는 설정 |
+|---|---|---|
+| Q1 PM 자율 범위 | `split_task`·`reassign_agent`를 기본 위임에 넣는다: `['reorder', 'split_task', 'reassign_agent']`. 새 범위 추가(`scope_add`)는 결정권자 발언이 없으면 카드로 묻는다 | `DEFAULT_PM_MAY_APPLY` (`core/src/plan-ops.ts`) — 새 프로젝트의 `goal_set.delegation.pmMayApply`로 들어간다 |
+| Q2 사람에게 일 맡기기 | 본인 수락 카드(`assignment` 결정 요청) | `HUMAN_ASSIGNMENT_NEEDS_ACCEPTANCE` (`core/src/routing.ts`), `ProjectManager` 옵션 `humanAssignmentNeedsAcceptance` |
+| Q3 답 없는 결정 요청 | (a) 리마인드 1회(24시간 뒤), 그 뒤 24시간이 지나면 만료. 관련 작업은 멈춘 채 두고 추천안을 자동 적용하지 않는다 | `DecisionSettings.unanswered` (`'expire'` / `'apply_recommendation'`), `ProjectManager` 옵션 `decisionSettings` |
+| Q4 하루 요약 | 매일 09:00(Asia/Seoul) 채널에, 바뀐 것이 있는 사람만 멘션. 기본 켜짐 | 환경 변수 `ENSEMBLE_DIGEST=off` |
+
+### 5.3 구현에서 설계와 달라진 점 (2026-10-02 기준)
+- Q2 스위치는 라우팅 표시와 정체 점검의 담당 공백 처리에만 걸린다. 대화에서 사람 담당 작업을 만들 때의 수락 카드는 권한 규칙(`human_commitment`)에서 나온다.
+- 사람당 열린 결정 3개 초과 묶기는 core 함수(`bundleDecisions`)만 있고 화면에는 아직 쓰지 않는다.
+- PM 메모를 작업 스레드에 남기는 `pm_spoke.threadId`는 아직 쓰는 쪽이 없다.
+- 하루 요약은 별도 타이머 없이 5분 정체 점검 틱에서 09:00 이후 첫 확인 때 나간다.
+- 나머지 차이는 `docs/work-model.md` §7에 모았다.
