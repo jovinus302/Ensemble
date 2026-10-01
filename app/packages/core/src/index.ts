@@ -12,3 +12,4 @@ export * from "./date.ts";
 export * from "./work.ts";
 export * from "./decision-requests.ts";
 export * from "./stuck.ts";
+export * from "./routing.ts";
