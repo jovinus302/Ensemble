@@ -6,7 +6,7 @@ export { SessionRunner } from './session-runner.ts';
 export { ProjectManager } from './pm.ts';
 export type { ProjectManagerOptions, MessageAttachment, PmPost } from './pm.ts';
 export { TaskResolutionError } from './pm.ts';
-export { Coordinator } from './coordination.ts';
+export { Coordinator, followUpTitle } from './coordination.ts';
 export { Dispatcher } from './dispatch.ts';
 export { buildTaskContext, summarizeForHuman } from './context.ts';
 export { judgeHandoff, quoteInText, quoteRelevant } from './handoff.ts';

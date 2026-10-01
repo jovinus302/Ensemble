@@ -44,7 +44,7 @@ it('the fake PM completes the continuous scene 1 → 3 scenario end-to-end', asy
     expect((await app.state()).scenario).toMatchObject({ done: true });
     // "다음 발언" never offers a line it would not post: the fake PM applied the exclusion itself, so the owner's
     // clarification (said only when the PM asks) is passed over and the script ends after "ㅇㅋ 결제는 이번엔 빼자".
-    for (const { step, posted } of offered) if (!['availability', 'respondToRevision'].includes(continuousScenario.steps[step]!.action ?? '')) expect(posted).toBe(true);
+    for (const { step, posted } of offered) if (!['availability'].includes(continuousScenario.steps[step]!.action ?? '')) expect(posted).toBe(true);
     expect(offered.map(o => o.text)).not.toContain(continuousScenario.steps.at(-1)!.text);
 
     const events = await store.read({ projectId: app.meta.projectId }) as AnyEvent[];

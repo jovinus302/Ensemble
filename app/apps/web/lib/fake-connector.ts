@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ContinueTaskInput, Report, SessionConnector, SessionEvent, TaskInstructionsInput, UpdateInstructionsInput } from '@ensemble/agents';
 import type { LlmProvider, LlmRequest, LlmResponse } from '@ensemble/llm';
-import { quoteInText, quoteRelevant } from '@ensemble/orchestrator';
+import { followUpTitle, quoteInText, quoteRelevant } from '@ensemble/orchestrator';
 import type { RevisionGenerator } from '@ensemble/scenarios';
 
 const research = `# 조사 보고서
@@ -328,15 +328,15 @@ export class FakePmLlm implements LlmProvider {
     const members = Array.isArray(facts.members) ? facts.members as FactMember[] : [];
     const agent = members.find(m => m.memberId === task?.spec.assignee && m.kind === 'agent');
     if (!task || task.status !== 'checked' || !agent || !FAKE_CHANGE_REQUEST.test(message.text)) return undefined;
-    const plan = facts.plan as { tasks?: { id: string }[] } | undefined;
+    const plan = facts.plan as { tasks?: { id: string; title?: string }[] } | undefined;
     const taken = new Set((plan?.tasks ?? []).map(t => t.id));
     let n = 1;
     while (taken.has(`follow-up-${n}`)) n++;
-    const title = `${task.spec.baseTitle ?? task.spec.title} 보완`;
+    const title = followUpTitle(task.spec.baseTitle ?? task.spec.title, (plan?.tasks ?? []).flatMap(t => t.title ? [t.title] : []));
     return { type: 'create_task', sourceMessageIds: [message.messageId], tempId: `follow-up-${n}`, title, assignee: agent.memberId,
       handoffConditions: [message.text.trim()], dependsOn: [task.spec.id], priority: 'normal',
       routing: { executor: 'agent', reason: 'agent_capable', note: `${agent.displayName}가 만든 결과에 이어지는 일이라 같은 Agent에게 맡겨요` },
-      brief: { why: `완료된 "${task.spec.baseTitle ?? task.spec.title}" 결과에 남긴 댓글 요청을 반영하는 후속 작업이에요.`, decisionIds: [], attachmentIds: [], constraints: [] } };
+      brief: { why: `완료된 "${(task.spec.baseTitle ?? task.spec.title).replace(/ 보완(?: \d+)?$/, '')}" 결과에 남긴 댓글 요청을 반영하는 후속 작업이에요.`, decisionIds: [], attachmentIds: [], constraints: [] } };
   }
   /** The demo PM recommends the smallest of an agent's offered answers: it can be widened later. */
   private recommend(facts: Facts) {
