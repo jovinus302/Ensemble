@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { BASE_SHA, RUBRIC_HASH, VALIDATION_CRITERIA_HASH, validationApproval, validationPlan } from '../src/protocol.ts';
+import { assertLiveCapacity, BASE_SHA, RUBRIC_HASH, VALIDATION_CRITERIA_HASH, validationApproval, validationPlan } from '../src/protocol.ts';
 const hashes = { starterHash: 'starter', evaluatorHash: 'oracle', implementationHash: 'implementation' };
 const approved = { ...hashes, liveValidationRuns: 1, previousConservativeAttempts: 7, totalAuthorizedSlots: 8, reruns: false,
   model: 'gpt-6-astra', effort: 'low', provider: 'codex', task: 'A', ensemble: true, baseSha: BASE_SHA, rubricHash: RUBRIC_HASH, criteriaHash: VALIDATION_CRITERIA_HASH,
@@ -14,4 +14,8 @@ it('rejects old approvals, expanded scope, stale criteria and replays', () => {
     { criteriaHash: 'other' }, { implementationHash: 'old' }, { toolsMatched: false }, { source: '' }, { baseSha: 'old' }]) {
     expect(() => validationApproval({ ...approved, ...patch }, hashes)).toThrow('Exactly one');
   }
+});
+
+it('locks live execution after the final reserved slot is consumed', () => {
+  expect(() => assertLiveCapacity()).toThrow('All eight authorized slots are consumed');
 });

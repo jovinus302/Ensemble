@@ -6,7 +6,7 @@ Tracking: https://github.com/jovinus302/Ensemble/issues/35
 
 `revision-bound-validation-v3` fixes the validation lifecycle and date oracle. It is not a new paired performance study. The five legacy attempts remain invalid for comparing orchestration because direct runs inherited a conflicting prototype role. The separate corrected Codex Task A pair consumed two more slots: Ensemble failed handoff despite a later 10/10 browser result; direct recorded 9/10 because the original oracle required an ISO display string. Original observations and diagnoses are preserved in [draft PR #51](https://github.com/jovinus302/Ensemble/pull/51), not overwritten here.
 
-Seven of the original eight slots have been conservatively consumed. The one remaining slot is reserved for a preregistered Ensemble + Codex Task A validation-flow observation, only after offline checks. It cannot establish a performance difference. The executable CLI permits only this one-cell live plan with explicit matching approval, rejects prior eight-run/pair approvals and all resume requests, and never overwrites an attempt directory. An atomic local slot claim prevents reusing the approval with another output path. No retry is authorized. PR #51 and this separate feature PR must not be merged automatically.
+All eight original slots are now conservatively consumed. The preregistered final Ensemble + Codex Task A validation-flow observation passed: 416.659 seconds, PM 2 + worker 1 + judge 1 top-level attempts, browser 10/10 and all five flow criteria. Worker limitations were retained; host validation sequence 22 preceded sufficient review 23 and checked handoff 24. There were no human interventions or cleanup errors. See [v3 evidence](evidence/revision-bound-validation-v3/README.md). It cannot establish a performance difference. The final executable CLI rejects every live run because no slots remain; the historical one-cell guard rejected prior eight-run/pair approvals and all resume requests, and never overwrites an attempt directory. An atomic local slot claim prevents reusing the approval with another output path. No retry is authorized. PR #51 and this separate feature PR must not be merged automatically.
 
 ### Production contract
 
@@ -83,9 +83,11 @@ The fixture server has fixed POST `/api/reservations` responses: `2030-06-15T19:
 
 Outputs default to `.local/<mode>-<timestamp>/`: manifest, per-cell reports, summary, original workspaces, screenshots, and blind source packages. `report.schema.json` specifies machine-readable fields. Keep failed workspaces/evidence. Never publish logs containing private runtime data without review.
 
-## Single validation-flow execution
+## Historical single validation-flow execution (now closed)
 
-The CLI refuses live execution without `--validation-run`, a new explicit output directory, exact approval provenance and hashes, a pinned Codex model/effort, unchanged production dependencies from the frozen baseline, and schema preflight. Prior `liveEightRuns` and `livePairedRuns` authorizations are rejected.
+All authorized slots are consumed and the final CLI rejects live execution unconditionally through `assertLiveCapacity`. The following records the preregistered path used once; it is not permission or a runnable instruction for another attempt.
+
+Before the final slot was consumed, the CLI refused live execution without `--validation-run`, a new explicit output directory, exact approval provenance and hashes, a pinned Codex model/effort, unchanged production dependencies from the frozen baseline, and schema preflight. Prior `liveEightRuns` and `livePairedRuns` authorizations are rejected.
 
 After the offline checks pass, the approval file must contain `liveValidationRuns: 1`, `previousConservativeAttempts: 7`, `totalAuthorizedSlots: 8`, `reruns: false`, `provider: "codex"`, `task: "A"`, `ensemble: true`, `model: "gpt-6-astra"`, `effort: "low"`, actual `approvedBy`/`source`, `toolsMatched: true`, and the plan's base/rubric/starter/evaluator/implementation hashes plus `criteriaHash`. Never invent authorization. The selected model/effort must match the preregistration.
 

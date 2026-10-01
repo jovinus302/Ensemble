@@ -17,5 +17,11 @@
     "negativeUntypedLiteralPaths": 22,
     "fixedUntypedLiteralPaths": 0
   },
-  "originalObservationsPreserved": true
+  "originalObservationsPreserved": true,
+  "finalConsumedSlotGuardTests": {
+    "total": 789,
+    "passed": 789,
+    "failed": 0,
+    "files": 88
+  }
 }

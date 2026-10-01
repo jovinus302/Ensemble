@@ -3,7 +3,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
-import { validationApproval, validationPlan, VALIDATION_MODEL, VALIDATION_CRITERIA, VALIDATION_CRITERIA_HASH, BASE_SHA, LIMITS, plan, PROTOCOL_REVISION, RUBRIC, RUBRIC_HASH } from '../src/protocol.ts';
+import { assertLiveCapacity, LIVE_RUNS_REMAINING, validationApproval, validationPlan, VALIDATION_MODEL, VALIDATION_CRITERIA, VALIDATION_CRITERIA_HASH, BASE_SHA, LIMITS, plan, PROTOCOL_REVISION, RUBRIC, RUBRIC_HASH } from '../src/protocol.ts';
 import { APP_ROOT, localServices, PACKAGE_ROOT, treeHash } from '../src/local.ts';
 import { isBatchPaused, runCell, type Report } from '../src/harness.ts';
 import { assertCodexSchemaReady } from '../src/preflight.ts';
@@ -15,6 +15,7 @@ const fixture = args.includes('--fixture');
 const validationRun = args.includes('--validation-run');
 const cells = validationRun ? validationPlan() : plan();
 if (live && fixture) throw new Error('Choose exactly one mode');
+if (live) assertLiveCapacity();
 if (args.includes('--resume')) throw new Error('No retries or resumed live attempts are authorized');
 if (live && !validationRun) throw new Error('Only the single remaining --validation-run is eligible for live authorization');
 if (live && !value('--output')) throw new Error('Live validation requires a new explicit output directory');
@@ -22,7 +23,7 @@ const starterHash = await treeHash(path.join(PACKAGE_ROOT, 'starter'));
 const evaluatorHash = await treeHash(path.join(PACKAGE_ROOT, 'browser'));
 const implementationHash = createHash('sha256').update(await treeHash(path.join(PACKAGE_ROOT, 'src')))
   .update(await treeHash(path.join(PACKAGE_ROOT, 'scripts'))).digest('hex');
-const manifest = { protocolRevision: PROTOCOL_REVISION, baseSha: BASE_SHA, rubricHash: RUBRIC_HASH, starterHash, evaluatorHash, implementationHash, rubric: RUBRIC, limits: LIMITS, cells, ...(validationRun ? { model: VALIDATION_MODEL, validationCriteria: VALIDATION_CRITERIA, validationCriteriaHash: VALIDATION_CRITERIA_HASH, previousConservativeAttempts: 7, totalAuthorizedSlots: 8, plannedLiveRuns: 1, remainingAfterStart: 0 } : {}) };
+const manifest = { liveRunsRemaining: LIVE_RUNS_REMAINING, protocolRevision: PROTOCOL_REVISION, baseSha: BASE_SHA, rubricHash: RUBRIC_HASH, starterHash, evaluatorHash, implementationHash, rubric: RUBRIC, limits: LIMITS, cells, ...(validationRun ? { model: VALIDATION_MODEL, validationCriteria: VALIDATION_CRITERIA, validationCriteriaHash: VALIDATION_CRITERIA_HASH, previousConservativeAttempts: 7, totalAuthorizedSlots: 8, plannedLiveRuns: LIVE_RUNS_REMAINING, remainingAfterStart: 0 } : {}) };
 if (!live && !fixture) {
   console.log(JSON.stringify({ mode: 'plan-only', ...manifest }, null, 2));
 } else {

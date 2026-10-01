@@ -20,6 +20,11 @@ export const RUBRIC = Object.freeze({
   interpretation: 'n=1 exploratory only; compare within provider; never infer superiority',
 });
 export const RUBRIC_HASH = createHash('sha256').update(JSON.stringify(RUBRIC)).digest('hex');
+// Slot 8 was consumed by the preregistered observation; no additional live run is authorized.
+export const LIVE_RUNS_REMAINING = 0;
+export function assertLiveCapacity(): void {
+  if (LIVE_RUNS_REMAINING === 0) throw new Error('All eight authorized slots are consumed; no additional live run or retry is authorized');
+}
 export const VALIDATION_MODEL = Object.freeze({ model: 'gpt-6-astra', effort: 'low' });
 export const VALIDATION_CRITERIA = ['trusted-current-revision-pass', 'worker-limitations-preserved', 'judge-after-validation', 'checked-handoff-same-artifact', 'semantic-browser-pass'] as const;
 export const VALIDATION_CRITERIA_HASH = createHash('sha256').update(JSON.stringify(VALIDATION_CRITERIA)).digest('hex');
