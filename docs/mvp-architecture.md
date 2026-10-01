@@ -50,6 +50,31 @@ core, store, channel, llm, agents  ←  orchestrator
 orchestrator  ←  scenarios  ←  apps/web
 ```
 
+### 3.1 작업 항목·결정 요청 모듈 (이슈 #26)
+
+작업 항목·결정 요청 모델의 정본은 `docs/work-model.md`다. 판정은 core의 순수 함수가, 실행은 orchestrator가 한다.
+
+| 패키지 | 모듈 | 하는 일 |
+|---|---|---|
+| core | `work.ts` | 작업 메타(`task_meta_set`) 리듀서, 부모 판정·롤업(`isParentTask`, `rollupParents`), 보기 상태(`workStatus`, `waitingOn`), 활동 기록(`taskActivity`), 작업 스레드 id(`taskThreadId`) |
+| core | `plan-ops.ts` | 작업 op(`create_task`, `split_task`, `cancel_task`, `set_priority`) 검증·적용(`planOpsProblems`, `applyOps`, `taskMetaFromOps`), 권한 판정(`opAuthority`), Q1 기본값 `DEFAULT_PM_MAY_APPLY` |
+| core | `routing.ts` | 라우팅 확정(`routeTask`, `routingProblems`), 역량 표(`agentCapabilities`), Q2 기본값 `HUMAN_ASSIGNMENT_NEEDS_ACCEPTANCE` |
+| core | `decision-requests.ts` | 결정 요청 리듀서·생성 검증(`createDecisionRequest`), 기존 카드 어댑터(`openDecisions`), 응답 계산(`resolveDecision`), 리마인드·만료(`decisionsDue`), 묶기(`bundleDecisions`), Q3 설정 `DecisionSettings` |
+| core | `stuck.ts` | 정체 판정(`stuckFindings`), 하루 요약 재료·시점(`digestFacts`, `digestDue`), Q4 기본값 `DEFAULT_DIGEST_SETTINGS` |
+| core | `transitions.ts` | 시작 순서(`startOrder`: 우선순위 → 생성 순서, 부모 제외)와 시작 예약(`planStarts`) |
+| orchestrator | `coordination.ts` | 대화 → 작업 op 해석, 브리프 채우기, 권한 밖이면 결정 요청, 메시지당 새 작업 5개 초과 묶음(`MAX_TASKS_PER_MESSAGE`) |
+| orchestrator | `planning.ts` | 계층 초기 계획(하위 작업 `MAX_SUBTASKS`), 커밋 때 작업 메타 기록 |
+| orchestrator | `context.ts` | Agent 시작 입력에 목표 사슬·브리프 주입(`buildTaskContext`) |
+| orchestrator | `decision-flow.ts` | 결정 응답 실행(`decideRequest`): 기존 `onConfirmedOperations`·`resolveTask`·답변 전달로 |
+| orchestrator | `dispatch.ts` | Agent 질문 → `missing_info` 결정 요청(`onQuestion`) |
+| orchestrator | `sweep.ts` | 정체 점검 실행(`runSweep`): 막힘·담당 공백 요청, 사람 작업 확인, 리마인드·만료 |
+| orchestrator | `digest.ts` | 하루 요약 게시(`runDigest`, 코드 템플릿) |
+| orchestrator | `pm.ts` | 진입점(`ProjectManager`): 작업 댓글 전달, `sweep(now)`·`digest(now)`, 카드 id를 결정 요청으로 연결(`decideCard`) |
+| web | `lib/build-view-model.ts`, `lib/view-model.ts` | 작업 패널·결정 카드 보기 모델(`ViewModel.work`, `decisionCards`), 작업 키 숨김 |
+| web | `lib/runtime.ts` | 5분 정체 점검 틱 + 하루 요약(`ENSEMBLE_DIGEST`), `task`·`comment`·`decide` |
+| web | `app/api/[...path]/route.ts` | `GET tasks/:id`, `POST tasks/:id/comments`, `POST decisions/:id` (기존 `cards/:id` 유지) |
+| web | `components/WorkPanel.tsx`, `WorkItemDetail.tsx`, `DecisionRequestCard.tsx` | 작업 패널(작업/팀/내 결정/일정), 작업 상세 서랍, 결정 카드 |
+
 ## 4. 확장 지점
 
 | 바꾸고 싶은 것 | 손대는 곳 | 나머지 영향 |
