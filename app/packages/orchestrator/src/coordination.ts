@@ -9,14 +9,9 @@ import type { LlmProvider, ToolSpec } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
 import { PM_SYSTEM_PROMPT } from './pm-prompt.ts';
 import { recoveryRefusal, taskQuestions } from './context.ts';
-import { opsApplicable } from './sweep.ts';
+import { DRAFT_FIELDS, isRecoveryOp, opsApplicable, validCoordinationOp, validOp, type CoordinationOp, type TaskRecoveryOp } from './op-validation.ts';
 
-export type TaskRecoveryOp = (
-  | { type: 'resolve_task'; taskId: string; action: 'accept' | 'retry' | 'recheck'; note?: string }
-  | { type: 'reopen_task'; taskId: string; reason: string }
-) & { sourceMessageIds: string[] };
-export type CoordinationOp = PlanOp | TaskRecoveryOp;
-const isRecoveryOp = (op: CoordinationOp): op is TaskRecoveryOp => op.type === 'resolve_task' || op.type === 'reopen_task';
+export { validOp, type CoordinationOp, type TaskRecoveryOp } from './op-validation.ts';
 export interface CoordinationInterpretation {
   category: string;
   summary: string;
@@ -112,7 +107,6 @@ const isWorkOp = (op: CoordinationOp): op is WorkOp => (WORK_OPS as readonly str
 /** New work from one message beyond this goes to the decider as one bundled request (§3). */
 export const MAX_TASKS_PER_MESSAGE = 5;
 const newTaskIds = (ops: readonly CoordinationOp[]): string[] => ops.flatMap(op => op.type === 'create_task' ? [op.tempId] : op.type === 'split_task' ? op.children.map(c => c.tempId) : []);
-const DRAFT_FIELDS = ['tempId', 'title', 'assignee', 'handoffConditions', 'dependsOn', 'priority', 'routing', 'brief'];
 
 /**
  * Code finishes what the model drafted: routing picks the assignee (§2.5), and the brief gets the
@@ -161,36 +155,6 @@ function prepareOps(state: ProjectState, events: readonly AnyEvent[], raw: reado
   });
   if (!problems.length) problems.push(...planOpsProblems(state, ops.filter((op): op is PlanOp => !isRecoveryOp(op))));
   return { ops, problems };
-}
-function validCoordinationOp(value: unknown, state: ProjectState): value is CoordinationOp {
-  if (!value || typeof value !== 'object') return false;
-  const v = value as Record<string, unknown>;
-  if (!strings(v.sourceMessageIds) || !v.sourceMessageIds.length || !v.sourceMessageIds.every(id => state.messages.some(m => m.messageId === id && state.members.get(m.authorId)?.kind === 'human'))) return false;
-  const fields: Record<string, string[]> = { set_availability: ['memberId', 'weeklyHours', 'weekStart', 'period'], exclude_scope: ['taskId', 'item'], limit_scope: ['taskId', 'items'], handoff_early: ['taskId'], reassign: ['taskId', 'assignee'], set_deadline: ['date'], change_goal: ['text'], resolve_task: ['taskId', 'action', 'note'], reopen_task: ['taskId', 'reason'], create_task: [...DRAFT_FIELDS, 'parentId'], split_task: ['taskId', 'children'], cancel_task: ['taskId', 'reason'], set_priority: ['taskId', 'priority'] };
-  const allowed = fields[String(v.type)];
-  if (!allowed || Object.keys(v).some(k => !['type', 'sourceMessageIds', ...allowed].includes(k))) return false;
-  if (allowed.includes('taskId') && !state.plan?.tasks.some(t => t.id === v.taskId)) return false;
-  switch (v.type) {
-    case 'resolve_task': return ['accept', 'retry', 'recheck'].includes(String(v.action)) && (v.note === undefined || typeof v.note === 'string');
-    case 'reopen_task': return typeof v.reason === 'string' && !!v.reason.trim();
-    case 'set_availability': return state.members.get(String(v.memberId))?.kind === 'human' && typeof v.weeklyHours === 'number' && Number.isFinite(v.weeklyHours) && v.weeklyHours >= 0 && (v.period === undefined || ['this_week', 'ongoing', 'unclear'].includes(String(v.period))) && (v.weekStart === undefined || (typeof v.weekStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.weekStart) && availabilityWeek(new Date(`${v.weekStart}T00:00:00+09:00`)) === v.weekStart));
-    case 'limit_scope': return strings(v.items) && v.items.length > 0;
-    case 'exclude_scope': return typeof v.item === 'string' && !!v.item.trim();
-    case 'handoff_early': return true;
-    case 'reassign': return state.members.has(String(v.assignee));
-    case 'set_deadline': return typeof v.date === 'string' && Number.isFinite(Date.parse(v.date));
-    case 'change_goal': return typeof v.text === 'string' && !!v.text.trim();
-    // Work ops: shape only here. Drafts are finished and the batch is checked by `prepareOps`/`planOpsProblems`.
-    case 'create_task': return typeof v.tempId === 'string' && typeof v.title === 'string' && (v.parentId === undefined || typeof v.parentId === 'string');
-    case 'split_task': return Array.isArray(v.children) && v.children.length > 0;
-    case 'cancel_task': return typeof v.reason === 'string' && !!v.reason.trim();
-    case 'set_priority': return PRIORITIES.includes(v.priority as never);
-    default: return false;
-  }
-}
-/** Authority cards keep their original plan-only contract. */
-export function validOp(value: unknown, state: ProjectState): value is PlanOp {
-  return validCoordinationOp(value, state) && !isRecoveryOp(value);
 }
 /** The current human request must authorize the action; old decider messages never grant it. */
 export function recoveryAllowed(state: ProjectState, op: TaskRecoveryOp, messageId: string): boolean {

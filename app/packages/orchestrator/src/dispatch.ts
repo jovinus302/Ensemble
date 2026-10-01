@@ -3,8 +3,8 @@ import { channelText, particle, taskName } from './channel-text.ts';
 // task exactly once — agents through the session boundary, people through a channel sentence the
 // caller posts. Relays agent questions to people and routes the answers back to the agent.
 import {
-  AUTOMATION_LIMIT, automationGate, createDecisionRequest, decisionRequestProblems, isStaleResult, limitReachedEvent, planStarts, project, resolveDecision,
-  type AnyEvent, type DecisionRequestInput, type EventContext, type EventPayloads, type EventType, type Id, type LedgerEvent, type NewLedgerEvent, type ProjectState,
+  AUTOMATION_LIMIT, automationGate, createDecisionRequest, decisionRequestProblems, DEFAULT_DECISION_SETTINGS, isStaleResult, limitReachedEvent, pausedTaskIds, planStarts, project, resolveDecision,
+  type AnyEvent, type DecisionSettings, type DecisionRequestInput, type EventContext, type EventPayloads, type EventType, type Id, type LedgerEvent, type NewLedgerEvent, type ProjectState,
 } from '@ensemble/core';
 import type { LedgerStore } from '@ensemble/store';
 import type { LlmProvider } from '@ensemble/llm';
@@ -31,6 +31,19 @@ export interface DispatcherOptions {
   readResult(result: SubmittedResult): Promise<ResultContent>;
   /** Ledger time for decision requests (their reminder is due 24 hours later). */
   clock?: () => Date;
+  /** Q3: whether work held by an expired decision request stays paused (`pausedTaskIds`). */
+  decisionSettings?: DecisionSettings;
+}
+
+/**
+ * `planStarts` without the work a decision request holds (core `pausedTaskIds`: an open request, or under Q3's
+ * default an expired one): that work waits for a person and is never started automatically.
+ */
+function unpausedStarts(state: ProjectState, trigger: Id, ctx: EventContext, settings: DecisionSettings): NewLedgerEvent[] {
+  const paused = pausedTaskIds(state, settings);
+  if (!paused.size) return planStarts(state, trigger, ctx);
+  const tasks = new Map([...state.tasks].map(([id, task]) => [id, paused.has(id) && task.status === 'ready' ? { ...task, status: 'waiting' as const } : task]));
+  return planStarts({ ...state, tasks }, trigger, ctx);
 }
 
 /** The decision request that carries an agent question to the person who answers it (B7). */
@@ -122,7 +135,7 @@ export class Dispatcher {
         const recorded = handoffEvents(now, judged.review, this.options.context);
         const review = recorded[0]!.payload as HandoffReview;
         if (review.verdict !== 'sufficient') return { append: recorded, result: { review, starts: [] as Id[], limited: false } };
-        const starts = planStarts(project(withPending(current, recorded)), resultId, this.options.context);
+        const starts = unpausedStarts(project(withPending(current, recorded)), resultId, this.options.context, this.options.decisionSettings ?? DEFAULT_DECISION_SETTINGS);
         const after = project(withPending(current, [...recorded, ...starts]));
         const withheld = !automationGate(after).allowed && [...after.tasks.values()].some((t) => t.status === 'ready');
         const limit = withheld ? limitReachedEvent(after, this.options.context) : null;
@@ -164,7 +177,7 @@ export class Dispatcher {
           append.push(this.event('result_submitted', { taskId, resultId, planVersion: now.plan.version, summary: previous.summary, artifactIds: previous.artifactIds }, resultId, actor));
         }
         append.push(this.event('task_checked', { taskId, resultId, reason }, `checked:${resultId}`, actor));
-        const starts = planStarts(project(withPending(current, append)), resultId, this.options.context);
+        const starts = unpausedStarts(project(withPending(current, append)), resultId, this.options.context, this.options.decisionSettings ?? DEFAULT_DECISION_SETTINGS);
         const after = project(withPending(current, [...append, ...starts]));
         const withheld = !automationGate(after).allowed && [...after.tasks.values()].some((t) => t.status === 'ready');
         const limit = withheld ? limitReachedEvent(after, this.options.context) : null;
@@ -193,7 +206,7 @@ export class Dispatcher {
   startReady(trigger: Id): Promise<{ started: StartedTask[]; notices: string[]; failures: string[] }> {
     return this.enqueue(async () => {
       const tx = await this.options.store.transaction(this.options.context.projectId, events => {
-        const append = planStarts(project(events), trigger, this.options.context);
+        const append = unpausedStarts(project(events), trigger, this.options.context, this.options.decisionSettings ?? DEFAULT_DECISION_SETTINGS);
         const after = project(withPending(events, append));
         const limit = !automationGate(after).allowed && [...after.tasks.values()].some(t => t.status === 'ready') ? limitReachedEvent(after, this.options.context) : null;
         return { append: [...append, ...(limit ? [limit] : [])], result: { ids: append.map(e => (e.payload as EventPayloads['task_start_reserved']).taskId), limited: !!limit } };

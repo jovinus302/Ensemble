@@ -198,6 +198,25 @@ it('an agent question becomes a missing_info request; the answer on the card rea
   expect(f.connector.updates.at(-1)?.input.change.join('\n')).toContain(answer);
 });
 
+it('a missing_info request is never closed by approving or picking its answer option without words (any caller)', async () => {
+  const f = await fixture();
+  await f.pm['dispatcher'].startReady('kickoff');
+  const asked = await f.pm['dispatcher'].onQuestion('research', '결제 대안도 비교에 넣을까요?');
+  const requestId = questionRequestId(asked.questionId);
+  for (const answer of [{ by: 'owner', action: 'approve' as const }, { by: 'owner', action: 'choose' as const, optionId: 'answer' }]) {
+    const refused = await f.pm.decideRequest(requestId, answer).then(() => undefined, (error: unknown) => error);
+    expect(refused).toBeInstanceOf(DecisionRequestError);
+    expect(refused).toMatchObject({ code: 'invalid_input', status: 400 });
+  }
+  const after = await f.state();
+  expect(after.decisionRequests.get(requestId)?.status).toBe('open');
+  expect(workStatus(after.tasks.get('research')!, after)).toBe('waiting_human');
+  expect(f.connector.updates).toEqual([]);
+  // The PM can still withdraw it.
+  await f.pm.decideRequest(requestId, { by: 'pm', action: 'withdraw' });
+  expect((await f.state()).decisionRequests.get(requestId)?.status).toBe('withdrawn');
+});
+
 it('a question answered in the channel closes its request as answered, and the next open question gets its own request', async () => {
   const f = await fixture({ route: { kind: 'answer', taskId: 'research', questionId: 'question:research:1' } });
   await f.pm['dispatcher'].startReady('kickoff');

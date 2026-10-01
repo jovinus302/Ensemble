@@ -79,8 +79,25 @@ describe("digestFacts", () => {
     emit("task_checked", { taskId: "a", resultId: "r1", reason: "충족" }, 3);
     const facts = digestFacts(project(events), events, at(0.5), at(9));
     expect(facts.day).toBe("2026-10-01");
-    expect(facts.people).toEqual([{ memberId: "owner", completedTaskIds: ["a"], startedAgentTaskIds: ["a"], newDecisionIds: [], openDecisions: 0 }]);
+    expect(facts.people).toEqual([{ memberId: "owner", completedTaskIds: ["a"], startedAgentTaskIds: [], newDecisionIds: [], openDecisions: 0 }]);
     expect(digestFacts(project(events), events, at(4), at(9)).people).toEqual([]);
+  });
+
+  it("lists work under 새로 시작 only while it is still underway, not once it finished or was cancelled", () => {
+    const { events, emit } = ledger();
+    emit("plan_committed", { version: 2, basedOn: 1, tasks: [spec("a", "agent"), spec("b", "agent"), spec("c", "agent"), spec("design", "designer")], reason: "추가", approvedBy: "owner", sourceMessageIds: [] });
+    emit("task_started", { taskId: "a" }, 1);
+    emit("result_submitted", { taskId: "a", resultId: "r1", planVersion: 2, summary: "완료", artifactIds: [] }, 2);
+    emit("task_checked", { taskId: "a", resultId: "r1", reason: "충족" }, 3);
+    emit("task_started", { taskId: "b" }, 1);
+    emit("task_started", { taskId: "c" }, 1);
+    emit("plan_committed", { version: 3, basedOn: 2, tasks: [spec("a", "agent"), spec("b", "agent"), spec("design", "designer")], reason: "c 취소", approvedBy: "owner", sourceMessageIds: [] }, 4);
+    const state = project(events);
+    const owner = digestFacts(state, events, at(0), at(9)).people.find((p) => p.memberId === "owner")!;
+    expect(owner.completedTaskIds).toEqual(["a"]);
+    expect(state.tasks.get("c")?.status).toBe("cancelled");
+    expect(owner.startedAgentTaskIds).toEqual(["b"]);
+    expect(owner.startedAgentTaskIds).not.toContain("a");
   });
 
   it("mentions a person for their own completed work and new requests", () => {

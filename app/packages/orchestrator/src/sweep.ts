@@ -8,7 +8,8 @@ import {
 } from '@ensemble/core';
 import type { LedgerStore } from '@ensemble/store';
 import { channelText, particle } from './channel-text.ts';
-import { validOp, type CoordinationResult } from './coordination.ts';
+import type { CoordinationResult } from './coordination.ts';
+import { opsApplicable } from './op-validation.ts';
 import type { DecideExtra } from './decision-flow.ts';
 
 type PmPost = CoordinationResult['posts'][number];
@@ -28,21 +29,17 @@ export interface SweepOptions {
   humanAssignmentNeedsAcceptance?: boolean;
 }
 
-/**
- * Whether these plan ops would pass the decision flow if `by` approved them: the same validation and
- * authority checks the coordinator applies. Options the current code cannot apply are never offered.
- */
-export function opsApplicable(state: ProjectState, ops: readonly PlanOp[], by: Id): boolean {
-  if (!state.plan || !state.goal) return false;
-  const probe = structuredClone(state);
-  const messageId = `probe:${by}`;
-  probe.messages.push({ messageId, authorId: by, text: '', seq: state.lastSeq + 1 });
-  const sourced = ops.map(op => ({ ...op, sourceMessageIds: [messageId] }) as PlanOp);
-  return !planOpsProblems(probe, sourced).length && sourced.every(op => validOp(op, probe) && opAuthority(probe, op).allowed);
-}
-
 const name = (state: ProjectState, id: Id) => state.members.get(id)?.displayName ?? id;
 const hold = (tradeoff: string): DecisionOption => ({ optionId: 'hold', label: '보류', effects: [{ type: 'none' }], tradeoff });
+
+/** Another agent the routing rules would give a stuck agent's work to (same role), if any. */
+function otherCapableAgent(state: ProjectState, assignee: Id): Id | undefined {
+  const member = state.members.get(assignee);
+  if (member?.kind !== 'agent') return undefined;
+  const members = new Map([...state.members].filter(([id]) => id !== assignee));
+  const route = routeTask({ ...state, members }, { executor: 'agent', reason: 'agent_capable', note: '', role: member.role || assignee });
+  return route.ok && route.routing.executor === 'agent' ? route.assignee : undefined;
+}
 
 /** `stuck_work` for work blocked 4 hours or more: the recommendation follows the block reason. */
 function stuckRequest(state: ProjectState, events: readonly AnyEvent[], finding: StuckFinding, decider: Id, now: Date): { input: DecisionRequestInput; text: string } | undefined {
@@ -51,8 +48,11 @@ function stuckRequest(state: ProjectState, events: readonly AnyEvent[], finding:
   const taskId = task.spec.id, title = task.spec.title, assignee = name(state, task.spec.assignee);
   const hours = Math.max(1, Math.floor((now.getTime() - Date.parse(finding.since ?? now.toISOString())) / HOUR));
   const cancelOps: PlanOp[] = [{ type: 'cancel_task', taskId, reason: '오래 멈춘 작업을 결정권자가 취소', sourceMessageIds: [] }];
+  const other = otherCapableAgent(state, task.spec.assignee);
+  const reassignOps: PlanOp[] = other ? [{ type: 'reassign', taskId, assignee: other, sourceMessageIds: [] }] : [];
   const options: DecisionOption[] = [
     { optionId: 'retry', label: '다시 맡기기', effects: [{ type: 'resolve_task', taskId, action: 'retry' }], tradeoff: `${assignee}에게 멈춘 지점부터 다시 맡깁니다. 같은 이유로 다시 멈출 수 있어요.` },
+    ...(other && opsApplicable(state, reassignOps, decider) ? [{ optionId: 'reassign', label: `${name(state, other)}에게 맡기기`, effects: [{ type: 'plan_ops' as const, ops: reassignOps }], tradeoff: `같은 일을 할 수 있는 다른 Agent가 이어 맡습니다. ${assignee}의 진행 맥락은 이어지지 않을 수 있어요.` }] : []),
     ...(task.results.length ? [{ optionId: 'accept', label: '지금 결과로 확인', effects: [{ type: 'resolve_task' as const, taskId, action: 'accept' as const }], tradeoff: '인계 조건을 다 채우지 못한 결과로 다음 작업이 이어집니다.' }] : []),
     ...(opsApplicable(state, cancelOps, decider) ? [{ optionId: 'cancel', label: '작업 취소', effects: [{ type: 'plan_ops' as const, ops: cancelOps }], tradeoff: '이 작업에 기대는 다음 작업도 다시 정해야 합니다.' }] : []),
     hold('작업은 멈춘 채로 둡니다.'),

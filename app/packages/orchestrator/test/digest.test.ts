@@ -76,7 +76,7 @@ it('posts once a day at 09:00, mentioning only the people something changed for'
 
   expect(posts).toEqual([{ kind: 'summary', text: [
     '지난 요약 이후 바뀐 것을 정리했어요.',
-    '- @사용자 완료 1건("예약 서비스 대안 조사") · Agent가 새로 시작 1건("예약 서비스 대안 조사")',
+    '- @사용자 완료 1건("예약 서비스 대안 조사")',
     '- @디자이너 새 결정 요청 1건 · 답을 기다리는 결정 1건',
   ].join('\n') }]);
   expect(posts[0]!.text).not.toContain('마케터');

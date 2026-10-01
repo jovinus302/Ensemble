@@ -145,7 +145,10 @@ export function digestFacts(state: ProjectState, events: readonly LedgerEvent[],
   const inWindow = (event: AnyEvent) => Date.parse(event.at) > since.getTime() && Date.parse(event.at) <= now.getTime();
   const window = ledger.filter(inWindow);
   const checked = [...new Set(window.flatMap((event) => event.type === "task_checked" && state.tasks.get(event.payload.taskId)?.status === "checked" ? [event.payload.taskId] : []))];
-  const started = [...new Set(window.flatMap((event) => event.type === "task_started" && state.members.get(state.tasks.get(event.payload.taskId)?.spec.assignee ?? "")?.kind === "agent" ? [event.payload.taskId] : []))];
+  // 새로 시작: agent work started in the window that is still underway. Work that already finished is listed
+  // under 완료 (or not at all when cancelled), never under both.
+  const underway = (taskId: Id) => { const task = state.tasks.get(taskId); return !!task && task.status !== "checked" && task.status !== "cancelled" && state.members.get(task.spec.assignee)?.kind === "agent"; };
+  const started = [...new Set(window.flatMap((event) => event.type === "task_started" && underway(event.payload.taskId) ? [event.payload.taskId] : []))];
   const requested = window.flatMap((event) => event.type === "decision_requested" && state.decisionRequests.get(event.payload.requestId)?.status === "open" ? [event.payload] : []);
   const open = openDecisions(state);
   const decider = state.goal?.decider;
