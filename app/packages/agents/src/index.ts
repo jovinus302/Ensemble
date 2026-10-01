@@ -36,5 +36,7 @@ export * from './session.ts';
 export * from './protocol.ts';
 export { CodexSessionConnector } from './codex/connector.ts';
 export type { CodexConnectorOptions } from './codex/connector.ts';
+export { ClaudeSessionConnector } from './claude/connector.ts';
+export type { ClaudeConnectorOptions } from './claude/connector.ts';
 export { builtInRoles, prototypeAgentRole, researchAgentRole, roleFor } from './roles.ts';
 export { codexSettingsFromEnv, DEFAULT_TURN_TIMEOUT_MINUTES, type CodexRuntimeSettings } from './codex/settings.ts';

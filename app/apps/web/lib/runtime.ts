@@ -4,7 +4,7 @@ import { readFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { SqliteLedgerStore, type LedgerStore } from '@ensemble/store';
 import { AnthropicProvider, loadEnv, modelFor, type LlmProvider } from '@ensemble/llm';
-import { CodexSessionConnector, codexSettingsFromEnv, type SessionConnector } from '@ensemble/agents';
+import { ClaudeSessionConnector, CodexSessionConnector, codexSettingsFromEnv, type SessionConnector } from '@ensemble/agents';
 import { ProjectManager, type FreeStartResult } from '@ensemble/orchestrator';
 import { project, type AnyEvent, type LedgerEvent } from '@ensemble/core';
 import { continuousScenario, advanceScript, createRevisionGenerator, sceneEvents, SCENE_NOW, type ScriptProgress, type Condition, type RevisionGenerator } from '@ensemble/scenarios';
@@ -31,12 +31,14 @@ export interface Activity {
   stalled?: VmActivity['stalled'];
 }
 
-/** One Codex thread per agent, each in its own folder outside the repository, with a turn time limit. */
-function codexAgents() {
+/** One runtime thread per agent, each in its own folder outside the repository, with a turn time limit. */
+function liveAgents(runtime: 'codex' | 'claude') {
   const { workspaceRoot, turnTimeoutMs } = codexSettingsFromEnv();
   const inRepo = path.relative(path.dirname(appRoot()), workspaceRoot);
   if (!inRepo.startsWith('..') && !path.isAbsolute(inRepo)) throw new Error('ENSEMBLE_AGENT_WORKSPACE_ROOT must be outside the repository');
-  return { connector: new CodexSessionConnector({ workspaceRoot }), turnTimeoutMs };
+  // The model stays on the user's runtime default unless ENSEMBLE_MODEL_AGENT overrides it.
+  const model = process.env.ENSEMBLE_MODEL_AGENT?.trim();
+  return { connector: runtime === 'codex' ? new CodexSessionConnector({ workspaceRoot }) : new ClaudeSessionConnector({ workspaceRoot, ...(model ? { model } : {}) }), turnTimeoutMs };
 }
 
 /** The PM already told the channel; the server log keeps the cause for diagnosis. */
@@ -117,11 +119,11 @@ export class WebRuntime {
   }
   private createPm() {
     const runtime = process.env.ENSEMBLE_AGENT_RUNTIME ?? 'fake';
-    if (!['fake', 'codex'].includes(runtime)) throw new Error('ENSEMBLE_AGENT_RUNTIME must be fake or codex');
+    if (!['fake', 'codex', 'claude'].includes(runtime)) throw new Error('ENSEMBLE_AGENT_RUNTIME must be fake, codex, or claude');
     // Agent results arrive as attachments recorded from the agent's workspace; the PM reads them from the ledger.
     this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: this.options.llm ?? new AnthropicProvider(), model: modelFor('pm'),
       // The demo's third scene observes a change during construction; its simulated build ends after that change.
-      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' ? codexAgents() : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'), this.options.generateRevision ?? createRevisionGenerator(this.options.llm ?? new AnthropicProvider(), modelFor('pm')), (agentId, version) => this.meta.mode !== 'scenario' || agentId !== 'prototype-agent' || version > 1, 2000,
+      ...(this.options.connector ? { connector: this.options.connector } : runtime === 'codex' || runtime === 'claude' ? liveAgents(runtime) : { connector: new FakeConnector(path.join(this.dataDir, 'fake-agents'), this.options.generateRevision ?? createRevisionGenerator(this.options.llm ?? new AnthropicProvider(), modelFor('pm')), (agentId, version) => this.meta.mode !== 'scenario' || agentId !== 'prototype-agent' || version > 1, 2000,
         async taskId => project(await this.store.read({ projectId: this.meta.projectId })).tasks.get(taskId)?.spec) }),
       // Live scenario inputs and PM/agent replies share the store's wall clock.
       clock: () => new Date(),
@@ -202,7 +204,7 @@ export class WebRuntime {
       const progress = typed.findLast(e => e.seq >= start.seq && ['task_started', 'turn_observed', 'reply_recorded', 'result_submitted', 'update_acknowledged', 'agent_report_recorded'].includes(e.type) && e.actor.kind === 'agent' && 'taskId' in e.payload && e.payload.taskId === taskId);
       return [{ taskId, start: Date.parse(start.at), progress: Date.parse(progress?.at ?? start.at) }];
     });
-    const limit = process.env.ENSEMBLE_AGENT_RUNTIME === 'codex' ? codexSettingsFromEnv().turnTimeoutMs : 120_000;
+    const limit = ['codex', 'claude'].includes(process.env.ENSEMBLE_AGENT_RUNTIME ?? '') ? codexSettingsFromEnv().turnTimeoutMs : 120_000;
     const agentStalled = starts.find(t => now - t.progress >= limit);
     const blocked = [...state.tasks.values()].find(t => t.status === 'blocked' && t.blocked);
     const since = this.waiting ? new Date(this.waiting.since).toISOString() : starts.length ? new Date(Math.min(...starts.map(t => t.start))).toISOString() : this.activitySince;
