@@ -6,7 +6,7 @@ import type { ActionResult, DecisionInput } from "./use-view-model";
 import { DECISION_KIND_LABEL, deadlineDeltaLabel, decisionOptions } from "./work-view";
 
 export type DecideRequest = (requestId: string, answer: DecisionInput) => Promise<ActionResult>;
-type Mode = "idle" | "choose" | "edit" | "answer";
+type Mode = "idle" | "choose" | "edit";
 
 const PRIORITY_LABEL = { high: "높음", normal: "보통", low: "낮음" } as const;
 
@@ -70,8 +70,10 @@ function EditForm({ card, members, pending, onSubmit, onCancel }: {
 
 /**
  * PM의 결정 요청 카드. 채널 인라인과 "내 결정" 탭이 같은 컴포넌트를 쓴다.
- * 추천안을 맨 위에 강조하고, 버튼은 [추천대로 진행] [다른 안 선택] [고쳐서 승인] [보류] 네 가지다.
- * 자유 답변형(missing_info)은 "고쳐서 승인" 자리에 "직접 답하기"가 온다.
+ * 추천안을 맨 위에 강조하고(추천안은 이 블록에만 한 번 보인다), 아래에 나머지 선택지를 둔다.
+ * 버튼은 [추천대로 진행] [다른 안 선택] [고쳐서 승인] [보류] 네 가지다.
+ * 자유 답변형(answerMode "text", 예: Agent 질문의 missing_info)은 답 없이 진행할 수 없다: 추천대로 진행·다른 안 선택 대신
+ * 답변 입력란과 [답변 보내기] [보류]만 둔다. 답 없이 승인하면 요청이 닫히고 Agent는 오지 않을 답을 기다리게 된다.
  */
 export function DecisionRequestCard({ card, members, onDecide }: { card: VmDecisionCard; members: VmMember[]; onDecide: DecideRequest }) {
   const [pending, setPending] = useState(false);
@@ -81,6 +83,7 @@ export function DecisionRequestCard({ card, members, onDecide }: { card: VmDecis
   const options = decisionOptions(card);
   const recommended = options.find(o => o.recommended);
   const others = options.filter(o => !o.recommended);
+  const textMode = card.answerMode === "text";
   const canEdit = card.answerMode === "choose" && (card.editable?.length ?? 0) > 0;
   const delta = deadlineDeltaLabel(card.impact.deadlineDeltaDays);
 
@@ -105,24 +108,25 @@ export function DecisionRequestCard({ card, members, onDecide }: { card: VmDecis
             <strong className="recommendation-label">{recommended.label}</strong>
           </div>
           <p className="card-text">{card.recommendation.rationale}</p>
+          {recommended.tradeoff && <p className="small muted decision-tradeoff">{recommended.tradeoff}</p>}
+          {recommended.summary.length > 0 && <ul className="small decision-summary">{recommended.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>}
           {card.recommendation.evidence.length > 0 && (
             <ul className="evidence small">{card.recommendation.evidence.map((e, i) => <li key={i}>{e}</li>)}</ul>
           )}
         </div>
       )}
 
-      <ul className="decision-options" aria-label="선택지">
-        {options.map(o => (
-          <li key={o.optionId} className={`decision-option${o.recommended ? " option-recommended" : ""}`}>
-            <div className="decision-option-head">
-              <span className="task-title">{o.label}</span>
-              {o.recommended && <span className="badge badge-recommend">추천</span>}
-            </div>
-            {o.tradeoff && <p className="small muted decision-tradeoff">{o.tradeoff}</p>}
-            {o.summary.length > 0 && <ul className="small decision-summary">{o.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>}
-          </li>
-        ))}
-      </ul>
+      {!textMode && others.length > 0 && (
+        <ul className="decision-options" aria-label="다른 선택지">
+          {others.map(o => (
+            <li key={o.optionId} className="decision-option">
+              <div className="decision-option-head"><span className="task-title">{o.label}</span></div>
+              {o.tradeoff && <p className="small muted decision-tradeoff">{o.tradeoff}</p>}
+              {o.summary.length > 0 && <ul className="small decision-summary">{o.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {(card.impact.taskTitles.length > 0 || card.impact.blockedTitles.length > 0 || delta) && (
         <dl className="decision-impact small">
@@ -152,25 +156,30 @@ export function DecisionRequestCard({ card, members, onDecide }: { card: VmDecis
         <EditForm card={card} members={members} pending={pending}
           onSubmit={edits => void send({ action: "edit", optionId: card.recommendation.optionId, edits })} onCancel={() => setMode("idle")} />
       )}
-      {mode === "answer" && (
+      {textMode ? (
         <form className="decision-form" onSubmit={e => { e.preventDefault(); if (text.trim()) void send({ action: "answer", text: text.trim() }); }}>
-          <label className="field">답변<textarea className="decision-text" value={text} onChange={e => setText(e.target.value)} rows={3} placeholder="Agent에게 그대로 전달돼요" disabled={pending} /></label>
-          <div className="card-actions">
-            <button type="button" className="btn-text" onClick={() => setMode("idle")} disabled={pending}>취소</button>
+          <label className="field">답변<textarea className="decision-text" value={text} onChange={e => setText(e.target.value)} rows={3} placeholder="Agent에게 그대로 전달돼요" required disabled={pending} /></label>
+          <div className="card-actions decision-actions">
+            <button type="button" className="btn-outlined" disabled={pending} onClick={() => void send({ action: "reject" })}>보류</button>
             <button type="submit" className="btn-primary" disabled={pending || !text.trim()}>답변 보내기</button>
           </div>
         </form>
-      )}
-
-      {mode === "idle" && (
+      ) : mode === "idle" && (
         <div className="card-actions decision-actions">
           <button type="button" className="btn-outlined" disabled={pending} onClick={() => void send({ action: "reject" })}>보류</button>
-          {card.answerMode === "text"
-            ? <button type="button" className="btn-outlined" disabled={pending} onClick={() => setMode("answer")}>직접 답하기</button>
-            : canEdit && <button type="button" className="btn-outlined" disabled={pending} onClick={() => setMode("edit")}>고쳐서 승인</button>}
+          {canEdit && <button type="button" className="btn-outlined" disabled={pending} onClick={() => setMode("edit")}>고쳐서 승인</button>}
           <button type="button" className="btn-tonal" disabled={pending || others.length === 0} onClick={() => { setChoice(""); setMode("choose"); }}>다른 안 선택</button>
           <button type="button" className="btn-primary" disabled={pending} onClick={() => void send({ action: "approve", optionId: card.recommendation.optionId })}>추천대로 진행</button>
         </div>
+      )}
+
+      {card.bundled && card.bundled.length > 0 && (
+        <details className="decision-bundle">
+          <summary>같이 정할 결정 <span className="num">{card.bundled.length}</span>건 더</summary>
+          <div className="decision-list">
+            {card.bundled.map(b => <DecisionRequestCard key={b.id} card={b} members={members} onDecide={onDecide} />)}
+          </div>
+        </details>
       )}
     </section>
   );

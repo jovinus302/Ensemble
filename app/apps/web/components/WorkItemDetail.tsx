@@ -7,7 +7,7 @@ import { Avatar } from "./Message";
 import { ScopeLists, TaskResolution, type ResolveTask } from "./TaskResolution";
 import type { ActionResult, LoadTaskResult } from "./use-view-model";
 import { WorkStatusChip } from "./WorkPanel";
-import { waitingLabel } from "./work-view";
+import { taskDetailRevision, waitingLabel } from "./work-view";
 
 function when(iso: string): string {
   return `${formatDate(iso)} ${formatTime(iso)}`.trim();
@@ -16,9 +16,11 @@ function when(iso: string): string {
 /**
  * 작업 상세 서랍: 담당·라우팅 사유, 완료 조건, 범위, PM이 정리한 맥락, 출처, 활동 기록, 댓글.
  * 활동·댓글은 상태 폴링에 없으므로 열 때 `loadTask`로 가져온다. 그 전에는 작업 패널의 항목으로 먼저 그린다.
+ * 열려 있는 동안 서버 상태가 새로 오면(refreshKey가 바뀌면) 상세를 다시 가져온다: 작업 댓글·활동은 상태에 없어서
+ * 상태의 작업 항목만 보고는 바뀐 줄 모른다. refreshKey가 없으면 작업 항목(상태·담당·대기)과 언급 메시지로 가늠한다.
  */
-export function WorkItemDetail({ taskId, items, members, me, messages, onClose, onLoad, onComment, onOpenTask, onJumpToMessage, onResolve }: {
-  taskId: string; items: VmWorkItem[]; members: VmMember[]; me: string; messages: VmMessage[];
+export function WorkItemDetail({ taskId, items, members, me, messages, refreshKey, onClose, onLoad, onComment, onOpenTask, onJumpToMessage, onResolve }: {
+  taskId: string; items: VmWorkItem[]; members: VmMember[]; me: string; messages: VmMessage[]; refreshKey?: unknown;
   onClose: () => void; onLoad: (taskId: string) => Promise<LoadTaskResult>;
   onComment: (taskId: string, text: string) => Promise<ActionResult>;
   onOpenTask: (taskId: string) => void; onJumpToMessage: (messageId: string) => void; onResolve?: ResolveTask;
@@ -28,6 +30,7 @@ export function WorkItemDetail({ taskId, items, members, me, messages, onClose, 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [reload, setReload] = useState(0);
+  const revision = taskDetailRevision(taskId, items, messages);
 
   useEffect(() => {
     let live = true;
@@ -37,7 +40,7 @@ export function WorkItemDetail({ taskId, items, members, me, messages, onClose, 
       if (r.ok) setDetail(r.detail); else setLoadError(r.message);
     });
     return () => { live = false; };
-  }, [taskId, onLoad, reload]);
+  }, [taskId, onLoad, reload, revision, refreshKey]);
   useEffect(() => { setDetail(null); setDraft(""); }, [taskId]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -45,7 +48,10 @@ export function WorkItemDetail({ taskId, items, members, me, messages, onClose, 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const item = (detail?.item.id === taskId ? detail.item : undefined) ?? items.find(i => i.id === taskId);
+  // 상세(맥락·출처)는 불러온 값을, 상태·담당·대기처럼 폴링으로 바뀌는 값은 작업 패널의 최신 항목을 쓴다.
+  const polled = items.find(i => i.id === taskId);
+  const loaded = detail?.item.id === taskId ? detail.item : undefined;
+  const item = loaded && polled ? { ...loaded, status: polled.status, ownerId: polled.ownerId, ownerKind: polled.ownerKind, waitingOn: polled.waitingOn, childIds: polled.childIds, resolution: polled.resolution } : loaded ?? polled;
   const nameOf = (id: string) => id === "pm" ? "PM" : members.find(m => m.id === id)?.displayName ?? "알 수 없음";
   const byId = new Map(items.map(i => [i.id, i]));
   const sourceText = (id: string) => messages.find(m => m.id === id)?.text;

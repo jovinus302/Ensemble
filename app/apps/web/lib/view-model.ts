@@ -23,6 +23,8 @@ export interface VmMessage {
 export interface VmPlanTask {
   exclusions?: string[]; limits?: string[];
   id: string; title: string; assigneeName: string; dependsOn: string[];
+  /** 하위 작업이면 상위 작업 id(같은 계획 안). 계획 승인 카드는 이 값으로 트리를 그린다. */
+  parentId?: string;
   /** 추정 작업 시간(최소~최대). */
   hours?: { min: number; max: number };
   /** 예상 완료일(ISO, 최소~최대). 가용 시간이 없으면 계산하지 않는다. */
@@ -50,6 +52,8 @@ export interface VmDecisionCard {
   editable?: ("assignee" | "title" | "priority" | "include")[];
   /** choose: 버튼으로 고른다. text: 자유 답변(missing_info). */
   answerMode: "choose" | "text";
+  /** 한 사람에게 결정 요청이 3건을 넘으면 넷째부터 셋째 카드에 묶인다(요청 순서). 묶인 요청도 각자 답한다. */
+  bundled?: VmDecisionCard[];
 }
 /** `POST /api/decisions/:id` 본문. */
 export interface DecisionAnswer {

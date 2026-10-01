@@ -15,6 +15,7 @@ import { PmLogPanel } from "./PmLog";
 import { useViewModel } from "./use-view-model";
 import { WorkItemDetail } from "./WorkItemDetail";
 import { WorkPanel, type PanelTab } from "./WorkPanel";
+import { decisionTotal, stallGuidance } from "./work-view";
 
 const REPLACE_WARNING = "진행 중인 프로젝트는 보관되고 화면에서 사라집니다.";
 type Pending = { kind: "scenario" } | { kind: "free"; goal: string; deadline?: string };
@@ -83,7 +84,7 @@ export function App() {
   const activity = vm.activity;
   const stepBlocked: { label: string; reason: string } | null =
     stepping ? { label: "진행 중…", reason: "요청을 보내는 중이에요." }
-    : activity?.stalled ? { label: "멈춤", reason: "대본이 멈췄어요. 아래에서 다시 시도하거나 건너뛰세요." }
+    : activity?.stalled ? { label: "멈춤", reason: stallGuidance(activity.stalled, true) }
     : activity && (activity.kind === "pm_thinking" || activity.kind === "scenario_waiting") ? { label: "진행 중…", reason: `${activity.label} — 끝나면 다음 발언을 보낼 수 있어요.` }
     : !activity && vm.busy ? { label: "진행 중…", reason: "PM·Agent가 처리 중이에요." }
     : null;
@@ -97,7 +98,7 @@ export function App() {
   const visibleCards = new Map<string, VmCard | VmDecisionCard>([...vm.cards, ...(vm.decisionCards ?? [])].map(c => [c.id, c]));
   const linkedCards = new Set(vm.messages.flatMap(m => (m.cardId && visibleCards.has(m.cardId) ? [m.cardId] : [])));
   const workTitles = new Map((vm.work?.items ?? []).map(i => [i.id, i.title]));
-  const decisionCount = (vm.decisionCards?.length ?? 0) + vm.cards.length;
+  const decisionCount = decisionTotal([...(vm.decisionCards ?? []), ...vm.cards]);
   const showMobile = (view: MobileView) => {
     setMobileView(view);
     if (view === "decisions") setPanelTab("decisions");
@@ -211,7 +212,7 @@ export function App() {
       )}
 
       {openTask && (
-        <WorkItemDetail taskId={openTask} items={vm.work?.items ?? []} members={vm.members} me={vm.me} messages={vm.messages}
+        <WorkItemDetail taskId={openTask} items={vm.work?.items ?? []} members={vm.members} me={vm.me} messages={vm.messages} refreshKey={vm}
           onClose={closeTask} onLoad={actions.loadTask} onComment={actions.comment} onOpenTask={setOpenTask}
           onJumpToMessage={jumpToMessage} onResolve={actions.resolveTask} />
       )}

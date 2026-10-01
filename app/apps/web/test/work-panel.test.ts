@@ -6,9 +6,10 @@ import { DecisionRequestCard } from "../components/DecisionRequestCard";
 import { WorkChips } from "../components/Message";
 import { WorkItemDetail } from "../components/WorkItemDetail";
 import { TeamList, WorkPanel, WorkTree } from "../components/WorkPanel";
-import { decisionOptions, groupWorkItems, teamLines, waitingLabel, workGroupOf } from "../components/work-view";
+import { decisionOptions, decisionTotal, groupWorkItems, planTaskTree, stallGuidance, taskDetailRevision, teamLines, waitingLabel, workGroupOf } from "../components/work-view";
+import { ActivityLine } from "../components/Activity";
 import { buildMockViewModel } from "../lib/mock-view-model";
-import type { VmDecisionCard, VmWorkItem } from "../lib/view-model";
+import type { VmDecisionCard, VmMessage, VmWorkItem } from "../lib/view-model";
 
 const vm = buildMockViewModel("owner");
 const items = vm.work!.items;
@@ -93,13 +94,17 @@ describe("결정 요청 카드", () => {
     expect(options.filter(o => o.recommended)).toHaveLength(1);
   });
 
-  it("추천안을 강조 블록과 추천 배지로 그린다(추천 선택지에만)", () => {
+  it("추천안은 강조 블록에 한 번만 그리고, 선택지 목록에는 나머지 안만 둔다", () => {
     const out = html(createElement(DecisionRequestCard, { card: payment, members: vm.members, onDecide: noop }));
     expect(out).toContain('class="recommendation"');
     expect(out).toContain("PM 추천");
     expect(out).toContain(payment.recommendation.rationale);
-    expect(out.match(/option-recommended/g)).toHaveLength(1);
-    expect(out).toMatch(/decision-option option-recommended"><div class="decision-option-head"><span class="task-title">결제 화면 빼기/);
+    const recommended = payment.options.find(o => o.optionId === payment.recommendation.optionId)!;
+    // 회귀: 추천안 이름이 강조 블록과 선택지 목록에 두 번 보였다.
+    expect(out.split(`>${recommended.label}<`)).toHaveLength(2);
+    expect(out).not.toContain("option-recommended");
+    expect(out).toContain(recommended.tradeoff);
+    for (const other of payment.options.filter(o => o.optionId !== recommended.optionId)) expect(out).toContain(`>${other.label}<`);
     // 추천안 블록이 선택지 목록보다 먼저
     expect(out.indexOf("PM 추천")).toBeLessThan(out.indexOf("decision-options"));
   });
@@ -111,11 +116,20 @@ describe("결정 요청 카드", () => {
     expect(out).toContain("멈춘 작업");
   });
 
-  it("편집할 필드가 없으면 '고쳐서 승인'을 감추고, 자유 답변형은 '직접 답하기'를 보인다", () => {
+  it("편집할 필드가 없으면 '고쳐서 승인'을 감춘다", () => {
     const noEdit = html(createElement(DecisionRequestCard, { card: { ...payment, editable: undefined }, members: vm.members, onDecide: noop }));
     expect(noEdit).not.toContain("고쳐서 승인");
+  });
+
+  it("자유 답변형은 답 없이 진행할 수 없다: 추천대로 진행 대신 답변 입력란과 답변 보내기·보류만 둔다", () => {
+    // 회귀: 답변형 카드에 '추천대로 진행'이 보여 답 없이 승인하면 서버가 400 answer_required로 거절하거나 작업이 멈췄다.
     const text = html(createElement(DecisionRequestCard, { card: retry, members: vm.members, onDecide: noop }));
-    for (const label of ["추천대로 진행", "다른 안 선택", "직접 답하기", "보류"]) expect(text).toContain(`>${label}</button>`);
+    expect(retry.answerMode).toBe("text");
+    for (const label of ["추천대로 진행", "다른 안 선택", "직접 답하기", "고쳐서 승인"]) expect(text).not.toContain(`>${label}</button>`);
+    expect(text).toMatch(/<textarea[^>]*required/);
+    expect(text).toMatch(/<button type="submit" class="btn-primary" disabled="">답변 보내기<\/button>/);
+    expect(text).toContain(">보류</button>");
+    expect(text).toContain(retry.recommendation.rationale);
   });
 
   it("Cards의 DecisionCard가 decision 종류를 결정 요청 카드로 분기한다", () => {
@@ -163,3 +177,103 @@ describe("작업 키를 보이지 않는다", () => {
   expect(markup).toContain("Live worker result");
   expect(markup).not.toContain("아직 작업 항목이 없어요");
  });
+
+describe("계획 승인 카드의 작업 계층", () => {
+  const plan = vm.cards.find(c => c.kind === "plan_approval")!;
+  if (plan.kind !== "plan_approval") throw new Error("mock plan card");
+
+  it("parentId로 하위 작업을 상위 작업 아래에 묶는다(상위가 계획에 없으면 맨 위 단계)", () => {
+    const tree = planTaskTree(plan.tasks);
+    const proto = tree.find(n => n.task.id === "prototype")!;
+    expect(proto.children.map(c => c.task.title)).toEqual(["가입 화면", "결제 화면"]);
+    expect(tree.some(n => n.task.parentId)).toBe(false);
+    const orphan = planTaskTree([{ id: "x", parentId: "missing", title: "x", assigneeName: "a", dependsOn: [] }]);
+    expect(orphan.map(n => n.task.id)).toEqual(["x"]);
+    // 상위 관계가 순환해도 작업을 잃지 않는다.
+    const cycle = planTaskTree([{ id: "a", parentId: "b", title: "a", assigneeName: "a", dependsOn: [] }, { id: "b", parentId: "a", title: "b", assigneeName: "a", dependsOn: [] }]);
+    const count = (nodes: ReturnType<typeof planTaskTree>): number => nodes.reduce((n, x) => n + 1 + count(x.children), 0);
+    expect(count(cycle)).toBe(2);
+  });
+
+  it("카드는 하위 작업을 상위 작업 항목 안의 중첩 목록으로 그린다", () => {
+    // 회귀: 계약에 parentId가 없어 하위 작업이 상위 작업과 같은 단계에 평평하게 보였다.
+    const out = html(createElement(DecisionCard, { card: plan, onDecide: noop }));
+    expect(out).toMatch(/프로토타입\(가입 흐름\)<\/span>.*?<ol class="plan-tasks plan-subtasks"[^>]*>.*?가입 화면.*?결제 화면.*?<\/ol><\/li>/s);
+    expect(out).toContain("하위 작업 2개");
+    expect(out).toContain("선행 가입 화면");
+  });
+});
+
+describe("작업 상세 서랍 새로 고침", () => {
+  const base = [item({ id: "t1", status: "todo" }), item({ id: "t2" })];
+  const msg = (over: Partial<VmMessage>): VmMessage => ({ id: "m", authorId: "a", text: "x", at: "2026-10-01T00:00:00Z", kind: "agent", attachments: [], ...over });
+
+  it("작업 상태·담당·대기나 이 작업을 언급한 메시지가 바뀌면 값이 바뀐다", () => {
+    const r0 = taskDetailRevision("t1", base, []);
+    expect(taskDetailRevision("t1", [...base], [])).toBe(r0);
+    expect(taskDetailRevision("t1", [item({ id: "t1", status: "in_progress" }), base[1]!], [])).not.toBe(r0);
+    expect(taskDetailRevision("t1", [item({ id: "t1", ownerId: "b" }), base[1]!], [])).not.toBe(r0);
+    expect(taskDetailRevision("t1", [item({ id: "t1", status: "waiting_human", waitingOn: { memberId: "owner", requestId: "r1" } }), base[1]!], [])).not.toBe(r0);
+    expect(taskDetailRevision("t1", base, [msg({ threadId: "task:t1" })])).not.toBe(r0);
+    expect(taskDetailRevision("t1", base, [msg({ taskIds: ["t1"] })])).not.toBe(r0);
+    // 다른 작업의 변화는 무시한다.
+    expect(taskDetailRevision("t1", [base[0]!, item({ id: "t2", status: "done" })], [msg({ taskIds: ["t2"] })])).toBe(r0);
+  });
+
+  it("열린 서랍의 상태 칩은 폴링한 작업 항목을 따른다", () => {
+    const props = (status: VmWorkItem["status"]) => ({
+      taskId: "t1", items: [item({ id: "t1", title: "작업 하나", status })], members: vm.members, me: vm.me, messages: [],
+      onClose: () => {}, onLoad: async () => ({ ok: false as const, message: "x" }), onComment: noop, onOpenTask: () => {}, onJumpToMessage: () => {},
+    });
+    expect(html(createElement(WorkItemDetail, props("todo")))).toContain(">할 일<");
+    expect(html(createElement(WorkItemDetail, props("done")))).toContain(">완료<");
+  });
+});
+
+describe("계획 승인 전 작업 탭", () => {
+  it("작업 탭은 일정 내용을 빌려 오지 않고 빈 상태를 보인다", () => {
+    // 회귀: 계획 승인 전에는 작업 탭이 선택된 채로 일정(계획 없음·예상 종료) 카드가 보였다.
+    const before = { ...vm, work: undefined, roadmap: { ...vm.roadmap, planVersion: null, tasks: [] } };
+    const props = (tab: "work" | "schedule") => ({ vm: before, tab, onTab: () => {}, onOpenTask: () => {}, onDecide: noop, onDecideRequest: noop, onSetAvailability: noop });
+    const work = html(createElement(WorkPanel, props("work")));
+    const schedule = html(createElement(WorkPanel, props("schedule")));
+    expect(work).toMatch(/aria-selected="true"[^>]*>작업</);
+    expect(work).toContain("계획이 승인되면 작업이 여기에 보여요");
+    expect(work).not.toContain('class="roadmap"');
+    expect(schedule).toContain('class="roadmap"');
+    const noCard = html(createElement(WorkPanel, { ...props("work"), vm: { ...before, cards: [] } }));
+    expect(noCard).toContain("아직 승인된 계획이 없어요");
+  });
+});
+
+describe("멈춤 안내", () => {
+  it("실제로 보이는 버튼만 안내한다", () => {
+    expect(stallGuidance({ reason: "r", canRetry: true, canSkip: true }, true)).toContain("다시 시도·건너뛰기");
+    expect(stallGuidance({ reason: "r", canRetry: true, canSkip: false }, true)).not.toContain("건너뛰기");
+    expect(stallGuidance({ reason: "r", canRetry: false, canSkip: false }, true)).not.toMatch(/다시 시도|건너뛰/);
+    expect(stallGuidance({ reason: "r", canRetry: false, canSkip: false, tasks: [{ taskId: "t", title: "t", actions: ["retry"] }] }, true)).toContain("처리 방법");
+  });
+
+  it("버튼을 허용하지 않는 멈춤에서는 배너에 다시 시도·건너뛰기 버튼이 없고, 허용하면 둘 다 있다", () => {
+    const stalled = (canRetry: boolean, canSkip: boolean) => html(createElement(ActivityLine, {
+      activity: { kind: "idle", label: "x", since: "2026-10-01T00:00:00Z", stalled: { reason: "작업이 멈춤", canRetry, canSkip } }, busy: false, onRetry: noop, onSkip: noop,
+    }));
+    expect(stalled(false, false)).toContain("작업이 멈춤");
+    expect(stalled(false, false)).not.toMatch(/다시 시도|건너뛰기/);
+    expect(stalled(true, true)).toContain(">다시 시도</button>");
+    expect(stalled(true, true)).toContain(">건너뛰기</button>");
+  });
+});
+
+describe("묶인 결정 요청", () => {
+  it("대표 카드 안에 묶인 요청을 접어 두고, 배지는 묶인 요청까지 센다", () => {
+    const [payment, retry] = [vm.decisionCards!.find(c => c.id === "decision-payment")!, vm.decisionCards!.find(c => c.id === "decision-retry")!];
+    const lead: VmDecisionCard = { ...payment, bundled: [retry, { ...retry, id: "decision-retry-2" }] };
+    const out = html(createElement(DecisionRequestCard, { card: lead, members: vm.members, onDecide: noop }));
+    expect(out).toMatch(/<details class="decision-bundle"><summary>같이 정할 결정 <span class="num">2<\/span>건 더<\/summary>/);
+    expect(out.split(`<h3 class="card-title">${retry.question}</h3>`)).toHaveLength(3);
+    expect(decisionTotal([lead, payment])).toBe(4);
+    const panel = html(createElement(WorkPanel, { vm: { ...vm, decisionCards: [lead], cards: [] }, tab: "decisions", onTab: () => {}, onOpenTask: () => {}, onDecide: noop, onDecideRequest: noop, onSetAvailability: noop }));
+    expect(panel).toContain('<span class="tab-count num">3</span>');
+  });
+});

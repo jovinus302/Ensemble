@@ -293,6 +293,11 @@ button:disabled { opacity: .45; cursor: default; }
 .plan-task { padding: var(--ens-space-2) var(--ens-space-3); border-radius: var(--ens-radius-md); background: var(--ens-surface-container-low); display: flex; flex-direction: column; gap: 2px; }
 .plan-task-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--ens-space-2); }
 .plan-task-meta { display: flex; flex-wrap: wrap; gap: 2px var(--ens-space-3); color: var(--ens-on-surface-variant); }
+.decision-bundle { margin-top: var(--ens-space-3); border-top: 1px solid var(--ens-outline-variant); padding-top: var(--ens-space-2); }
+.decision-bundle > summary { cursor: pointer; font-weight: 600; }
+.decision-bundle .decision-list { margin-top: var(--ens-space-2); display: flex; flex-direction: column; gap: var(--ens-space-2); }
+.plan-subtasks { margin-top: var(--ens-space-2); padding-left: var(--ens-space-3); border-left: 2px solid var(--ens-outline-variant); }
+.plan-task-child { background: var(--ens-surface-container); }
 .handoff ul, .task-details ul { margin: 2px 0 0; padding-left: var(--ens-space-4); }
 
 /* ---------- 시나리오·입력창 ---------- */

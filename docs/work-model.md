@@ -213,7 +213,7 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 - 실행은 `decideRequest`(`orchestrator/src/decision-flow.ts`)가 한다. 새 적용 경로는 없다: `plan_ops`는 `planOpsProblems`·`validOp`·`opAuthority`로 다시 검증한 뒤 `Coordinator.onConfirmedOperations`로 적용하고, `resolve_task`는 기존 `resolveTask`(작업이 blocked/submitted/revising일 때), `answer`는 `Dispatcher.onAnswer`(기존 답변 전달 경로)로 보낸다. 오류는 `DecisionRequestError`(`not_found` 404, `forbidden` 403, `invalid_input` 400, `invalid_state` 409).
 - 기존 카드 API로 들어온 id도 `ProjectManager.decideCard`가 `decisionRequests`에 있으면 `decideRequest`로 보낸다.
 - 상태가 바뀌어 요청이 무의미해지면(대상 작업 취소 등) 정체 점검이 먼저 `withdrawn`으로 닫는다.
-- **묶기 — 설계와 다름**: core에 보기용 `bundleDecisions`(사람당 `DECISION_BUNDLE_LIMIT` = 3장까지 따로, 넘치는 요청은 마지막 카드에 합침)가 있지만, 웹 보기 모델은 아직 쓰지 않는다. 지금은 열린 요청마다 카드가 하나씩 보인다. 생성 시점에 사람당 개수를 막지는 않는다.
+- **묶기**: 웹 보기 모델(`build-view-model.ts` `decisionCards`)이 core `bundleDecisions`로 사람당 결정 요청 카드를 `DECISION_BUNDLE_LIMIT`(3)장까지 따로 보이고, 넷째부터는 셋째 카드의 `bundled`에 요청 순서대로 합친다. 묶인 요청도 카드 안 접힘 목록에서 각자 답한다. 계획 승인·권한 카드(`vm.cards`)는 묶지 않는다. 생성 시점에 사람당 개수를 막지는 않는다.
 
 ### 5.4 Agent 질문 → `missing_info` (`Dispatcher.onQuestion`)
 
@@ -232,7 +232,7 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 
 | 규칙 | 조건 | 처리 | 멱등 키 |
 |---|---|---|---|
-| `blocked` | 마지막 재개 이후 첫 `task_blocked`가 `STUCK_BLOCKED_HOURS`(4시간) 이상 지남 | 결정권자에게 `stuck_work` 요청. 선택지: 다시 맡기기 / 지금 결과로 확인(결과가 있을 때) / 작업 취소(결정권자가 적용할 수 있을 때) / 보류 | `sweep:blocked:<taskId>:<day>` |
+| `blocked` | 마지막 재개 이후 첫 `task_blocked`가 `STUCK_BLOCKED_HOURS`(4시간) 이상 지남 | 결정권자에게 `stuck_work` 요청. 선택지: 다시 맡기기 / 다른 Agent에게 맡기기(같은 일을 할 Agent가 있고 결정권자가 적용할 수 있을 때) / 지금 결과로 확인(결과가 있을 때) / 작업 취소(결정권자가 적용할 수 있을 때) / 보류 | `sweep:blocked:<taskId>:<day>` |
 | `unassigned` | waiting/ready인데 담당이 멤버가 아님 | `assignment` 요청(맡을 Agent가 있으면 결정권자, 없고 Q2가 켜져 있으면 후보 본인) | `sweep:unassigned:<taskId>:<day>` |
 | `human_overdue` | 사람 담당 작업이 진행 중이고 시작 때 예측한 완료 시점을 넘김, **그리고** 지금 전체 예측이 늦음 | 그 사람에게 한 줄 확인(`ask`). 기한 영향이 없으면 말하지 않음 | `sweep:human_overdue:<taskId>:<day>` |
 | `decision_remind` | 열린 요청이 `remindAt`을 지남 | 대상에게 한 번만 다시 알림 | `decision:<requestId>:remind` (날짜 없음 → 평생 1회) |
@@ -244,7 +244,7 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 ### Q3 기본값: 답 없는 요청은 만료, 작업은 멈춘 채, 자동 적용 없음
 
 - 리마인드 1회 → 24시간 뒤에도 답이 없으면 `expired`로 닫는다. 추천안을 자동 적용하지 않는다(pm-principles "침묵은 동의가 아님").
-- 만료 뒤에는 열린 요청이 아니므로 보기 상태의 "사람 대기" 표시는 풀리고 TaskStatus는 그대로다. core `pausedTaskIds`는 만료된 요청의 작업도 멈춘 작업으로 계속 세지만, 지금 시작 경로(`planStarts`)는 이 집합을 참조하지 않는다.
+- 만료 뒤에는 열린 요청이 아니므로 보기 상태의 "사람 대기" 표시는 풀리고 TaskStatus는 그대로다. core `pausedTaskIds`는 만료된 요청의 작업도 멈춘 작업으로 계속 세고, `Dispatcher`의 시작 경로(`unpausedStarts` → `planStarts`)가 이 집합의 작업을 자동 시작하지 않는다.
 - **바꾸는 설정**: `DecisionSettings.unanswered`(`DEFAULT_DECISION_SETTINGS = { unanswered: 'expire' }`, `core/src/decision-requests.ts`). `'apply_recommendation'`이면 만료 때 추천안 효과를 적용한다. `ProjectManager` 옵션 `decisionSettings`로 넘기며, 웹 런타임은 넘기지 않는다(기본값).
 
 ### 5.7 하루 요약 (`ProjectManager.digest(now)` → `runDigest`, 재료는 `digestFacts`)
@@ -271,10 +271,10 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 
 배치: 넓은 화면은 채널(왼쪽·가운데) + 작업 패널(오른쪽) 2단. 839px 이하에서는 탭 **채널 / 작업 / 내 결정**(내 결정에 개수 배지).
 
-- **작업 패널 탭** (`WorkPanel.tsx`): 작업 / 팀 / 내 결정 / 일정. 기존 로드맵 카드(`RoadmapCard`)는 일정 탭으로 옮겼다. 작업 보기 모델이 없으면 작업 탭이 로드맵 카드를 대신 보인다.
+- **작업 패널 탭** (`WorkPanel.tsx`): 작업 / 팀 / 내 결정 / 일정. 기존 로드맵 카드(`RoadmapCard`)는 일정 탭으로 옮겼다. 계획 승인 전(작업 보기 모델 없음)에는 작업 탭이 자기 빈 상태(승인 대기 안내)를 보인다.
 - **작업 탭**: 목표·기한·예상 완료 아래 작업 트리. 묶음은 사람 대기 / 진행 중(검토 중·막힘 포함) / 할 일 / 완료(취소 포함, 접힘). 빈 묶음은 숨긴다. 우선순위 → 계획 순서로 정렬한다. 사람 대기 행에는 "내 결정 대기" 또는 "OO님 결정 대기".
 - **팀 탭**: PM → 사람 → Agent 순 한 줄 목록. 지금 하는 작업, 상태("결정 N건 대기", 작업 상태, "쉬는 중"), 열린 결정 수.
-- **내 결정 탭**과 채널 인라인 카드는 같은 컴포넌트(`DecisionRequestCard.tsx`)다. 카드 = 질문, **PM 추천**(근거·증거, 추천 선택지에 "추천" 배지), 선택지, 영향(관련 작업 / 멈춘 작업 / 일정). 버튼: **추천대로 진행**, **다른 안 선택**, **고쳐서 승인**(`editable`이 있을 때만; `missing_info`는 대신 **직접 답하기**), **보류**. 기존 계획·권한 카드는 기존 `ApprovalCard` 그대로다.
+- **내 결정 탭**과 채널 인라인 카드는 같은 컴포넌트(`DecisionRequestCard.tsx`)다. 카드 = 질문, **PM 추천**(추천안·근거·증거, 추천안은 이 블록에만 한 번), 나머지 선택지, 영향(관련 작업 / 멈춘 작업 / 일정). 버튼: **추천대로 진행**, **다른 안 선택**, **고쳐서 승인**(`editable`이 있을 때만), **보류**. `missing_info`(답변형)는 답 없이 진행할 수 없으므로 필수 답변 입력란과 **답변 보내기**·**보류**만 둔다. 기존 계획·권한 카드는 기존 `ApprovalCard` 그대로다.
 - **작업 상세(서랍, `WorkItemDetail.tsx`)**: 담당·라우팅 사유·상태, 확인/다시 맡기기(`TaskResolution`), 하위 작업, 완료 조건, 범위, **PM이 정리한 맥락**(이유, 원 대화, 관련 결정, 확정된 제약, 자료), 출처, 활동 기록(대화 보기 링크), 댓글 입력.
 - PM 발언이 작업을 언급하면(`pm_spoke.taskIds`) 메시지에 작업 이름 칩이 붙고, 누르면 상세가 열린다.
 - 만들지 않은 것: 작업 생성 양식, 드래그 칸반, 사용자에게 보이는 작업 키. 보기 모델은 `ordinal`을 내보내지 않고, PM 문장 속 키 패턴도 `stripTaskKeys`로 지운다.
@@ -282,7 +282,7 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 ### 6.1 보기 계약 (`apps/web/lib/view-model.ts`, 모두 선택 필드)
 
 - `VmWorkItem`: `id`(그리지 않음), `title`, `parentId?`, `ownerId`, `ownerKind`, `status: VmWorkStatus`, `priority`, `routingNote?`, `waitingOn?`, `childIds`, `brief?{ why, sources[{ messageId, excerpt }], decisions[{ id, summary }], attachments, constraints }`, `origin?`, `handoffConditions?`, `exclusions?`, `limits?`, `resolution?`.
-- `VmDecisionCard`(`kind: 'decision'`): `id`, `forMemberId`, `requestKind`, `question`, `recommendation`, `options[{ optionId, label, tradeoff, summary }]`, `impact{ taskTitles, blockedTitles, deadlineDeltaDays? }`, `editable?`, `answerMode`(`missing_info`만 `text`). `ViewModel.decisionCards`는 나(`me`)에게 열린 요청만 담는다.
+- `VmDecisionCard`(`kind: 'decision'`): `id`, `forMemberId`, `requestKind`, `question`, `recommendation`, `options[{ optionId, label, tradeoff, summary }]`, `impact{ taskTitles, blockedTitles, deadlineDeltaDays? }`, `editable?`, `answerMode`(`missing_info`만 `text`), `bundled?`(넷째 이후 묶인 요청). `ViewModel.decisionCards`는 나(`me`)에게 열린 요청만 담는다.
 - `ViewModel.work = { items, team[{ memberId, currentItemId?, state, openDecisions }] }`, `VmMessage.taskIds?`, `VmTaskDetail = { item, activity: VmActivityItem[], comments }`.
 - 보기 모델은 `build-view-model.ts`가 만든다. 브리프의 원 대화는 80자 발췌, 없는 메시지·결정·첨부는 뺀다.
 
@@ -318,14 +318,12 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 | 설계안 (#26) | 코드 |
 |---|---|
 | PM 메모는 `pm_spoke.threadId`로 작업 스레드에 | 필드와 읽는 쪽만 있고 오케스트레이터는 쓰지 않는다 |
-| 사람당 열린 요청 3개 초과 시 묶어 보이기 | `bundleDecisions`는 있으나 웹이 쓰지 않는다. 카드가 하나씩 보인다 |
 | "할 일인데 담당 Agent 없음" → `assignment` | "담당이 멤버가 아님"(`unassigned`) |
 | 사람 작업이 예측 완료일을 넘기면 확인 | 전체 예측이 지금 늦을 때만 |
-| `stuck_work` 추천: 다시 맡기기 / 다른 Agent에 재배정 / 취소 | 다시 맡기기 / 지금 결과로 확인 / 작업 취소 / 보류. 재배정 선택지는 없다 |
+| `stuck_work` 추천: 다시 맡기기 / 다른 Agent에 재배정 / 취소 | 다시 맡기기 / 다른 Agent에게 맡기기 / 지금 결과로 확인 / 작업 취소 / 보류. 재배정은 같은 일을 할 Agent가 있고 결정권자가 적용할 수 있을 때만 보인다 |
 | Q2 스위치 하나로 수락 카드 전환 | 스위치는 라우팅 표시와 정체 점검 담당 공백 처리에만 걸리고, 대화에서의 수락 카드는 권한 규칙(`human_commitment`)에서 나온다 |
 | 하루 요약 09:00 타이머 | 별도 타이머 없이 5분 틱에서 09:00 이후 첫 확인 때 게시 |
-| 사람 대기는 시작을 멈춤 | 보기 상태만 바뀐다. `pausedTaskIds`는 있으나 시작 경로가 쓰지 않는다 |
-| 카드 4버튼 고정 | `고쳐서 승인`은 `editable`이 있을 때만, `missing_info`는 `직접 답하기`로 바뀐다 |
+| 카드 4버튼 고정 | `고쳐서 승인`은 `editable`이 있을 때만. `missing_info`는 답변 입력란 + `답변 보내기`·`보류`만 |
 | API 3경로 | `tasks/:id/resolve` 추가. 댓글 응답은 202 `{ accepted, messageId }`, 결정 응답은 `ViewModel` |
 
 ## 8. 범위 밖
