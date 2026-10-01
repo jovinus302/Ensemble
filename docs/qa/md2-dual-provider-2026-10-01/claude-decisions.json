@@ -1,0 +1,174 @@
+{
+  "provider": "claude",
+  "logs": [
+    {
+      "kind": "reject",
+      "beforeItems": [
+        "카운터 입력 방식 및 버튼 동작 비교 조사(시연용 가상 자료)",
+        "가상 버튼 vs 키보드 입력 방식 비교",
+        "+1·-1·초기화 버튼 동작 규칙 정리 (-1 버튼 제외)",
+        "클릭 카운터 사용에 대한 가상 인터뷰 노트 작성",
+        "최소 클릭 카운터 버튼 명세",
+        "counter.html 최소 클릭 카운터 구현 (-1 버튼 제외, +1 버튼·초기화 버튼까지)"
+      ],
+      "afterItems": [
+        {
+          "id": "research",
+          "title": "카운터 입력 방식 및 버튼 동작 비교 조사(시연용 가상 자료)",
+          "priority": "normal"
+        },
+        {
+          "id": "research-1",
+          "title": "가상 버튼 vs 키보드 입력 방식 비교",
+          "priority": "normal"
+        },
+        {
+          "id": "research-2",
+          "title": "+1·-1·초기화 버튼 동작 규칙 정리 (-1 버튼 제외)",
+          "priority": "normal"
+        },
+        {
+          "id": "interview",
+          "title": "클릭 카운터 사용에 대한 가상 인터뷰 노트 작성",
+          "priority": "normal"
+        },
+        {
+          "id": "flow",
+          "title": "최소 클릭 카운터 버튼 명세",
+          "priority": "normal"
+        },
+        {
+          "id": "prototype",
+          "title": "counter.html 최소 클릭 카운터 구현 (-1 버튼 제외, +1 버튼·초기화 버튼까지)",
+          "priority": "normal"
+        }
+      ],
+      "requests": [
+        {
+          "action": "reject",
+          "me": "owner"
+        }
+      ]
+    },
+    {
+      "kind": "edit",
+      "beforeItems": [
+        "카운터 입력 방식 및 버튼 동작 비교 조사(시연용 가상 자료)",
+        "가상 버튼 vs 키보드 입력 방식 비교",
+        "+1·-1·초기화 버튼 동작 규칙 정리 (-1 버튼 제외)",
+        "클릭 카운터 사용에 대한 가상 인터뷰 노트 작성",
+        "최소 클릭 카운터 버튼 명세",
+        "counter.html 최소 클릭 카운터 구현 (-1 버튼 제외, +1 버튼·초기화 버튼까지)"
+      ],
+      "afterItems": [
+        {
+          "id": "research",
+          "title": "카운터 입력 방식 및 버튼 동작 비교 조사(시연용 가상 자료)",
+          "priority": "normal"
+        },
+        {
+          "id": "research-1",
+          "title": "가상 버튼 vs 키보드 입력 방식 비교",
+          "priority": "normal"
+        },
+        {
+          "id": "research-2",
+          "title": "+1·-1·초기화 버튼 동작 규칙 정리 (-1 버튼 제외)",
+          "priority": "normal"
+        },
+        {
+          "id": "interview",
+          "title": "클릭 카운터 사용에 대한 가상 인터뷰 노트 작성",
+          "priority": "normal"
+        },
+        {
+          "id": "flow",
+          "title": "최소 클릭 카운터 버튼 명세",
+          "priority": "normal"
+        },
+        {
+          "id": "prototype",
+          "title": "counter.html 최소 클릭 카운터 구현 (-1 버튼 제외, +1 버튼·초기화 버튼까지)",
+          "priority": "normal"
+        },
+        {
+          "id": "help-screen",
+          "title": "QA 도움말",
+          "priority": "high"
+        }
+      ],
+      "requests": [
+        {
+          "action": "edit",
+          "optionId": "apply",
+          "edits": {
+            "title": "QA 도움말",
+            "priority": "high"
+          },
+          "me": "owner"
+        }
+      ]
+    },
+    {
+      "kind": "approve",
+      "beforeItems": [
+        "카운터 입력 방식 및 버튼 동작 비교 조사(시연용 가상 자료)",
+        "가상 버튼 vs 키보드 입력 방식 비교",
+        "+1·-1·초기화 버튼 동작 규칙 정리 (-1 버튼 제외)",
+        "클릭 카운터 사용에 대한 가상 인터뷰 노트 작성",
+        "최소 클릭 카운터 버튼 명세",
+        "counter.html 최소 클릭 카운터 구현 (-1 버튼 제외, +1 버튼·초기화 버튼까지)",
+        "QA 도움말"
+      ],
+      "afterItems": [
+        {
+          "id": "research",
+          "title": "카운터 입력 방식 및 버튼 동작 비교 조사(시연용 가상 자료)",
+          "priority": "normal"
+        },
+        {
+          "id": "research-1",
+          "title": "가상 버튼 vs 키보드 입력 방식 비교",
+          "priority": "normal"
+        },
+        {
+          "id": "research-2",
+          "title": "+1·-1·초기화 버튼 동작 규칙 정리 (-1 버튼 제외)",
+          "priority": "normal"
+        },
+        {
+          "id": "interview",
+          "title": "클릭 카운터 사용에 대한 가상 인터뷰 노트 작성",
+          "priority": "normal"
+        },
+        {
+          "id": "flow",
+          "title": "최소 클릭 카운터 버튼 명세",
+          "priority": "normal"
+        },
+        {
+          "id": "prototype",
+          "title": "counter.html 최소 클릭 카운터 구현 (-1 버튼 제외, +1 버튼·초기화 버튼까지)",
+          "priority": "normal"
+        },
+        {
+          "id": "help-screen",
+          "title": "QA 도움말",
+          "priority": "high"
+        },
+        {
+          "id": "login-screen",
+          "title": "로그인 화면 HTML 구현(시연용)",
+          "priority": "normal"
+        }
+      ],
+      "requests": [
+        {
+          "action": "approve",
+          "optionId": "apply",
+          "me": "owner"
+        }
+      ]
+    }
+  ]
+}

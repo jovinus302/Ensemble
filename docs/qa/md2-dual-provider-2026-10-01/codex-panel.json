@@ -1,0 +1,51 @@
+{
+  "provider": "codex",
+  "tasks": [
+    {
+      "id": "research",
+      "owner": "research-agent",
+      "status": "done"
+    },
+    {
+      "id": "research-1",
+      "parent": "research",
+      "owner": "research-agent",
+      "status": "done"
+    },
+    {
+      "id": "research-2",
+      "parent": "research",
+      "owner": "research-agent",
+      "status": "done"
+    },
+    {
+      "id": "interview",
+      "owner": "owner",
+      "status": "done"
+    },
+    {
+      "id": "flow",
+      "owner": "designer",
+      "status": "done"
+    },
+    {
+      "id": "prototype",
+      "owner": "prototype-agent",
+      "status": "done"
+    },
+    {
+      "id": "help-screen",
+      "owner": "prototype-agent",
+      "status": "in_progress"
+    }
+  ],
+  "children": 2,
+  "team": "PM\nPM PM\n작업을 정리하는 중\n사\n사용자나 사람\n쉬는 중\n디\n디자이너 사람\n쉬는 중\n조\n조사 Agent Agent\n쉬는 중\n프\n프로토타입 Agent Agent\n진행 중 · QA 도움말",
+  "mobile": {
+    "width": 390,
+    "scrollWidth": 390
+  },
+  "offline": true,
+  "connected": true,
+  "errors": []
+}

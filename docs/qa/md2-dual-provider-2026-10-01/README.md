@@ -1,0 +1,63 @@
+# MD2 local browser QA — 2026-10-01
+
+Baseline: `726c54e` (PR #36). Narrow fix: `5e72839`; integrated with main through `776e374` (PR #38) at `31ca433`.
+
+Execution used an independent Git worktree, dedicated localhost ports/data/worker directories, and Playwright Chromium clicks, typing, uploads, downloads and screenshots on Windows. Orca's worktrees/processes and the benchmark workspace were not modified. PM and workers used the selected login-backed Codex or Claude runtimes; the separately labelled fake run is not evidence of real-provider success.
+
+## Finding fixed by this PR
+
+After all tasks completed, a designer requested a separate contact page. Claude repeatedly produced `create_task` with `parentId: prototype`: the schema required an existing parent even for independent work. Both attempts failed validation with `Task prototype is checked; only waiting or ready work can be split`, so the owner received no decision card. A read-only replay of the captured QA ledger reproduced the exact validation failure without modifying the live project or running workers.
+
+Make `parentId` optional and explain when it is appropriate. Preserve all existing split/authority validation. A deterministic regression starts with all existing tasks checked, checks the emitted schema, exercises both ordinary and Codex strict/null representations, and verifies that a non-decider's independent request creates an owner decision. No fake/API fallback was added.
+
+## Actual browser results
+
+| Path | Codex | Claude |
+|---|---|---|
+| Free goal → plan → double approval → real worker | Passed | Passed |
+| Research parent + two child tasks, owner/status display | Passed | Passed |
+| Actual worker question → unauthorized answer rejected → owner double answer | 403 / one accepted UI POST | 403 / one accepted UI POST |
+| Human upload → review/revision → designer handoff → automatic prototype start | Passed | Passed |
+| Message A, correction B, unsent draft C | Exactly two messages; draft retained | Exactly two messages; draft retained |
+| Counter downloaded and opened, +1 twice, reset, excluded -1 absent | 0 → 2 → 0 | 0 → 2 → 0 |
+| Prepared scenes 1→3, real research and prototype | All four tasks checked | All four tasks checked |
+| Prepared final HTML downloaded and clicked | Signup → missing-time error → confirmation → completion; no payment button | Same |
+| Work hierarchy, team tab, 390px mobile | Two nested children; no horizontal overflow | Same |
+| Browser offline/SSE reconnect | Disconnect visible, then recovered | Same |
+| Independent work after schema fix: reject / edited approve | One POST each; rejected work absent; edited high-priority work created | Same |
+
+Completed text alone was not treated as artifact validation. Final HTML was downloaded through the UI and opened as a local file; screenshots and action logs show interactive behavior.
+
+The Codex task comment was recorded, sent to the active worker, and explicitly acknowledged with both requested changes. The Claude comment was recorded after that worker completed; that sample does **not** prove delivery to an active Claude worker.
+
+## Known overlapping fixes and boundaries
+
+Baseline reproduced a text-answer card's recommended button returning 400 and an already-open detail drawer retaining `waiting_human` after its task resumed. Plan cards also flattened the task hierarchy. These are owned by Orca's web follow-up and are not silently claimed fixed by this schema PR.
+
+PR #38 removed the coordination/sweep import cycle, fixed digest categorization and fake handoff/scoping. Before it, the fake prepared run stalled at scene 1 on a handoff citation validation failure. After integrating it, the same UI-driven fake scenes completed all four tasks at 16:11:50 UTC. This result is labelled fake throughout.
+
+PR #28's prior cancellation/timeout/project-replacement/old-worker-isolation evidence is in [the earlier QA report](../local-dual-provider-2026-10-01/README.md). Those prior results are not presented as newly executed MD2 tests.
+
+## Timing observations (not a new benchmark)
+
+| Observation | Codex | Claude |
+|---|---:|---:|
+| Initial Start click completion | 96 ms | 94 ms |
+| Start click to visible plan | 32.991 s | 19.778 s |
+| B/draft C to checked revised counter | 482.190 s | 109.971 s |
+
+Click completion is a browser interaction measurement, not model latency or HTTP acceptance. The free-start endpoint returns 200 with the plan; response and plan visibility timestamps are recorded separately. This sample did not retain enough start timestamps to calculate independent HTTP acceptance latency accurately.
+
+Codex's long revised-counter path included a genuine **240.045 s model timeout** and **307.536 s PM queue wait**, followed by bounded recovery, plan v2, a revised worker result and a functioning final artifact. Other completed calls report model first-response and completion separately in local server logs. These are concurrent QA observations, not equivalent-input before/after performance measurements; no latency improvement is claimed from this PR.
+
+## Verification
+
+- Targeted coordination-work suite: 13 passed.
+- Integrated code `31ca433`: 73 test files, **640 tests passed**.
+- `npm run typecheck`: passed.
+- `npm run build`: passed.
+- GitHub at inspection: no required status checks/reviews configured; main protection endpoint reports unprotected, rulesets empty. This is configuration evidence, not a claim that remote CI ran.
+
+Remaining web-follow-up regression and final review/merge status will be recorded separately as those steps complete.
+
+Evidence: [Codex counter](codex-counter-complete.png), [Claude counter](claude-counter-complete.png), [Codex reservation completion](codex-scenario-artifact-complete.png), [Claude reservation completion](claude-scenario-artifact-complete.png), [Codex mobile hierarchy](codex-work-mobile.png), [Claude mobile hierarchy](claude-work-mobile.png), [captured validation failure](claude-create-diagnostic.json), [test result](fixed-tests.txt). The neighbouring JSON files contain browser action observations and card POST counts.
