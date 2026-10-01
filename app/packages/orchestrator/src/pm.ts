@@ -6,7 +6,7 @@ import type { LlmProvider } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
 import { Coordinator, type CoordinationResult } from './coordination.ts';
 import { Dispatcher, type ResultOutcome } from './dispatch.ts';
-import { MAX_REVISIONS, pendingChangeUpdate, retryKey, revisionCount, revisionUpdate, taskQuestions } from './context.ts';
+import { MAX_REVISIONS, pendingChangeUpdate, REFUSAL, retryKey, revisionCount, revisionUpdate, STATUS_LABEL, taskQuestions } from './context.ts';
 import type { ResultContent, SubmittedResult } from './handoff.ts';
 import { SessionRunner, type BlockedTurn } from './session-runner.ts';
 import { startFreeProject, decidePlan } from './planning.ts';
@@ -39,7 +39,7 @@ export class TaskResolutionError extends Error {
 }
 /** What the coordinator (coordination.ts) reads out of a person's message for the PM to carry out. */
 type Resolution = { taskId: string; action: ResolveAction; note?: string };
-type Reopen = { taskId: string; reason: string };
+type Reopen = { taskId: string; reason: string; announcement?: string };
 /** The recorded reason of a review that could not finish; the web recognizes the stuck result by it. */
 export const JUDGE_FAILURE_REASON = '결과 내용이 아니라 판단 과정의 문제라 사람이 결과를 확인해야 한다';
 /** A result left in "submitted" after its handoff review failed technically (QA4 C1): nothing will judge it on its own. */
@@ -50,7 +50,6 @@ function reviewFailed(events: readonly AnyEvent[], task: TaskState): boolean {
 }
 /** A person's note ends as a sentence when the PM quotes it before its own next sentence. */
 const sentence = (text: string) => (/[.!?。…~]$/.test(text) ? text : `${text}.`);
-const STATUS_LABEL: Record<string, string> = { waiting: '시작 전', ready: '시작 전', reserved: '진행 중', running: '진행 중', submitted: '검토 중', revising: '보완 중', checked: '확인됨', blocked: '멈춤', cancelled: '취소됨' };
 
 /** COMMITTED CHANGE, SOUND: one ledger-first entrypoint, identical scene/free-input routing.
  * pm-scenes.test.ts verifies handoff, acknowledgement barriers and conversational decisions.
@@ -245,11 +244,23 @@ export class ProjectManager {
         && (t.status === 'revising' || (t.status === 'blocked' && t.blocked?.prevStatus === 'revising')) && state.activeTurn.get(t.spec.assignee) !== t.spec.id)
         || reviewFailed(before as AnyEvent[], t));
       const canRecheck = (taskId: unknown) => typeof taskId === 'string' && recheckable.some(t => t.spec.id === taskId);
+      // A file from the person who has to resubmit a task under revision or stopped — its assignee, or the
+      // goal's decider on its behalf — is that resubmission, whatever the sentence says (M12 W4): "보완본을
+      // 다시 올립니다. 확인해 주세요" is not a request to resolve the task. Only one such task makes it certain.
+      const resubmittable = [...state.tasks.values()].filter(t => {
+        if (t.status !== 'revising' && t.status !== 'blocked') return false;
+        if (t.spec.assignee === authorId) return true;
+        if (state.goal?.decider !== authorId) return false;
+        return state.members.get(t.spec.assignee)?.kind === 'agent' ? canRecheck(t.spec.id) : t.results.length > 0;
+      });
       let route: { kind: 'chat' | 'result' | 'answer' | 'recheck'; taskId?: string; questionId?: string } = { kind: 'chat' };
       if (attachments.length && declaredTasks.length === 1 && attachments.every(a => a.taskId === declaredTasks[0])) {
         const own = state.tasks.get(declaredTasks[0]!)?.spec.assignee === authorId;
         // Someone else's task with nothing to re-check: the file is part of the conversation, never an error.
         if (own || canRecheck(declaredTasks[0])) route = { kind: own ? 'result' : 'recheck', taskId: declaredTasks[0] };
+      } else if (attachments.length && !declaredTasks.length && !pending.length && resubmittable.length === 1) {
+        const task = resubmittable[0]!;
+        route = { kind: task.spec.assignee === authorId ? 'result' : 'recheck', taskId: task.spec.id };
       } else if (attachments.length || pending.length) {
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
@@ -292,7 +303,7 @@ export class ProjectManager {
       const posts = [...coordinated.posts];
       // The coordinator reads what the person asked for; the PM carries it out under the same checks as the buttons.
       for (const [i, r] of (coordinated.resolutions ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.resolve(r.taskId, { action: r.action, by: authorId, ...(r.note ? { note: r.note } : {}) }, `${messageId}:${i}`)));
-      for (const [i, r] of (coordinated.reopens ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.reopen(r.taskId, authorId, r.reason, `${messageId}:${i}`)));
+      for (const [i, r] of (coordinated.reopens ?? []).entries()) posts.push(...await this.fromChat(messageId, () => this.reopen(r.taskId, authorId, r.reason, `${messageId}:${i}`, r.announcement)));
       await this.deliverPending();
       return posts;
     });
@@ -345,8 +356,8 @@ export class ProjectManager {
     if (state.members.get(by)?.kind !== 'human') throw new TaskResolutionError('forbidden', '사람 멤버만 멈춘 작업을 처리할 수 있어요.');
     const title = task.spec.title;
     const decider = state.goal?.decider;
-    if (action === 'accept' && by !== decider) throw new TaskResolutionError('forbidden', `"이대로 확인"은 결정권자${decider ? `(${name(decider)})` : ''}만 할 수 있어요.`);
-    if (action === 'retry' && !this.mayHandBack(state, taskId, by)) throw new TaskResolutionError('forbidden', '"다시 맡기기"는 결정권자, 담당자 또는 후행 작업 담당자만 할 수 있어요.');
+    if (action === 'accept' && by !== decider) throw new TaskResolutionError('forbidden', REFUSAL.accept(decider ? name(decider) : undefined));
+    if (action === 'retry' && !this.mayHandBack(state, taskId, by)) throw new TaskResolutionError('forbidden', REFUSAL.retry);
     if (!['blocked', 'submitted', 'revising'].includes(task.status)) throw new TaskResolutionError('invalid_state', `"${title}" 작업은 지금 ${STATUS_LABEL[task.status] ?? task.status}${particle(STATUS_LABEL[task.status] ?? '', '이/가') === '이' ? '이라' : '라'} 처리할 멈춤이 없어요.`);
     const assignee = task.spec.assignee;
     const agent = state.members.get(assignee)?.kind === 'agent';
@@ -379,7 +390,7 @@ export class ProjectManager {
       // A review that never finished runs again on the same submission; anything else is resubmitted for a fresh review.
       if (current === 'submitted' && !events.some(e => e.idempotencyKey === `handoff:${latest.resultId}`)) {
         if (task.status === 'blocked') await this.options.store.append([{ ...this.context, actor, type: 'task_resumed', idempotencyKey: `${key}:resume`, payload: { taskId } }]);
-        return this.review(taskId, latest.resultId);
+        return this.review(taskId, latest.resultId, { by, trigger: key });
       }
       return this.recheck(taskId, key, by, note_ ?? '', []);
     }
@@ -440,7 +451,7 @@ export class ProjectManager {
    * channel), and the resubmission is reviewed like any result. Tasks built on the result keep going;
    * the requester hears that in one line. The decider, the assignee and downstream assignees may ask.
    */
-  private async reopen(taskId: string, by: string, reason: string, trigger: string): Promise<PmPost[]> {
+  private async reopen(taskId: string, by: string, reason: string, trigger: string, announcement?: string): Promise<PmPost[]> {
     const events = await this.read() as AnyEvent[];
     const state = project(events);
     const task = state.tasks.get(taskId);
@@ -456,7 +467,7 @@ export class ProjectManager {
     // Still in progress: an agent at work just gets the request; otherwise there is no checked result to reopen.
     if (current !== 'checked' || !resultId) {
       if (agent && (current === 'running' || current === 'revising') && task.status !== 'blocked') {
-        if (!this.mayHandBack(state, taskId, by)) throw new TaskResolutionError('forbidden', '확인된 결과의 보완은 결정권자나 후행 작업 담당자가 요청할 수 있어요.');
+        if (!this.mayHandBack(state, taskId, by)) throw new TaskResolutionError('forbidden', REFUSAL.reopen);
         const version = state.plan!.version;
         const sent = await this.sessions.deliver(assignee, taskId, { updateId: key, fromVersion: version, toVersion: version, keep: [], drop: [], change: [`${name(by)} 요청: ${request}`], reason: `${name(by)}${particle(name(by), '이/가')} 진행 중인 작업에 요청을 더했습니다. 반영한 뒤 result_report로 제출하세요` });
         const text = sent.sent ? `진행 중인 "${title}" 작업에 요청을 ${name(assignee)}에게 전달했어요.` : `진행 중인 "${title}" 작업에 요청을 지금은 전달하지 못했어요(${sent.reason}).`;
@@ -465,7 +476,7 @@ export class ProjectManager {
       const label = STATUS_LABEL[task.status] ?? task.status;
       throw new TaskResolutionError('invalid_state', `"${title}" 작업은 아직 확인 전(${label})이라 다시 열 결과가 없어요.`);
     }
-    if (!this.mayHandBack(state, taskId, by)) throw new TaskResolutionError('forbidden', '확인된 결과의 보완은 결정권자나 후행 작업 담당자가 요청할 수 있어요.');
+    if (!this.mayHandBack(state, taskId, by)) throw new TaskResolutionError('forbidden', REFUSAL.reopen);
     const actor = { kind: 'human' as const, id: by };
     await this.options.store.append([
       ...(task.status === 'blocked' ? [{ ...this.context, actor, type: 'task_resumed' as const, idempotencyKey: `${key}:resume`, payload: { taskId } }] : []),
@@ -474,7 +485,10 @@ export class ProjectManager {
     const going = this.downstream(state, taskId).filter(t => ['reserved', 'running', 'submitted', 'revising'].includes(t.status));
     const keep = going.length ? ` 진행 중인 후행 작업 ${going.map(t => `"${t.spec.title}"`).join(', ')}${particle(going.at(-1)!.spec.title, '이/가') === '이' ? '은' : '는'} 그대로 둡니다.` : '';
     if (!agent) {
-      const text = `@${name(assignee)} 확인된 "${title}" 결과에 ${name(by)}${particle(name(by), '이/가')} 보완을 요청했어요: ${request} 보완본을 이 작업에 첨부해 올려 주세요.${keep}`;
+      // A scope decision that reopened the task speaks once, in the coordinator's own summary (M12 V2).
+      const text = announcement?.trim()
+        ? `@${name(assignee)} ${announcement.trim()} 보완본을 이 작업에 첨부해 올려 주세요.${keep}`
+        : `@${name(assignee)} 확인된 "${title}" 결과에 ${name(by)}${particle(name(by), '이/가')} 보완을 요청했어요: ${request} 보완본을 이 작업에 첨부해 올려 주세요.${keep}`;
       return this.speak(key, trigger, assignee, '확인된 결과에 사람이 보완을 요청해 담당자가 다시 해야 한다', [{ kind: 'ask', text }]);
     }
     let problem = '';
@@ -484,7 +498,7 @@ export class ProjectManager {
       const sent = update ? await this.sessions.deliver(assignee, taskId, update) : { sent: false as const, reason: '' };
       if (!sent.sent) problem = sent.reason;
     } catch (error) { this.failures.push(error); problem = '전달 중 오류가 났습니다'; }
-    const lead = `확인된 "${title}" 결과를 다시 열어 ${name(assignee)}에게 보완을 맡겼어요.`;
+    const lead = announcement?.trim() || `확인된 "${title}" 결과를 다시 열어 ${name(assignee)}에게 보완을 맡겼어요.`;
     const text = `${lead}${problem ? ` 다만 지금은 전달하지 못했어요(${problem}). 전달되면 이어서 진행합니다.` : ''}${keep}`;
     return this.speak(key, trigger, by, '확인된 결과에 사람이 보완을 요청해 Agent에게 다시 맡겼다', [{ kind: 'fact', text: channelText(text, state, 3) }]);
   }
@@ -514,15 +528,38 @@ export class ProjectManager {
       ...(task.status === 'blocked' ? [{ ...this.context, actor, type: 'task_resumed' as const, idempotencyKey: `recheck-resume:${messageId}`, payload: { taskId } }] : []),
       { ...this.context, actor, type: 'result_submitted', idempotencyKey: resultId, payload: { taskId, resultId, planVersion: previous?.planVersion ?? state.plan!.version, summary: previous?.summary ?? text, artifactIds } },
     ]);
-    return this.review(taskId, resultId);
+    return this.review(taskId, resultId, { by: authorId, trigger: messageId });
   }
 
-  private async review(taskId: string, resultId: string): Promise<PmPost[]> {
+  /**
+   * Judges a submission and records what people hear. A re-check a person asked for (`recheck`: who asked,
+   * and the request that triggered it) always ends in a recorded channel line (M12 W2): checked, still
+   * not checked and why, or why it could not run — a review of the same result never goes silent.
+   */
+  private async review(taskId: string, resultId: string, recheck?: { by: string; trigger: string }): Promise<PmPost[]> {
     const outcome = await this.dispatcher.onResultSubmitted(taskId, resultId);
-    const notices = outcome.kind === 'revision' || outcome.kind === 'deferred' ? [outcome.notice].filter(Boolean)
+    let notices = outcome.kind === 'revision' || outcome.kind === 'deferred' ? [outcome.notice].filter(Boolean)
       : outcome.kind === 'error' ? [outcome.message]
-      : outcome.kind === 'checked' ? [...await this.acceptedNotice(taskId, resultId), ...outcome.notices, ...outcome.failures, ...(outcome.limitNotice ? [outcome.limitNotice] : []), ...this.allCheckedNotice(project(await this.read()))] : [];
-    const posts = notices.length ? await this.recordNotices(resultId, taskId, outcome, notices) : [];
+      : outcome.kind === 'checked' ? [...await this.acceptedNotice(taskId, resultId, recheck?.by), ...outcome.notices, ...outcome.failures, ...(outcome.limitNotice ? [outcome.limitNotice] : []), ...this.allCheckedNotice(project(await this.read()))] : [];
+    let considerationId: string | undefined;
+    if (recheck) {
+      const events = await this.read() as AnyEvent[];
+      const state = project(events);
+      const title = state.tasks.get(taskId)?.spec.title ?? '작업';
+      const name = (id: string) => state.members.get(id)?.displayName ?? id;
+      const decider = state.goal?.decider;
+      const still = `"${title}" 결과를 다시 검토했지만`;
+      if (outcome.kind === 'error') {
+        const who = decider && decider !== recheck.by ? `@${name(decider)} ` : '';
+        notices = [`${who}${still} ${outcome.cause} 때문에 아직 확인되지 않았어요. 결과를 보고 '이대로 확인'하거나 요청을 적어 '다시 맡기기'로 다시 맡길 수 있어요.`];
+      } else if (outcome.kind === 'revision') notices = [`${still} 보완할 점 때문에 아직 확인되지 않았어요.`, ...notices];
+      else if (outcome.kind === 'deferred' && !notices.length) notices = [`"${title}" 결과는 선행 작업이 확인되면 이어서 다시 검토합니다.`];
+      else if (outcome.kind === 'skipped') notices = [`"${title}" 결과는 지금 다시 검토할 제출이 아니라 검토하지 않았어요.`];
+      // The first verdict on this result already used its record; a re-check is a record of its own.
+      const first = outcome.kind === 'deferred' ? `handoff-wait:${resultId}` : `handoff-notice:${resultId}`;
+      if (outcome.kind === 'skipped' || events.some(e => e.idempotencyKey === first)) considerationId = `recheck-notice:${recheck.trigger}`;
+    }
+    const posts = notices.length ? await this.recordNotices(resultId, taskId, outcome, notices, considerationId) : [];
     // Results that waited for this task are judged now that it is checked (M1).
     if (outcome.kind === 'checked') posts.push(...await this.reviewWaiting(taskId));
     return posts;
@@ -549,7 +586,7 @@ export class ProjectManager {
    * person who asked for a revision of a checked result (or handed the task back) hears the revised
    * result was accepted, even when an agent did the work.
    */
-  private async acceptedNotice(taskId: string, resultId: string): Promise<string[]> {
+  private async acceptedNotice(taskId: string, resultId: string, recheckedBy?: string): Promise<string[]> {
     const events = await this.read() as AnyEvent[];
     const state = project(events);
     const submitted = events.findLast(e => e.type === 'result_submitted' && e.payload.resultId === resultId);
@@ -565,22 +602,24 @@ export class ProjectManager {
     const asked = events.findLast(e => e.type === 'revision_requested' && e.payload.taskId === taskId && e.actor.kind === 'human' && e.seq > lastChecked && e.seq < submitted!.seq);
     const requester = asked?.actor.id;
     if (state.members.get(submitter)?.kind !== 'human') {
-      return requester && state.members.get(requester)?.kind === 'human' ? [`@${name(requester)} 요청하신 "${task.spec.title}" 보완본을 확인했어요${then}`] : [];
+      if (requester && state.members.get(requester)?.kind === 'human') return [`@${name(requester)} 요청하신 "${task.spec.title}" 보완본을 확인했어요${then}`];
+      // Nobody else hears this verdict on an agent's result: the person who asked for the re-check does (M12 W2).
+      return recheckedBy ? [`@${name(recheckedBy)} "${task.spec.title}" 결과를 다시 확인했어요 — 인계 조건을 충족합니다${then}`] : [];
     }
     const revised = events.some(e => e.type === 'revision_requested' && e.payload.taskId === taskId && e.payload.resultId !== resultId);
     const what = submitter !== task.spec.assignee ? `"${task.spec.title}" 결과를 다시 확인했어요 — 인계 조건을 충족합니다` : `"${task.spec.title}" ${revised ? '보완본을' : '결과를'} 확인했어요`;
     return [`@${name(submitter)} ${what}${then}`];
   }
-  private async recordNotices(trigger: string, taskId: string, outcome: ResultOutcome, notices: string[]): Promise<PmPost[]> {
+  private async recordNotices(trigger: string, taskId: string, outcome: ResultOutcome, notices: string[], recordId?: string): Promise<PmPost[]> {
     const events = await this.read() as AnyEvent[];
     const state = project(events);
-    if (outcome.kind === 'error') return this.recordJudgeFailure(trigger, taskId, outcome, state);
+    if (outcome.kind === 'error') return this.recordJudgeFailure(trigger, taskId, outcome, state, recordId, notices[0] === outcome.message ? undefined : notices[0]);
     const submitter = events.findLast(e => e.type === 'result_submitted' && e.payload.resultId === trigger)?.actor.id;
     const recipients = outcome.kind === 'checked' ? [...new Set([submitter, ...events.filter(e => e.type === 'task_start_reserved' && e.payload.trigger === trigger).flatMap(e => e.type === 'task_start_reserved' ? [state.tasks.get(e.payload.taskId)?.spec.assignee] : [])])].filter(id => id && state.members.get(id)?.kind === 'human')
       : outcome.kind === 'revision' && outcome.delivery === 'blocked' ? [state.goal?.decider]
       : outcome.kind === 'deferred' ? [submitter] : [state.tasks.get(taskId)?.spec.assignee];
     // A deferred notice and the later verdict on the same result are two separate considerations.
-    const considerationId = outcome.kind === 'deferred' ? `handoff-wait:${trigger}` : `handoff-notice:${trigger}`;
+    const considerationId = recordId ?? (outcome.kind === 'deferred' ? `handoff-wait:${trigger}` : `handoff-notice:${trigger}`);
     const evidence = outcome.kind === 'revision' || outcome.kind === 'checked' ? outcome.review.evidence : [];
     const posts: PmPost[] = notices.map(text => ({ text: outcome.kind === 'revision' ? text : channelText(text, state, 3), kind: outcome.kind === 'checked' ? 'nudge' : outcome.kind === 'deferred' || (outcome.kind === 'revision' && (outcome.delivery === 'steer' || outcome.delivery === 'next_turn')) ? 'fact' : 'ask' }));
     await this.options.store.append([
@@ -595,13 +634,13 @@ export class ProjectManager {
    * checks the result, the submitter is never asked to revise, and the unverified citations stay in
    * the PM record.
    */
-  private async recordJudgeFailure(trigger: string, taskId: string, outcome: Extract<ResultOutcome, { kind: 'error' }>, state: ReturnType<typeof project>): Promise<PmPost[]> {
-    const considerationId = `handoff-notice:${trigger}`;
+  private async recordJudgeFailure(trigger: string, taskId: string, outcome: Extract<ResultOutcome, { kind: 'error' }>, state: ReturnType<typeof project>, recordId?: string, text?: string): Promise<PmPost[]> {
+    const considerationId = recordId ?? `handoff-notice:${trigger}`;
     const decider = state.goal?.decider;
     const name = (id: string) => state.members.get(id)?.displayName ?? id;
     const title = state.tasks.get(taskId)?.spec.title ?? '작업';
     const citations = (outcome.citationFailures ?? []).map(f => `인용 확인 실패: 조건 "${f.condition}" / 파일 ${f.file || '(지정 없음)'} / 인용 "${f.quote}" / ${f.reason}`);
-    const post: PmPost = { kind: 'ask', text: channelText(`${decider ? `@${name(decider)} ` : ''}"${title}" 결과: ${outcome.message}`, state, 4) };
+    const post: PmPost = { kind: 'ask', text: channelText(text ?? `${decider ? `@${name(decider)} ` : ''}"${title}" 결과: ${outcome.message}`, state, 4) };
     await this.options.store.append([
       { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_considered', idempotencyKey: considerationId, payload: { considerationId, triggerId: trigger, whoseAction: `${decider ?? '결정권자'}: 인계 판단을 마치지 못한 결과 확인`, alreadyKnows: 'no', evidence: [trigger, ...citations], decision: 'speak', reason: JUDGE_FAILURE_REASON, openTopics: state.openTopics } },
       { ...this.context, actor: { kind: 'system', id: 'pm' }, type: 'pm_spoke', idempotencyKey: `${considerationId}:0`, payload: { considerationId, messageId: `${considerationId}:0`, ...post } },

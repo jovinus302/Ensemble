@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { project, type LedgerEvent } from '@ensemble/core';
 import type { ResultReport } from '@ensemble/agents';
-import { buildTaskContext, CONVERSATION_CHAR_LIMIT, fileOwnerFor, humanizeRefs, plainAgentText, relevantDecisions, revisionCount, revisionUpdate, startNotice, summarizeForHuman, taskInputFiles } from '../src/context.ts';
+import { buildTaskContext, CONVERSATION_CHAR_LIMIT, fileOwnerFor, humanizeRefs, plainAgentText, recoveryRefusal, relevantDecisions, revisionCount, revisionUpdate, startNotice, summarizeForHuman, taskInputFiles } from '../src/context.ts';
 
 const ctx = { projectId: 'context-tests', targetProductId: 'product' };
 function ledger(extra: { type: string; payload: unknown; kind?: 'human' | 'agent' | 'pm' }[] = []): LedgerEvent[] {
@@ -78,6 +78,14 @@ it('summarizes an agent result for people: what got done, what to do, where to l
     { type: 'revision_requested', payload: { taskId: 'T4', resultId: 'r4', missing: ['x'] }, kind: 'pm' },
   ]);
   expect(summarizeForHuman(project(revising), 'T4', { ...report, limitations: [] })).toContain('할 일: PM이 보완을 요청했습니다.');
+});
+
+it('X3: an agent result written before the PM judged it says it waits for the review, never that the PM checked it', () => {
+  const report: ResultReport = { type: 'result_report', taskId: 'T4', planVersion: 1, summary: '결제 없는 프로토타입', files: [{ path: 'proto.html', description: '' }] };
+  const submitted = ledger([{ type: 'result_submitted', payload: { taskId: 'T4', resultId: 'r4', planVersion: 1, summary: 's', artifactIds: ['proto.html'] }, kind: 'agent' }]);
+  const text = summarizeForHuman(project(submitted), 'T4', report);
+  expect(text).toContain('할 일: PM 검토 대기');
+  expect(text).not.toMatch(/PM이 인계 조건을 확인/);
 });
 
 /** A designer's flow attachment and a research agent's report, both checked, ahead of a prototype task. */
@@ -205,4 +213,20 @@ it('U5: a limitation is its own line and an empty "할 일:" is never written (Q
   const text = summarizeForHuman(project(ledger()), 'T4', report);
   expect(text).not.toContain('할 일:');
   expect(text).toContain('\n확인하지 못한 점: 시연용 가상 자료이며 실제 조사·고객 검증이 아닙니다.\n');
+});
+
+it('X2: a refused recovery request says exactly who may do it, in the words the buttons use (QA5 Opus N8)', () => {
+  const extra = [
+    { type: 'member_joined', payload: { memberId: 'designer', kind: 'human', displayName: '디자이너' } },
+    { type: 'result_submitted', payload: { taskId: 'T4', resultId: 'r4', planVersion: 1, summary: 's', artifactIds: ['proto.html'] }, kind: 'agent' as const },
+    { type: 'task_blocked', payload: { taskId: 'T4', reason: '보완 한도' }, kind: 'pm' as const },
+  ];
+  const state = project(ledger(extra));
+  expect(recoveryRefusal(state, { type: 'resolve_task', action: 'accept', taskId: 'T4' }, 'designer')).toBe('"이대로 확인"은 결정권자(리드)만 할 수 있어요.');
+  expect(recoveryRefusal(state, { type: 'resolve_task', action: 'retry', taskId: 'T4' }, 'designer')).toBe('"다시 맡기기"는 결정권자, 담당자 또는 후행 작업 담당자만 할 수 있어요.');
+  expect(recoveryRefusal(state, { type: 'reopen_task', taskId: 'T1' }, 'designer')).toBe('확인된 결과의 보완은 결정권자나 후행 작업 담당자가 요청할 수 있어요.');
+  expect(recoveryRefusal(state, { type: 'resolve_task', action: 'accept', taskId: 'T4' }, 'lead')).toBe('');
+  expect(recoveryRefusal(state, { type: 'resolve_task', action: 'retry', taskId: 'T5' }, 'lead')).toBe('"사용성 테스트" 작업은 지금 시작 전이라 처리할 멈춤이 없어요.');
+  expect(recoveryRefusal(state, { type: 'reopen_task', taskId: 'T5' }, 'lead')).toBe('"사용성 테스트" 작업은 아직 확인 전(시작 전)이라 다시 열 결과가 없어요.');
+  expect(recoveryRefusal(state, { type: 'resolve_task', action: 'recheck', taskId: 'T4' }, 'designer')).toBe('"프로토타입" 결과는 지금 다시 검토할 상태가 아니에요(멈춤).');
 });

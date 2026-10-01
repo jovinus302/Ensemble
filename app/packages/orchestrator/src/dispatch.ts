@@ -36,10 +36,10 @@ export type ResultOutcome =
   | { kind: 'skipped'; reason: string }
   /**
    * The judge could not reach a verdict (a technical failure, not a content problem): the goal's
-   * decider checks the result; nothing was recorded. `citationFailures` is the PM record of what
-   * could not be verified.
+   * decider checks the result; nothing was recorded. `cause` names why in people's words (M12 W2);
+   * `citationFailures` is the PM record of what could not be verified.
    */
-  | { kind: 'error'; message: string; citationFailures?: CitationFailure[] }
+  | { kind: 'error'; message: string; cause: string; citationFailures?: CitationFailure[] }
   /**
    * A predecessor is not checked yet: the submission stays recorded and unjudged, and is judged when
    * the predecessors are checked. `notice` (empty for agents) tells the submitter what it waits on.
@@ -109,7 +109,7 @@ export class Dispatcher {
 
       const judged = await judgeHandoff({ state, result, resultContent: await this.options.readResult(result),
         decisions: relevantDecisions(state, taskId), llm: this.options.llm, model: this.options.model, requests: reopenRequests(events, taskId) });
-      if (!judged.ok) return { kind: 'error', message: judged.error, ...(judged.citationFailures?.length ? { citationFailures: judged.citationFailures } : {}) };
+      if (!judged.ok) return { kind: 'error', message: judged.error, cause: judged.cause, ...(judged.citationFailures?.length ? { citationFailures: judged.citationFailures } : {}) };
 
       const { result: decided } = await this.options.store.transaction(this.options.context.projectId, (current) => {
         const now = project(current);

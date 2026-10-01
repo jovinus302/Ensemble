@@ -399,6 +399,42 @@ export function plainAgentText(text: string): string {
   return lines.filter((line): line is string => line !== null).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/** Task statuses in the words people read. */
+export const STATUS_LABEL: Record<string, string> = { waiting: '시작 전', ready: '시작 전', reserved: '진행 중', running: '진행 중', submitted: '검토 중', revising: '보완 중', checked: '확인됨', blocked: '멈춤', cancelled: '취소됨' };
+/** Who may resolve or reopen a task, in the words of the buttons (M12 X2: never "권한을 확인할 수 없어"). */
+export const REFUSAL = {
+  accept: (deciderName?: string) => `"이대로 확인"은 결정권자${deciderName ? `(${deciderName})` : ''}만 할 수 있어요.`,
+  retry: '"다시 맡기기"는 결정권자, 담당자 또는 후행 작업 담당자만 할 수 있어요.',
+  reopen: '확인된 결과의 보완은 결정권자나 후행 작업 담당자가 요청할 수 있어요.',
+};
+export type RecoveryRequest = { type: 'resolve_task'; action: 'accept' | 'retry' | 'recheck'; taskId: Id } | { type: 'reopen_task'; taskId: Id };
+
+/**
+ * Why a person's request to resolve or reopen a task cannot run, as one sentence they read (M12 X2), or ''
+ * when it may. Same authority as the buttons: accept is the goal's decider's; retry and reopen also the
+ * task's assignee and the assignees of tasks built on it; recheck anyone, on a result waiting for review.
+ */
+export function recoveryRefusal(state: ProjectState, request: RecoveryRequest, by: Id): string {
+  const task = state.tasks.get(request.taskId);
+  if (!task || task.status === 'cancelled') return '작업을 찾지 못했습니다.';
+  if (state.members.get(by)?.kind !== 'human') return '사람 멤버만 멈춘 작업을 처리할 수 있어요.';
+  const title = task.spec.title;
+  const label = STATUS_LABEL[task.status] ?? task.status;
+  const decider = state.goal?.decider;
+  const builtOn = (id: Id, seen = new Set<Id>()): boolean => !seen.has(id) && (seen.add(id), (state.tasks.get(id)?.spec.dependsOn ?? []).some(dep => dep === request.taskId || builtOn(dep, seen)));
+  const involved = by === decider || task.spec.assignee === by || [...state.tasks.values()].some(t => t.status !== 'cancelled' && t.spec.assignee === by && builtOn(t.spec.id));
+  if (request.type === 'reopen_task') {
+    if (!involved) return REFUSAL.reopen;
+    return task.status === 'checked' ? '' : `"${title}" 작업은 아직 확인 전(${label})이라 다시 열 결과가 없어요.`;
+  }
+  if (request.action === 'recheck') return task.status === 'submitted' && task.results.length ? '' : `"${title}" 결과는 지금 다시 검토할 상태가 아니에요(${label}).`;
+  if (request.action === 'accept' && by !== decider) return REFUSAL.accept(decider ? state.members.get(decider)?.displayName ?? decider : undefined);
+  if (request.action === 'retry' && !involved) return REFUSAL.retry;
+  if (!['blocked', 'submitted', 'revising'].includes(task.status)) return `"${title}" 작업은 지금 ${label}${particle(label, '이/가') === '이' ? '이라' : '라'} 처리할 멈춤이 없어요.`;
+  if (request.action === 'accept' && !task.results.length) return "확인할 결과가 아직 없어요. '다시 맡기기'로 작업을 다시 진행해 주세요.";
+  return '';
+}
+
 /** A short template summary for people: what got done, what you need to do, where to look. */
 export function summarizeForHuman(state: ProjectState, taskId: Id, report: ResultReport): string {
   const task = state.tasks.get(taskId);
@@ -412,7 +448,8 @@ export function summarizeForHuman(state: ProjectState, taskId: Id, report: Resul
       if (notice) todo.push(notice);
     }
   } else if (task.status === 'revising') todo.push('PM이 보완을 요청했습니다. 보완본이 오면 다시 알려드립니다.');
-  else if (task.status === 'submitted') todo.push('PM이 인계 조건을 확인하는 중입니다.');
+  // Written before the PM judges the result: it waits for the review (M12 X3), and the verdict is its own PM line.
+  else if (task.status === 'submitted') todo.push('PM 검토 대기');
   // A limitation is not something to do: it gets its own line, and no empty "할 일:" is left (QA4 C6).
   const limits = report.limitations?.map((item) => item.trim()).filter(Boolean) ?? [];
   return [

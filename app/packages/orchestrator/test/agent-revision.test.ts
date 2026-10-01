@@ -183,9 +183,9 @@ it('S3: a person sending the agent report back for a check gets a fresh handoff 
     '@사용자 "예약 서비스 대안 조사" 결과를 다시 확인했어요 — 인계 조건을 충족합니다. 다음은 디자이너가 "흐름 설계"를 시작합니다.',
     '@디자이너 흐름 설계를 곧 시작합니다.',
   ]);
-  // The route offered the agent task for a re-check; the coordinator never judged the message in conversation.
-  const route = f.requests.findLast(r => r.forceTool === 'route_message')!;
-  expect(JSON.parse(route.messages[0]!.content).recheckable).toEqual([{ taskId: 'research', title: '예약 서비스 대안 조사', assignee: '조사 Agent', status: 'blocked' }]);
+  // M12 W4: the decider's file on the only stopped task is its re-check without asking a model; the
+  // coordinator never judged the message in conversation.
+  expect(f.requests.some(r => r.forceTool === 'route_message')).toBe(false);
   expect(f.requests.some(r => r.forceTool?.endsWith('_coordination'))).toBe(false);
   expect(await status(f, 'flow')).toBe('reserved');
 });

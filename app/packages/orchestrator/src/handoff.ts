@@ -29,7 +29,8 @@ export type CitationFailure = NonNullable<HandoffReview['citationFailures']>[num
  * after one re-judgement; `citationFailures` then carries the PM record of what could not be verified.
  */
 export type JudgeOutcome = { ok: true; review: HandoffReview; llmCalls: number }
-  | { ok: false; error: string; llmCalls: number; citationFailures?: CitationFailure[] };
+  /** `cause` is the reason as a noun phrase people read after '…때문에' (M12 W2). */
+  | { ok: false; error: string; cause: string; llmCalls: number; citationFailures?: CitationFailure[] };
 
 export const REVIEW_TOOL = 'record_handoff_review';
 const reviewTool: ToolSpec = {
@@ -44,8 +45,9 @@ const reviewTool: ToolSpec = {
         met: { type: 'boolean' },
         file: { type: 'string', description: '근거가 있는 결과 파일 경로' },
         quote: { type: 'string', description: '근거 문장을 결과 파일에서 그대로 인용' },
-        missing: { type: 'string', description: '미충족이면 무엇을 보완해야 하는지 한 문장' },
-        excluded: { type: 'boolean', description: '조건 전체가 제외 범위(또는 한정 범위 밖)만 요구해 요구하지 않는 조건이면 true. 금지 제약에는 쓰지 않는다.' },
+        missing: { type: 'string', description: '미충족이면 무엇을 보완해야 하는지 사람이 읽을 한 문장' },
+        exempt: { type: 'boolean', description: '사람이 정한 제외 범위(또는 한정 범위 밖) 때문에 이 조건을 요구하지 않으면 true, 그대로 판단하면 false' },
+        reason: { type: 'string', description: 'exempt 판단의 이유를 사람이 읽을 한 문장으로. 도구 필드 이름은 쓰지 않는다' },
       } } },
       decisionConflicts: { type: 'array', items: { type: 'object', required: ['decisionId', 'detail'], properties: {
         decisionId: { type: 'string' }, detail: { type: 'string' },
@@ -61,16 +63,19 @@ const SYSTEM = [
   '- 결과가 확정 결정과 어긋나면 decisionConflicts에 결정 ID와 어긋난 내용을 쓴다.',
   `- 반드시 ${REVIEW_TOOL} 도구로만 답한다.`,
 ].join('\n');
-/** Added only when people cut the task's scope: the conditions stay as written and the cut is judged here (M11 T2). */
+/**
+ * Added only when people cut the task's scope: the conditions stay as written and the cut is judged here,
+ * condition by condition, by the model (M11 T2, M12 V1). Code only checks that an exempt condition really
+ * names the cut (scopeKeywordIn); no word rule ("없이", "금지") decides it.
+ */
 const SCOPE_RULES = [
   '## 범위 제외·한정 규칙',
-  '- 사람이 정한 제외 범위(또는 한정 범위 밖)를 요구하는 조건이나 그 부분은 요구하지 않은 것으로 본다. 그 부분이 결과에 없어도 미충족이 아니다.',
-  '- 조건의 나머지 부분은 그대로 판단한다. 예: 조건이 "가입·시간 선택·결제 화면"이고 결제가 제외면 가입·시간 선택은 여전히 결과에 있어야 한다.',
-  '- 조건 전체가 제외 범위(또는 한정 범위 밖)만 요구하면 met=true, excluded=true로 두고 quote는 비워 둔다.',
-  '- "…하지 않는다", "…없음", "…아님", "금지" 같은 금지 제약은 범위 제외와 관계없이 그대로 적용한다. 금지 제약에는 excluded를 쓰지 않는다.',
+  '- 인계 조건마다 exempt(이 조건을 요구하지 않는지)와 reason(그 이유 한 문장)을 쓴다.',
+  '- 조건이 제외 범위(또는 한정 범위 밖)의 존재·포함·동작을 요구하면 exempt=true다. 그 조건 안의 "실제 결제 연동 없이" 같은 수식은 그 요구의 일부라 함께 면제된다. 예: 제외 범위가 "결제"면 "결제 화면에 실제 결제 연동 없이 클릭 시 완료 상태로 전환되는 모의 결제 버튼이 존재한다"는 exempt=true이고, 결과에 결제 화면이 없어도 된다.',
+  '- 제외 범위와 무관한 금지 제약(예: "실제 개인정보 저장 없음", "외부 네트워크 호출 없음")은 exempt=false로 두고 결과에서 그대로 판단한다.',
+  '- 조건의 일부만 제외 범위면 exempt=false로 두고 나머지 부분을 판단한다. 예: 조건이 "가입·시간 선택·결제 화면"이고 결제가 제외면 가입·시간 선택은 여전히 결과에 있어야 한다.',
+  '- exempt=true면 quote는 비워 둔다. missing과 reason은 사람이 읽는 문장이라 도구 필드 이름(exempt, met 등)을 쓰지 않는다.',
 ].join('\n');
-/** A condition that forbids something holds whatever scope was cut; the model may never waive it. */
-const PROHIBITION = /(금지|하지\s*않|않는다|않음|않을|아님|아니다|없음|없어야|없다|없이|말\s*것)/;
 
 export const normalizeCitation = (text: string) => text.normalize('NFC')
   .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
@@ -113,24 +118,80 @@ function openingRun(needle: string, hay: string, from: number): { length: number
  * matches when its opening run reaches PREFIX_MATCH_CHARS or PREFIX_MATCH_SHARE of the piece.
  */
 export function quoteInText(quote: string, text: string): boolean {
-  if (text.includes(quote)) return true;
+  return locateQuote(quote, text) !== null;
+}
+
+/** Where a normalized quote sits in citationKey(text) under the quoteInText rules; null when it is not there. */
+function locateQuote(quote: string, text: string): { start: number; end: number } | null {
+  const hay = citationKey(text);
+  if (text.includes(quote)) {
+    const whole = citationKey(quote);
+    const at = whole ? hay.indexOf(whole) : 0;
+    return { start: Math.max(at, 0), end: Math.max(at, 0) + whole.length };
+  }
   const pieces = quote.split(/\s*(?:\.{3,}|…+)\s*/).map((piece) => piece.trim());
   // Leading or trailing marks only say the quote starts or ends mid-sentence.
   if (pieces[0] === '') pieces.shift();
   if (pieces.at(-1) === '') pieces.pop();
-  if (pieces.length === 0 || pieces.some((piece) => piece.length < MIN_ELIDED_PIECE)) return false;
-  const hay = citationKey(text);
+  if (pieces.length === 0 || pieces.some((piece) => piece.length < MIN_ELIDED_PIECE)) return null;
   let from = 0;
+  let start = -1;
   for (const piece of pieces) {
     const needle = citationKey(piece);
-    if (!needle) return false;
+    if (!needle) return null;
     const at = hay.indexOf(needle, from);
-    if (at >= 0) { from = at + needle.length; continue; }
+    if (at >= 0) { if (start < 0) start = at; from = at + needle.length; continue; }
     const run = openingRun(needle, hay, from);
-    if (run.length < PREFIX_MATCH_CHARS && (run.length < PREFIX_MATCH_FLOOR || run.length < needle.length * PREFIX_MATCH_SHARE)) return false;
+    if (run.length < PREFIX_MATCH_CHARS && (run.length < PREFIX_MATCH_FLOOR || run.length < needle.length * PREFIX_MATCH_SHARE)) return null;
+    if (start < 0) start = run.end - run.length;
     from = run.end;
   }
-  return true;
+  return { start: Math.max(start, 0), end: from };
+}
+
+/** Particles and verb endings cut off a word so "전환되는", "클릭을" compare as "전환", "클릭". */
+const ENDING = /(?:하는|하고|하며|하여|해야|해서|한다|된다|되는|되어|되며|되고|하지|있는|있다|없이|없는|없음|없다|으로|에서|에게|까지|부터|처럼|이며|이고|이다|은|는|을|를|이|가|의|에|와|과|로|도|만|한|된|할|될|함|됨)$/;
+const stem = (word: string) => {
+  let out = word;
+  for (let i = 0; i < 2; i++) { const cut = out.replace(ENDING, ''); if (cut.length < 2 || cut === out) break; out = cut; }
+  return out;
+};
+// A word still ending in 다 after stemming is a predicate ("다룬다", "있다"), not what the text is about.
+const words = (text: string) => text.toLowerCase().split(/[^가-힣a-z0-9]+/).filter(Boolean).map(stem).filter((word) => word.length >= 2 && !/[가-힣]다$/.test(word));
+const compact = (text: string) => text.toLowerCase().replace(/\s+/g, '');
+/** Words that name a form or a degree, not what a condition is about. */
+const CONDITION_GENERIC = new Set(['포함', '존재', '모두', '각각', '단일', '파일', '문서', '결과', '구현', '가능', '실행', '작성', '정리', '기록', '명시',
+  'html', 'md', '위한', '통해', '통한', '대한', '모든', '이상', '하나', '경우', '사용자', '요청', '다시', '이번', '정도', '주세요', '올려', '만들어', '추가해서', '있어요', '없어요', '했어요']);
+/** Generic UI nouns that do not identify a cut on their own ("결제 화면" is about 결제). */
+const SCOPE_GENERIC = new Set(['모의', '모형', '실제', '기존', '관련', '화면', '버튼', '기능', '흐름', '포함', '상호작용', '설계', '동작', '구현', '반응', '정리', '부분', '범위', '전체']);
+
+/** The key words of a scope item people cut or limited ("결제 화면과 모의 결제 버튼" → 결제). */
+export function scopeKeywords(item: string): string[] {
+  const all = words(item.replace(/(?:까지)+(?:만)?$/, ''));
+  const named = all.filter((word) => !SCOPE_GENERIC.has(word));
+  return [...new Set(named.length ? named : all)];
+}
+/** The first cut keyword the condition really contains; an exemption without one is not accepted. */
+export function scopeKeywordIn(condition: string, scope: readonly string[]): string | undefined {
+  const text = compact(condition);
+  return scope.flatMap(scopeKeywords).find((word) => text.includes(word));
+}
+
+/** How far around a quote its context reaches, in citationKey characters. */
+export const QUOTE_CONTEXT_CHARS = 60;
+/**
+ * Whether a quote can be evidence for a condition (M12 W3): at least one key word of the condition is in
+ * the quote or within QUOTE_CONTEXT_CHARS of it in the file. A condition with no key word cannot be checked
+ * and passes; a quote not found in the file is checkCitation's problem, not this one's.
+ */
+export function quoteRelevant(condition: string, quote: string, text: string): boolean {
+  const keys = [...new Set(words(condition).filter((word) => !CONDITION_GENERIC.has(word)))];
+  if (!keys.length) return true;
+  const squashed = squash(text);
+  const at = locateQuote(squash(quote), squashed);
+  const hay = citationKey(squashed).toLowerCase();
+  const near = at ? hay.slice(Math.max(0, at.start - QUOTE_CONTEXT_CHARS), at.end + QUOTE_CONTEXT_CHARS) : citationKey(squash(quote)).toLowerCase();
+  return keys.some((key) => near.includes(key));
 }
 
 /**
@@ -192,7 +253,14 @@ function buildRequest(input: JudgeInput, conditions: string[]): LlmRequest {
   return { model, system, messages: [{ role: 'user', content: body }], tools: [reviewTool], forceTool: REVIEW_TOOL, maxTokens: 2000 };
 }
 
-interface ConditionVerdict { index: number; met: boolean; file?: string; quote?: string; missing?: string; excluded?: boolean }
+/** The model's words go to people: tool field names it may echo ("excluded로 면제되지 않음") are dropped. */
+export const peopleText = (text: string) => text
+  .replace(/\b(?:excluded|exempt(?:ed)?)\b\s*(?:=\s*(?:true|false))?\s*(?:으로|로)?\s*(?=면제)/gi, '')
+  .replace(/\b(?:excluded|exempt(?:ed)?)\b\s*(?:=\s*(?:true|false))?/gi, '면제')
+  .replace(/\bmet\s*=\s*(?:true|false)\b/gi, '')
+  .replace(/ {2,}/g, ' ').trim();
+
+interface ConditionVerdict { index: number; met: boolean; file?: string; quote?: string; missing?: string; exempt?: boolean; reason?: string }
 interface ModelVerdict { conditions: ConditionVerdict[]; conflicts: { decisionId: string; detail: string }[] }
 
 function parseVerdict(input: Record<string, unknown> | undefined): ModelVerdict | null {
@@ -203,7 +271,9 @@ function parseVerdict(input: Record<string, unknown> | undefined): ModelVerdict 
     const item = raw as Record<string, unknown>;
     if (!Number.isInteger(item.index) || typeof item.met !== 'boolean') return null;
     const text = (key: string) => (typeof item[key] === 'string' ? item[key] as string : undefined);
-    conditions.push({ index: item.index as number, met: item.met, file: text('file'), quote: text('quote'), missing: text('missing'), ...(item.excluded === true ? { excluded: true } : {}) });
+    // `excluded` is the M11 name of the same judgement; a cached or older reply still reads the same way.
+    conditions.push({ index: item.index as number, met: item.met, file: text('file'), quote: text('quote'), missing: text('missing'),
+      ...(item.exempt === true || item.excluded === true ? { exempt: true } : {}), ...(text('reason') ? { reason: text('reason') } : {}) });
   }
   const conflicts = Array.isArray(input.decisionConflicts) ? input.decisionConflicts.flatMap((raw) => {
     const item = raw as Record<string, unknown> | null;
@@ -255,14 +325,23 @@ export function checkCitation(named: string | undefined, rawQuote: string | unde
   return { kind: 'technical', file: given, reason: given ? '지정한 결과 파일이 없고 인용문도 결과 파일에서 찾지 못함' : '결과 파일을 지정하지 않았고 인용문도 결과 파일에서 찾지 못함' };
 }
 
-/** The one re-judgement after a technical citation failure: same request plus what could not be tied to a file. */
-function rejudgeRequest(request: LlmRequest, failed: { index: number; condition: string; check: CitationCheck }[], files: readonly string[]): LlmRequest {
+/** Why a condition the model judged met or exempt still cannot count: a PM record and the words people read. */
+interface Unproven { reason: string; cause: string }
+const CAUSE = {
+  citation: '근거 인용을 결과 파일에 연결하지 못한 문제',
+  relevance: '인용한 근거가 조건과 관련이 없는 문제',
+  exemption: '제외한 범위와 관계없는 조건을 요구하지 않는다고 본 문제',
+} as const;
+
+/** The one re-judgement after a technical failure: same request plus what could not be counted and why. */
+function rejudgeRequest(request: LlmRequest, failed: { index: number; condition: string; check: Unproven }[], files: readonly string[]): LlmRequest {
   const note = [
-    '## 인용 확인 실패 — 다시 판단',
-    '아래 조건은 충족으로 판단했지만 인용을 결과 파일에 연결하지 못했다. 이 조건들을 다시 판단하라.',
+    '## 근거 확인 실패 — 다시 판단',
+    '아래 조건은 충족(또는 요구하지 않음)으로 판단했지만 코드가 그 판단을 확인하지 못했다. 이 조건들을 다시 판단하라.',
     `- file에는 "### 파일:" 뒤의 경로를 그대로 쓴다: ${files.join(', ')}`,
-    '- quote에는 그 파일의 한 문장이나 한 줄을 고치지 않고 짧게 복사한다. 여러 곳을 이어 붙이거나 따옴표를 더하지 않는다. 근거가 없으면 met=false로 둔다.',
-    ...failed.map(({ index, condition, check }) => `${index}. ${condition} — ${check.kind === 'verified' ? '' : check.reason}`),
+    '- quote에는 그 파일에서 이 조건의 내용을 직접 보여 주는 한 문장이나 한 줄을 고치지 않고 짧게 복사한다. 여러 곳을 이어 붙이거나 따옴표를 더하지 않는다. 근거가 없으면 met=false로 둔다.',
+    '- 제외·한정 범위의 낱말이 들어 있지 않은 조건은 요구하지 않는 조건이 아니다(exempt=false). 결과에서 근거를 찾아 판단한다.',
+    ...failed.map(({ index, condition, check }) => `${index}. ${condition} — ${check.reason}`),
   ].join('\n');
   const [first, ...rest] = request.messages;
   return { ...request, messages: [{ ...first!, content: `${first!.content}\n${note}` }, ...rest] };
@@ -271,6 +350,11 @@ function rejudgeRequest(request: LlmRequest, failed: { index: number; condition:
 /** What a person can do about a review that could not finish (M11 T1): both are buttons and chat requests. */
 const RECOVERY = "'다시 검토'로 검토를 다시 돌리거나, 결정권자가 결과를 보고 '이대로 확인'할 수 있어요.";
 const JUDGE_FAILED = `결과 인계 판단을 마치지 못했습니다(결과 내용이 아니라 검토 과정의 문제예요). ${RECOVERY}`;
+const JUDGE_FAILED_CAUSE = '검토 응답을 받지 못한 문제';
+
+/** One condition's standing after code checked the model's verdict on it. */
+type Assessment = { kind: 'waived'; keyword: string; reason: string } | { kind: 'verified'; file: string; quote: string }
+  | { kind: 'unproven'; check: Unproven } | { kind: 'missing'; detail: string };
 
 export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
   const { state, result, resultContent, decisions } = input;
@@ -283,27 +367,45 @@ export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
   const request = buildRequest(input, conditions);
   const first = await askModel(input, request);
   let llmCalls = first.calls;
-  if (!first.verdict) return { ok: false, llmCalls, error: JUDGE_FAILED };
+  if (!first.verdict) return { ok: false, llmCalls, error: JUDGE_FAILED, cause: JUDGE_FAILED_CAUSE };
   const items = new Map(first.verdict.conditions.map((entry) => [entry.index, entry]));
   const { exclusions, limits } = taskScope(state.tasks.get(result.taskId)?.spec ?? {});
-  const scoped = exclusions.length > 0 || limits.length > 0;
-  // A condition that only asks for what people cut is not required; a prohibition never is waived.
-  const waived = (i: number) => { const item = items.get(i + 1); return !!(scoped && item?.met && item.excluded && !PROHIBITION.test(conditions[i]!)); };
-  const check = (i: number): CitationCheck | null => {
+  const scope = [...exclusions, ...limits];
+
+  /**
+   * The model judges each condition; code only checks what it can (M12 V1, W3): an exemption needs the
+   * cut's keyword in the condition, a met condition needs its quote in a result file and related to it.
+   */
+  const assess = (i: number): Assessment => {
     const item = items.get(i + 1);
-    if (!item?.met || waived(i)) return null;
-    if (item.excluded && !item.quote?.trim()) return { kind: 'technical', file: item.file ?? '', reason: scoped ? '금지 제약이라 범위 제외로 면제할 수 없음 — 결과에서 근거를 인용해야 함' : '제외 범위가 없는데 조건을 면제함' };
-    return checkCitation(item.file, item.quote, resultContent, result.artifactIds);
+    const condition = conditions[i]!;
+    const missing = (): Assessment => ({ kind: 'missing', detail: peopleText(item?.missing?.trim() ?? '') });
+    if (!item) return missing();
+    const quoted = item.met && !!item.quote?.trim();
+    if (item.exempt) {
+      const keyword = scopeKeywordIn(condition, scope);
+      if (keyword) return { kind: 'waived', keyword, reason: peopleText(item.reason?.trim() ?? '') };
+      if (!item.met) return missing();
+      if (!quoted) return { kind: 'unproven', check: { cause: CAUSE.exemption,
+        reason: scope.length ? `요구하지 않는다고 판단했지만 조건 문장에 제외·한정 범위(${scope.join(', ')})의 낱말이 없어 면제할 수 없음 — 결과에서 근거를 인용해 판단해야 함` : '제외·한정 범위가 없는데 조건을 요구하지 않는다고 판단함' } };
+    }
+    if (!item.met) return missing();
+    const c = checkCitation(item.file, item.quote, resultContent, result.artifactIds);
+    if (c.kind !== 'verified') return { kind: 'unproven', check: { reason: c.reason, cause: CAUSE.citation } };
+    if (!quoteRelevant(condition, item.quote ?? '', resultContent[c.file] as string)) {
+      return { kind: 'unproven', check: { cause: CAUSE.relevance, reason: '인용이 조건과 관련 없음: 조건의 핵심 낱말이 인용과 그 주변에 없음' } };
+    }
+    return { kind: 'verified', file: c.file, quote: item.quote ?? '' };
   };
   const citationFailures: CitationFailure[] = [];
-  const record = (i: number, c: CitationCheck, prefix = '') => {
-    if (c.kind !== 'verified') citationFailures.push({ condition: conditions[i]!, file: items.get(i + 1)?.file ?? '', quote: items.get(i + 1)?.quote ?? '', reason: `${prefix}${c.reason}` });
+  const record = (i: number, check: Unproven, prefix: string) => {
+    citationFailures.push({ condition: conditions[i]!, file: items.get(i + 1)?.file ?? '', quote: items.get(i + 1)?.quote ?? '', reason: `${prefix}${check.reason}` });
   };
 
   // A technical failure is recorded for the PM and re-judged once; it never becomes a request to the person.
-  const technical = conditions.flatMap((condition, i) => { const c = check(i); return c?.kind === 'technical' ? [{ index: i + 1, condition, check: c }] : []; });
+  const technical = conditions.flatMap((condition, i) => { const a = assess(i); return a.kind === 'unproven' ? [{ index: i + 1, condition, check: a.check }] : []; });
   if (technical.length) {
-    for (const { index, check: c } of technical) record(index - 1, c, '기술적 검증 실패(재판단): ');
+    for (const { index, check } of technical) record(index - 1, check, '기술적 검증 실패(재판단): ');
     const retry = await askModel(input, rejudgeRequest(request, technical, result.artifactIds));
     llmCalls += retry.calls;
     for (const { index } of technical) {
@@ -315,26 +417,22 @@ export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
   const met: string[] = [];
   const missing: string[] = [];
   const evidence: string[] = [];
-  const unverified: string[] = [];
+  const unverified: { index: number; cause: string }[] = [];
   conditions.forEach((condition, i) => {
-    const item = items.get(i + 1);
-    if (waived(i)) {
+    const a = assess(i);
+    if (a.kind === 'waived') {
       met.push(condition);
-      evidence.push(`조건 ${i + 1}은 제외·한정 범위만 요구해 요구하지 않음: ${condition}`);
-      return;
-    }
-    const c = check(i);
-    // The model's "met" counts only when its quote is really in a result file.
-    if (c?.kind === 'verified') {
+      evidence.push(`조건 ${i + 1}${particle(String(i + 1), '이/가') === '이' ? '은' : '는'} 제외·한정한 범위(${a.keyword})를 요구해 요구하지 않음${a.reason ? ` — ${a.reason}` : ''}: ${condition}`);
+    } else if (a.kind === 'verified') {
+      // The model's "met" counts only when its quote is really in a result file and about the condition.
       met.push(condition);
-      evidence.push(`${condition} ← ${c.file}: "${squash(item?.quote ?? '')}"`);
-    } else if (c) {
-      record(i, c, '재판단 후에도 기술적 검증 실패: ');
-      unverified.push(condition);
+      evidence.push(`${condition} ← ${a.file}: "${squash(a.quote)}"`);
+    } else if (a.kind === 'unproven') {
+      record(i, a.check, '재판단 후에도 기술적 검증 실패: ');
+      unverified.push({ index: i, cause: a.check.cause });
     } else {
-      const detail = item?.missing?.trim();
       // The request carries the gap; the full condition stays in the judgement record (QA3 C5).
-      missing.push(`${conditionLabel(i, condition)}: ${detail || '이 조건을 다루는 내용을 결과 파일에 추가해 주세요.'}`);
+      missing.push(`${conditionLabel(i, condition)}: ${a.detail || '이 조건을 다루는 내용을 결과 파일에 추가해 주세요.'}`);
       evidence.push(`미충족 조건 ${i + 1}: ${condition}`);
     }
   });
@@ -342,14 +440,15 @@ export async function judgeHandoff(input: JudgeInput): Promise<JudgeOutcome> {
   for (const conflict of first.verdict.conflicts) {
     const decision = known.get(conflict.decisionId);
     if (!decision) continue;
-    missing.push(`확정 결정(${shortName(decision.summary)})과 어긋납니다: ${conflict.detail}`);
+    missing.push(`확정 결정(${shortName(decision.summary)})과 어긋납니다: ${peopleText(conflict.detail)}`);
     evidence.push(`어긋난 확정 결정 ${decision.decisionId}: ${decision.summary}`);
   }
   const failures = citationFailures.length ? { citationFailures } : {};
   // With a real gap the revision covers it and the unverified condition is judged again on resubmission;
   // with none, an unverifiable "met" is neither a pass nor the person's fault, so a person decides.
   if (unverified.length && !missing.length) {
-    return { ok: false, llmCalls, ...failures, error: `결과 인계 판단 중 ${unverified.map((c) => conditionLabel(conditions.indexOf(c), c)).join(', ')}의 근거 인용을 결과 파일에 연결하지 못했습니다. 결과 내용이 아니라 검토 과정의 문제예요. ${RECOVERY}` };
+    const cause = unverified.map(({ index, cause: why }) => `${conditionLabel(index, conditions[index]!)}의 ${why}`).join(', ');
+    return { ok: false, llmCalls, ...failures, cause, error: `결과 인계 판단 중 ${cause} 때문에 확인을 마치지 못했습니다. 결과 내용이 아니라 검토 과정의 문제예요. ${RECOVERY}` };
   }
   return { ok: true, llmCalls, review: { ...base, verdict: missing.length || unverified.length ? 'insufficient' : 'sufficient', met, missing, evidence, ...failures } };
 }
