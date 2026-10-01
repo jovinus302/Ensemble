@@ -1,0 +1,42 @@
+{
+  "kind": "final-offline-validation-after-two-live-cells",
+  "checkedAtUtc": "2026-10-01T22:55:30.5937982Z",
+  "modelCallsDuringValidation": 0,
+  "tests": {
+    "files": 84,
+    "failed": 0,
+    "passed": 727
+  },
+  "typecheck": "passed",
+  "build": {
+    "existingWarnings": 3,
+    "warningKind": "Turbopack dynamic filesystem tracing",
+    "status": "passed"
+  },
+  "schemaPreflight": {
+    "positivePassed": true,
+    "modelCalls": 0,
+    "negativeReproduced": true
+  },
+  "fixturePreflight": {
+    "checksPerCell": 10,
+    "modelCalls": 0,
+    "cells": 2
+  },
+  "posthoc": {
+    "primaryResultsUnchanged": true,
+    "originalDirectChecks": "9/10",
+    "infrastructureMatchesStarterBoth": true,
+    "semanticPersistencePassedBoth": true,
+    "originalEnsembleChecks": "10/10",
+    "modelCalls": 0
+  },
+  "live": {
+    "furtherLiveAuthorized": false,
+    "newCells": 2,
+    "totalConservativeSlots": 7,
+    "reruns": 0,
+    "unusedSlots": 1,
+    "previousConservativeSlots": 5
+  }
+}

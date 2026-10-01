@@ -1,2 +1,3 @@
 # Preserve byte-level hashes of observed source snapshots on Windows and Linux.
 evidence/approved-pilot/artifacts/** -text -whitespace
+evidence/codex-a-pair-v2/artifacts/** -text -whitespace

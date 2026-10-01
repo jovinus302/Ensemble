@@ -2,7 +2,9 @@
 
 Tracking: https://github.com/jovinus302/Ensemble/issues/35
 
-## Current authorization: one separate Codex Task A pair
+## Current result: Codex Task A pair completed; one slot unused
+
+The two approved cells have completed; see [the separate result report](evidence/codex-a-pair-v2/README.md). Seven slots are now consumed, one is unused, and no further live run is authorized. Both primary paths recorded failures; provider-free diagnosis found an external-evidence handoff gate and an ISO-only date assertion, so no superiority conclusion is warranted.
 
 The user approved two new Task A cells after offline role/schema preflight: Ensemble + Codex followed by direct Codex, both `gpt-6-astra` / `low`. This uses two of the three remaining slots, leaves one unused, and authorizes no retries. Codex was selected before results to exercise both corrected failures. New evidence belongs to `evidence/codex-a-pair-v2/`; legacy evidence is never pooled. The reviewed production baseline is `b34b00888b6fc79f5d349a5de195cf942c42f4e2`. PR #50 was merged separately as `c5f300a73e9d4a2499285899b3952209841554e1`; that merge does not change the experiment baseline.
 
@@ -108,4 +110,4 @@ Preflight must inspect the **complete composed prompts**, confirm equal tools/se
 
 To soft-pause a batch, create `<outputRoot>/PAUSE`: the CLI checks it immediately before every next cell. SIGINT/SIGTERM and the harness's external `AbortSignal` interrupt the current cell, retain an `interrupted` report and stop the batch. Each top-level attempt is journaled before provider work; bounded cleanup records failures. Forced process termination cannot guarantee a final JSON report, so retain partial journals and never replay ambiguous attempts. Removing `PAUSE` is not renewed authorization. Cross-revision resume is rejected regardless of matching hashes or an infrastructure amendment.
 
-Known practical limits: legacy live adapter behavior exposed the failures above; corrected v2 live behavior remains unvalidated. Hidden API count and complete worker cost are unavailable; n=1 supplies no statistical confidence; shared load limits timing interpretation; multi-worker plans are rejected because the artifact contract is one workspace. An Ensemble change that fails to reopen completed work is recorded as failure rather than silently running a direct fallback. Do not estimate dollar costs from missing usage data.
+Known practical limits: legacy live adapter behavior exposed the failures above; the corrected v2 pair is recorded separately with its handoff and evaluator limitations. Hidden API count and complete worker cost are unavailable; n=1 supplies no statistical confidence; shared load limits timing interpretation; multi-worker plans are rejected because the artifact contract is one workspace. An Ensemble change that fails to reopen completed work is recorded as failure rather than silently running a direct fallback. Do not estimate dollar costs from missing usage data.

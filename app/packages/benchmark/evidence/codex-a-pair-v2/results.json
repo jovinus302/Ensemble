@@ -1,0 +1,360 @@
+{
+  "protocolRevision": "development-brief-v2",
+  "mode": "live",
+  "fixtureResultsExcluded": true,
+  "legacyResultsExcluded": true,
+  "completedPairCells": 2,
+  "previousConservativeSlots": 5,
+  "totalConservativeSlots": 7,
+  "unusedSlots": 1,
+  "reruns": 0,
+  "interpretation": "One paired Task A observation only; no statistical superiority or general claim; shared host/provider load not controlled",
+  "reports": [
+    {
+      "schemaVersion": 1,
+      "protocolRevision": "development-brief-v2",
+      "mode": "live",
+      "cell": {
+        "task": "A",
+        "provider": "codex",
+        "ensemble": true,
+        "ordinal": 1,
+        "id": "pilot-01"
+      },
+      "baseSha": "b34b00888b6fc79f5d349a5de195cf942c42f4e2",
+      "rubricHash": "7186443207bb60fdfb97b6742ee17c39ebce5afe36f7c90400c7860391c4cb06",
+      "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+      "model": "gpt-6-astra",
+      "effort": "low",
+      "cacheState": "unknown",
+      "status": "failed",
+      "error": "Ensemble task blocked or native handoff review failed",
+      "preparationMs": 9,
+      "taskMs": 570428,
+      "totalMs": 570437,
+      "checkpointMs": null,
+      "changeMs": null,
+      "afterChangeMs": null,
+      "checks": [],
+      "calls": [
+        {
+          "role": "pm",
+          "startMs": 300.6414,
+          "endMs": 17252.4556,
+          "status": "completed"
+        },
+        {
+          "role": "pm",
+          "startMs": 17253.700100000002,
+          "endMs": 31186.040800000002,
+          "status": "completed"
+        },
+        {
+          "role": "worker",
+          "startMs": 32382.032300000003,
+          "endMs": 32407.624400000004,
+          "status": "completed"
+        },
+        {
+          "role": "judge",
+          "startMs": 387236.953,
+          "endMs": 406455.8346,
+          "status": "completed"
+        },
+        {
+          "role": "worker",
+          "startMs": 406458.4296,
+          "endMs": 406481.3922,
+          "status": "completed"
+        },
+        {
+          "role": "judge",
+          "startMs": 493788.20139999996,
+          "endMs": 513822.24799999996,
+          "status": "completed"
+        },
+        {
+          "role": "worker",
+          "startMs": 513824.2932,
+          "endMs": 513847.1858,
+          "status": "completed"
+        },
+        {
+          "role": "judge",
+          "startMs": 548346.5866,
+          "endMs": 570092.4203,
+          "status": "completed"
+        }
+      ],
+      "usage": null,
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "actualModelInvocations": null,
+      "humanInterventions": [],
+      "humanRequests": [],
+      "topLevelAttempts": 8,
+      "attemptsByRole": {
+        "pm": 2,
+        "worker": 3,
+        "judge": 3
+      },
+      "browserPassed": 0,
+      "browserTotal": 0,
+      "fullWorkerDurations": [
+        {
+          "type": "native_worker_duration",
+          "turnId": "01a0f99d-0867-7b81-b7e7-65bda2400a51",
+          "elapsedMs": 357421.33440000005,
+          "status": "completed",
+          "usage": null
+        },
+        {
+          "type": "native_worker_duration",
+          "turnId": "01a0f9a2-bda7-78e0-a07f-2be2e23c4db5",
+          "elapsedMs": 89909.59729999996,
+          "status": "completed",
+          "usage": null
+        },
+        {
+          "type": "native_worker_duration",
+          "turnId": "01a0f9a4-610e-7c71-82b9-7c1c25305494",
+          "elapsedMs": 37055.34730000002,
+          "status": "completed",
+          "usage": null
+        }
+      ],
+      "partialPmJudgeUsage": [
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "interpret_coordination",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 28844,
+            "outputTokens": 187
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "judge_coordination",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 26892,
+            "outputTokens": 92
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "judge",
+          "tool": "record_handoff_review",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 26262,
+            "outputTokens": 262
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "judge",
+          "tool": "record_handoff_review",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 26590,
+            "outputTokens": 280
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "judge",
+          "tool": "record_handoff_review",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 53479,
+            "outputTokens": 290
+          },
+          "underlyingApiCalls": null
+        }
+      ],
+      "cleanupEvents": [],
+      "sourceSha256": {
+        "src/App.jsx": "2c2ab1f924a04a01c7934577516be3006af427ae4b55fefe51340f5bc32ded32",
+        "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+        "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+        "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+        "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f"
+      },
+      "screenshots": [],
+      "rawReportSha256": "82feadb70e16cbd0a547738744beb44110c34061e0bcd9daf3adff2bdd2d053f",
+      "rawTraceSha256": "2a9f8485fc3555281066a047fcbfa010f94e1d6f97af58d8c8184bd6c4c1d363",
+      "rawReportWriteTimeUtc": "2026-10-01T22:45:51.295755+00:00",
+      "wallClockCaveat": "File write timestamp is evidence serialization completion, not a precise model stop timestamp",
+      "journaledAttemptCount": 8,
+      "handoffReviews": [
+        {
+          "taskId": "reservation",
+          "resultId": "result:01a0f99d-0867-7b81-b7e7-65bda2400a51:0",
+          "verdict": "insufficient",
+          "met": [],
+          "missing": [
+            "조건 1(Complete this Reac…): 지정된 두 날짜·시간의 고정 응답, 기존 빌드 구성과의 연결, 390px·1440px에서 잘림 없는 사용 가능 여부, 변경 파일 및 확인 한계를 설명하는 결과 보고가 빠져 있습니다."
+          ],
+          "evidence": [
+            "미충족 조건 1: Complete this React restaurant booking starter. Date/time/1–6 guests, fixed sold-out and server-error fixtures, visible helpful errors, confirmation, saved booking surviving refresh, and usable unclipped 390/1440px layout. Use the existing local POST /api/reservations fixture. Preserve data-testid contract date,time,guests,submit,confirmation,edit,message. Date 2030-06-15 time 19:00 is sold out; 2030-06-16 time 18:00 returns an error. Offer 17:00,18:00,19:00,20:00. Do not replace build.mjs/server.mjs, change fixtures, install dependencies, access network, change permissions/authentication or incur new payments. The external harness runs node build.mjs and browser acceptance; provide buildable React source. Do not request extra shell permissions or claim an external build was already run. Work only in this starter. Report files and limitations when finished."
+          ]
+        },
+        {
+          "taskId": "reservation",
+          "resultId": "result:01a0f9a2-bda7-78e0-a07f-2be2e23c4db5:1",
+          "verdict": "insufficient",
+          "met": [],
+          "missing": [
+            "조건 1(Complete this Reac…): 완료 보고에 빌드·브라우저 검증 여부와 남아 있는 구현·검증 한계를 명시해야 한다."
+          ],
+          "evidence": [
+            "미충족 조건 1: Complete this React restaurant booking starter. Date/time/1–6 guests, fixed sold-out and server-error fixtures, visible helpful errors, confirmation, saved booking surviving refresh, and usable unclipped 390/1440px layout. Use the existing local POST /api/reservations fixture. Preserve data-testid contract date,time,guests,submit,confirmation,edit,message. Date 2030-06-15 time 19:00 is sold out; 2030-06-16 time 18:00 returns an error. Offer 17:00,18:00,19:00,20:00. Do not replace build.mjs/server.mjs, change fixtures, install dependencies, access network, change permissions/authentication or incur new payments. The external harness runs node build.mjs and browser acceptance; provide buildable React source. Do not request extra shell permissions or claim an external build was already run. Work only in this starter. Report files and limitations when finished."
+          ]
+        },
+        {
+          "taskId": "reservation",
+          "resultId": "result:01a0f9a4-610e-7c71-82b9-7c1c25305494:1",
+          "verdict": "insufficient",
+          "met": [],
+          "missing": [
+            "조건 1(Complete this Reac…): 빌드 가능한 소스인지와 390px·1440px 화면에서 잘림 없이 사용할 수 있는지를 확정할 근거가 부족합니다."
+          ],
+          "evidence": [
+            "미충족 조건 1: Complete this React restaurant booking starter. Date/time/1–6 guests, fixed sold-out and server-error fixtures, visible helpful errors, confirmation, saved booking surviving refresh, and usable unclipped 390/1440px layout. Use the existing local POST /api/reservations fixture. Preserve data-testid contract date,time,guests,submit,confirmation,edit,message. Date 2030-06-15 time 19:00 is sold out; 2030-06-16 time 18:00 returns an error. Offer 17:00,18:00,19:00,20:00. Do not replace build.mjs/server.mjs, change fixtures, install dependencies, access network, change permissions/authentication or incur new payments. The external harness runs node build.mjs and browser acceptance; provide buildable React source. Do not request extra shell permissions or claim an external build was already run. Work only in this starter. Report files and limitations when finished."
+          ]
+        }
+      ],
+      "startedAtUtc": "2026-10-01T22:36:20.838000+00:00",
+      "endedAtUtc": "2026-10-01T22:45:51.275000+00:00",
+      "timeSource": "native wallclock stamp minus monotonic elapsed"
+    },
+    {
+      "schemaVersion": 1,
+      "protocolRevision": "development-brief-v2",
+      "mode": "live",
+      "cell": {
+        "task": "A",
+        "provider": "codex",
+        "ensemble": false,
+        "ordinal": 2,
+        "id": "pilot-02"
+      },
+      "baseSha": "b34b00888b6fc79f5d349a5de195cf942c42f4e2",
+      "rubricHash": "7186443207bb60fdfb97b6742ee17c39ebce5afe36f7c90400c7860391c4cb06",
+      "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+      "model": "gpt-6-astra",
+      "effort": "low",
+      "cacheState": "unknown",
+      "status": "failed",
+      "error": null,
+      "preparationMs": 9,
+      "taskMs": 169394,
+      "totalMs": 169403,
+      "checkpointMs": null,
+      "changeMs": null,
+      "afterChangeMs": null,
+      "checks": [
+        {
+          "id": "checkpoint.selection",
+          "pass": true
+        },
+        {
+          "id": "required-fields.blocked",
+          "pass": true
+        },
+        {
+          "id": "party.one-through-six",
+          "pass": true
+        },
+        {
+          "id": "sold-out",
+          "pass": true
+        },
+        {
+          "id": "service-error",
+          "pass": true
+        },
+        {
+          "id": "confirmation.persistence",
+          "pass": false,
+          "detail": "Confirmation does not match selected reservation"
+        },
+        {
+          "id": "invalid-party.blocked",
+          "pass": true
+        },
+        {
+          "id": "viewport.390",
+          "pass": true
+        },
+        {
+          "id": "viewport.1440",
+          "pass": true
+        },
+        {
+          "id": "console.clean",
+          "pass": true
+        }
+      ],
+      "calls": [
+        {
+          "role": "worker",
+          "startMs": 1663.1807999999728,
+          "endMs": 1697.9383999999845,
+          "status": "completed"
+        }
+      ],
+      "usage": null,
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "actualModelInvocations": null,
+      "humanInterventions": [],
+      "humanRequests": [],
+      "topLevelAttempts": 1,
+      "attemptsByRole": {
+        "worker": 1
+      },
+      "browserPassed": 9,
+      "browserTotal": 10,
+      "fullWorkerDurations": [
+        {
+          "type": "direct_worker_duration",
+          "status": "completed",
+          "elapsedMs": 162825.5932,
+          "usage": null,
+          "underlyingApiCalls": null
+        }
+      ],
+      "partialPmJudgeUsage": [],
+      "cleanupEvents": [],
+      "sourceSha256": {
+        "src/App.jsx": "b6966959fecfa1e25a86c722d730b5b21c2f7eba403d9fb8ddbe7f62080a8247",
+        "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+        "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+        "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+        "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f"
+      },
+      "screenshots": [
+        "screenshots/pilot-02/viewport-1440.png",
+        "screenshots/pilot-02/viewport-390.png"
+      ],
+      "rawReportSha256": "1fd432c8e164657ea400cdf5dcb66dffa98f21c87163c946eb34160bdee68a51",
+      "rawTraceSha256": "767c808b516525e35760fad273a248aa446bd0d292f457fb01e4cb9e4d9b0de7",
+      "rawReportWriteTimeUtc": "2026-10-01T22:48:40.716535+00:00",
+      "wallClockCaveat": "File write timestamp is evidence serialization completion, not a precise model stop timestamp",
+      "journaledAttemptCount": 1,
+      "handoffReviews": [],
+      "startedAtUtc": "2026-10-01T22:45:51.313535+00:00",
+      "endedAtUtc": "2026-10-01T22:48:40.716535+00:00",
+      "timeSource": "approximate: final report write timestamp minus elapsed; includes small evidence-copy/write offset"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "experiment": "codex-a-pair-v2",
+  "kind": "posthoc-partial-cli-usage-measurement",
+  "additionalModelCalls": 0,
+  "primaryReportUsageUnchanged": true,
+  "workerSessions": [
+    {
+      "cell": "pilot-01",
+      "condition": "Ensemble+Codex",
+      "threadId": "01a0f99d-03e9-7ff2-a2cb-b7def3f73101",
+      "observedTurnContext": { "model": "gpt-6-astra", "effort": "low", "sourceLines": [8, 67, 99], "coverage": "All three recorded worker turn_context entries agree." },
+      "source": "~/.codex/sessions/2026/10/02/rollout-2026-10-02T07-36-53-01a0f99d-03e9-7ff2-a2cb-b7def3f73101.jsonl",
+      "sourceLine": 114,
+      "sourceSha256": "215fb40b7152262655ee77407dd2c754efdb2037b3646498a71dcfb5480ae884",
+      "timestamp": "2026-10-01T22:45:29.203Z",
+      "inputTokens": 474296,
+      "cachedInputTokensSubset": 427264,
+      "cacheWriteInputTokens": 0,
+      "cacheWriteInputTokensSourceFieldPresent": true,
+      "outputTokens": 14347,
+      "reasoningOutputTokensSubset": 475,
+      "totalTokens": 488643,
+      "coverage": "Final cumulative token_count for the worker session containing the initial turn and two revision turns."
+    },
+    {
+      "cell": "pilot-02",
+      "condition": "Direct Codex",
+      "threadId": "01a0f9a5-3f5d-7322-89cc-b44c7a52cd7e",
+      "observedTurnContext": { "model": "gpt-6-astra", "effort": "low", "sourceLines": [8], "coverage": "The single recorded worker turn_context entry." },
+      "source": "~/.codex/sessions/2026/10/02/rollout-2026-10-02T07-45-52-01a0f9a5-3f5d-7322-89cc-b44c7a52cd7e.jsonl",
+      "sourceLine": 49,
+      "sourceSha256": "7228e2b0ede58fcb02351bfc5cbd76f59aaae67d50a316d71a153e43f399700a",
+      "timestamp": "2026-10-01T22:48:33.714Z",
+      "inputTokens": 141628,
+      "cachedInputTokensSubset": 113024,
+      "cacheWriteInputTokens": 0,
+      "cacheWriteInputTokensSourceFieldPresent": true,
+      "outputTokens": 4556,
+      "reasoningOutputTokensSubset": 58,
+      "totalTokens": 146184,
+      "coverage": "Final cumulative token_count for the single direct worker session."
+    }
+  ],
+  "ensemblePmAndJudge": {
+    "source": "app/packages/benchmark/.local/codex-a-pair-v2/reports/pilot-01.json",
+    "sourceSha256": "82feadb70e16cbd0a547738744beb44110c34061e0bcd9daf3adff2bdd2d053f",
+    "coverage": "Five completed native_usage CLI records: two PM and three judge completions.",
+    "records": [
+      { "role": "pm", "inputTokens": 28844, "outputTokens": 187 },
+      { "role": "pm", "inputTokens": 26892, "outputTokens": 92 },
+      { "role": "judge", "inputTokens": 26262, "outputTokens": 262 },
+      { "role": "judge", "inputTokens": 26590, "outputTokens": 280 },
+      { "role": "judge", "inputTokens": 53479, "outputTokens": 290 }
+    ],
+    "inputTokens": 162067,
+    "outputTokens": 1111,
+    "totalTokens": 163178,
+    "cachedInputTokens": null
+  },
+  "observedCombinedTokenTotals": { "pilot-01": 651821, "pilot-02": 146184 },
+  "accounting": "totalTokens = inputTokens + outputTokens. Cached input is already included in input; reasoning output is already included in output. Neither subset is added again. Ensemble combined = worker 488643 + PM/judge 163178.",
+  "underlyingApiCallCounts": null,
+  "costUsd": null,
+  "limitations": [
+    "CLI/session-reported counts, not independently verified billing; no monetary inference.",
+    "Worker counters and PM/judge completion counters have different reporting sources; PM/judge cache detail is unavailable.",
+    "Token-count event frequency is not treated as an underlying API request count.",
+    "These supplement the original unchanged usage:null reports and do not replace them.",
+    "Different original outcomes and partial measurement coverage preclude an equivalent successful-task cost or superiority claim."
+  ]
+}
