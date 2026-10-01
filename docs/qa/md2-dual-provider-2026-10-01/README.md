@@ -1,5 +1,7 @@
 # MD2 local browser QA — 2026-10-01
 
+Follow-up: [the two remaining items are now closed with actual Claude delivery evidence and focused queue analysis/fixes](remaining-items.md). It also corrects the full-log maximum queue wait to 511.111 seconds; earlier values below describe individual observations.
+
 Baseline: `726c54e` (PR #36). Narrow fix: `5e72839`; integrated with main through `776e374` (PR #38) at `31ca433`.
 
 Execution used an independent Git worktree, dedicated localhost ports/data/worker directories, and Playwright Chromium clicks, typing, uploads, downloads and screenshots on Windows. Orca's worktrees/processes and the benchmark workspace were not modified. PM and workers used the selected login-backed Codex or Claude runtimes; the separately labelled fake run is not evidence of real-provider success.

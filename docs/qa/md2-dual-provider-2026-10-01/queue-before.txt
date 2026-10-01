@@ -1,0 +1,34 @@
+
+> test
+> vitest run packages/orchestrator/test/coordination.test.ts
+
+
+ RUN  v5.0.2 <qa-workspace>/ensemble-md2-qa/app
+
+ ??packages/orchestrator/test/coordination.test.ts (98 tests | 1 failed) 326ms
+   횞 checks a new owner message after delayed interpretation before spending a judgement call 10ms
+
+??렞??렞??렞??Failed Tests 1 ??렞??렞??렞??
+ FAIL  packages/orchestrator/test/coordination.test.ts > checks a new owner message after delayed interpretation before spending a judgement call
+AssertionError: expected [ 'interpret_coordination', ??1) ] to deeply equal [ 'interpret_coordination' ]
+
+- Expected
++ Received
+
+  [
+    "interpret_coordination",
++   "judge_coordination",
+  ]
+
+ ??packages/orchestrator/test/coordination.test.ts:303:43
+    301|   const result = await pending;
+    302|   if (authorId === 'owner') {
+    303|     expect(f.calls.map(c => c.forceTool)).toEqual(['interpret_coordina??       |                                           ^
+    304|     expect(result.posts).toEqual([]);
+    305|     expect(result.events).toEqual([expect.objectContaining({ type: 'pm??
+??렞??렞??렞??렞??렞??렞??렞??렞??렞??렞??렞??렞[1/1]??
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 97 passed (98)
+   Start at  01:41:31
+   Duration  1.35s (transform 45%, tests 28%, import 27%)

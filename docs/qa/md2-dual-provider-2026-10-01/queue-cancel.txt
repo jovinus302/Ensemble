@@ -1,0 +1,12 @@
+
+> test
+> vitest run packages/scenarios/test/queue-latency.test.ts
+
+
+ RUN  v5.0.2 <qa-workspace>/ensemble-md2-qa/app
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  01:46:50
+   Duration  1.99s (transform 59%, import 39%, tests 2%)
