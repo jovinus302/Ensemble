@@ -1,0 +1,24 @@
+[
+  {
+    "seq": 47,
+    "type": "message_recorded",
+    "payload": {
+      "messageId": "f2d36907-ad18-4f44-846f-a351be6cb75d",
+      "authorId": "owner",
+      "text": "QA 댓글: 모든 비교는 가상 자료라는 한계를 각 문서 맨 앞에 명시해 주세요.",
+      "threadId": "task:research-1",
+      "attachmentIds": []
+    }
+  },
+  {
+    "seq": 48,
+    "type": "change_notified",
+    "payload": {
+      "changeId": "comment:f2d36907-ad18-4f44-846f-a351be6cb75d",
+      "planVersion": 1,
+      "recipientId": "research-agent",
+      "text": "{\"updateId\":\"comment:f2d36907-ad18-4f44-846f-a351be6cb75d:research-agent:turn\",\"fromVersion\":1,\"toVersion\":1,\"keep\":[],\"drop\":[],\"change\":[\"사용자의 댓글: QA 댓글: 모든 비교는 가상 자료라는 한계를 각 문서 맨 앞에 명시해 주세요.\"],\"reason\":\"사용자가 맡은 작업에 댓글을 남겼습니다. 반영할 것이 있으면 반영하고 이어서 진행하세요\"}",
+      "via": "next_turn"
+    }
+  }
+]

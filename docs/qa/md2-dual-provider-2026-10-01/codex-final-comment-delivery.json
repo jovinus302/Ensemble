@@ -1,0 +1,35 @@
+[
+  {
+    "seq": 45,
+    "type": "message_recorded",
+    "payload": {
+      "messageId": "95fc81ab-ffd2-404d-92ac-6019fc1c6fc3",
+      "authorId": "owner",
+      "text": "QA 댓글: 모든 비교는 가상 자료라는 한계를 각 문서 맨 앞에 명시해 주세요.",
+      "threadId": "task:research-1",
+      "attachmentIds": []
+    }
+  },
+  {
+    "seq": 46,
+    "type": "update_sent",
+    "payload": {
+      "updateId": "comment:95fc81ab-ffd2-404d-92ac-6019fc1c6fc3:research-agent:turn",
+      "taskId": "research-1",
+      "fromVersion": 1,
+      "toVersion": 1,
+      "turnId": "01a0f849-e007-7180-9bc3-ea574ca8e2c4"
+    }
+  },
+  {
+    "seq": 47,
+    "type": "change_notified",
+    "payload": {
+      "changeId": "comment:95fc81ab-ffd2-404d-92ac-6019fc1c6fc3",
+      "planVersion": 1,
+      "recipientId": "research-agent",
+      "text": "{\"updateId\":\"comment:95fc81ab-ffd2-404d-92ac-6019fc1c6fc3:research-agent:turn\",\"fromVersion\":1,\"toVersion\":1,\"keep\":[],\"drop\":[],\"change\":[\"사용자의 댓글: QA 댓글: 모든 비교는 가상 자료라는 한계를 각 문서 맨 앞에 명시해 주세요.\"],\"reason\":\"사용자가 맡은 작업에 댓글을 남겼습니다. 반영할 것이 있으면 반영하고 이어서 진행하세요\"}",
+      "via": "steer"
+    }
+  }
+]

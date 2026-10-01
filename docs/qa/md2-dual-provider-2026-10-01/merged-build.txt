@@ -1,0 +1,111 @@
+
+> build
+> npm run build -w @ensemble/web
+
+
+> @ensemble/web@0.0.0 build
+> next build
+
+??Next.js 16.3.6 (Turbopack)
+??Running next.config.ts took 73ms
+
+  Creating an optimized production build ...
+??Compiled successfully in 3.2s
+  Running TypeScript ...
+  Finished TypeScript in 2.5s ...
+  Collecting page data using 5 workers ...
+  Generating static pages using 5 workers (0/3) ...
+??Generating static pages using 5 workers (3/3) in 1718ms
+  Finalizing page optimization ...
+Turbopack build encountered 3 warnings:
+./packages/agents/src/claude/connector.ts:159:15
+Warning: Dynamic filesystem access causes tracing of the whole project
+  157 | ...
+  158 | ...
+> 159 | ...?? 'claude', args, { cwd: session.workspace, env: process.env, windowsHide: true, stdi...
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  160 | ...
+  161 | ....active = undefined;
+  162 | ...
+
+Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+This can slow down deployments or lead to failures when size limits are exceeded.
+To resolve this, you can
+- make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+- only use them in development, or
+- opt out by adding an ignore comment to the highlighted call: child_process.spawn(/*turbopackIgnore: true*/ ...), or
+- remove them.
+
+Import trace:
+  App Route:
+    ./packages/agents/src/claude/connector.ts
+    ./apps/web/lib/runtime.ts
+    ./apps/web/app/api/[...path]/route.ts
+
+
+./packages/agents/src/codex/rpc.ts:33:18
+Warning: Dynamic filesystem access causes tracing of the whole project
+  31 |   constructor(private readonly options: RpcOptions = {}) {
+  32 |     super();
+> 33 |     this.child = spawn(options.command ?? 'codex', options.args ?? ['app-server'], {
+     |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 34 |       cwd: options.cwd, env: options.env, stdio: 'pipe', windowsHide: true,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 35 |     });
+     | ^^^^^^
+  36 |     this.exited = new Promise(resolve => this.child.once('close', () => resolve()));
+  37 |     this.child.stderr.setEncoding('utf8');
+  38 |     this.child.stderr.on('data', (chunk: string) => { this.stderr = (this.stderr + chunk)....
+
+Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+This can slow down deployments or lead to failures when size limits are exceeded.
+To resolve this, you can
+- make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+- only use them in development, or
+- opt out by adding an ignore comment to the highlighted call: child_process.spawn(/*turbopackIgnore: true*/ ...), or
+- remove them.
+
+Import trace:
+  App Route:
+    ./packages/agents/src/codex/rpc.ts
+    ./packages/agents/src/codex/connector.ts
+    ./apps/web/lib/runtime.ts
+    ./apps/web/app/api/[...path]/route.ts
+
+
+./packages/agents/src/codex/settings.ts:18:27
+Warning: Dynamic filesystem access causes tracing of the whole project
+  16 | ...nite(minutes) || minutes <= 0) throw new Error('ENSEMBLE_AGENT_TURN_TIMEOUT_MINUTES mus...
+  17 | ....ENSEMBLE_AGENT_WORKSPACE_ROOT?.trim();
+> 18 | ...ceRoot: path.resolve(root || path.join(homedir(), 'ensemble-agent-workspaces')), turnTi...
+     |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  19 | ...
+  20 | ...
+
+Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+This can slow down deployments or lead to failures when size limits are exceeded.
+To resolve this, you can
+- make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+- only use them in development, or
+- opt out by adding an ignore comment to the highlighted call: path.resolve(/*turbopackIgnore: true*/ ...), or
+- remove them.
+
+Import trace:
+  App Route:
+    ./packages/agents/src/codex/settings.ts
+    ./apps/web/lib/runtime.ts
+    ./apps/web/app/api/[...path]/route.ts
+
+
+
+Route (app)
+????/
+????/_not-found
+??? /api/[...path]
+
+
+?? (Static)   prerendered as static content
+?  (Dynamic)  server-rendered on demand
