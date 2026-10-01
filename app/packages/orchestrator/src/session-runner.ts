@@ -11,6 +11,8 @@ interface TaskRun {
   input: TaskInstructionsInput;
   turnId?: string;
   updates: Map<string, { input: UpdateInstructionsInput; sent: boolean; dropped: string[] }>;
+  /** Updates the live turn could not take; delivered once it ends. */
+  deferred?: UpdateInstructionsInput[];
   timer?: ReturnType<typeof setTimeout>;
   timedOut?: boolean;
   blocked?: boolean;
@@ -162,6 +164,9 @@ export class SessionRunner {
       if (run && run.input.taskId === taskId && run.turnId && !run.finished && !run.blocked) {
         const steered = await this.steer(run, update, false);
         if (steered.sent) return { via: 'steer', sent: true, turnId: run.turnId };
+        // The live turn keeps running (and its time limit); a new turn carries the update once it ends.
+        if (!run.deferred?.some(deferred => deferred.updateId === update.updateId)) (run.deferred ??= []).push(structuredClone(update));
+        return { via: 'next_turn', sent: false, reason: 'Agent의 지금 턴이 끝나면 이어서 전달됩니다' };
       }
       const state = project(events);
       const task = state.tasks.get(taskId);
@@ -249,6 +254,8 @@ export class SessionRunner {
       clearTimeout(run.timer); run.timer = undefined;
       if (event.status === 'failed') await this.block(run, `Agent 세션 오류: ${event.reason ?? '알 수 없는 오류'}`);
       else if (event.status === 'interrupted' && !run.timedOut) await this.block(run, 'Agent 작업이 중단되었습니다');
+      // Queued behind this observation; deliver decides whether the task can still take them.
+      for (const update of run.deferred?.splice(0) ?? []) void this.deliver(agentId, taskId, update).catch(error => { this.failures.push(error); });
       return;
     }
     const reply = (text: string, suffix: string) => this.event(agentId, 'reply_recorded', { memberId: agentId, taskId, turnId, text }, `reply:${turnId}:${suffix}`);
