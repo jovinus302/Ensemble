@@ -1,0 +1,21 @@
+{
+  "kind": "OFFLINE_VALIDATION_NOT_MODEL_PERFORMANCE",
+  "modelCalls": 0,
+  "tests": {
+    "total": 788,
+    "passed": 788,
+    "failed": 0,
+    "files": 88
+  },
+  "typecheck": "passed",
+  "build": {
+    "status": "passed",
+    "warnings": "Three existing dynamic filesystem tracing warnings in native agent connector/settings code"
+  },
+  "schemaPreflight": {
+    "modelCalls": 0,
+    "negativeUntypedLiteralPaths": 22,
+    "fixedUntypedLiteralPaths": 0
+  },
+  "originalObservationsPreserved": true
+}

@@ -20,7 +20,7 @@ export interface Report {
   schemaVersion: 1; mode: Mode; cell: Cell; blindId: string; baseSha: string; rubricHash: string;
   protocolRevision?: string;
   model: string; effort: string; cacheState: 'cold' | 'warm' | 'unknown'; starterHash: string;
-  status: 'passed' | 'failed' | 'timeout' | 'call_limit' | 'checkpoint_failed' | 'interrupted'; error: string | null;
+  status: 'passed' | 'failed' | 'timeout' | 'call_limit' | 'checkpoint_failed' | 'interrupted' | 'validation_not_run' | 'environment_blocked'; error: string | null;
   preparationMs: number; taskMs: number; totalMs: number; checkpointMs: number | null; changeMs: number | null; afterChangeMs: number | null;
   humanInterventions: unknown[]; humanRequests: unknown[]; checks: Check[]; calls: Budget['calls']; events: unknown[];
   usage: null; costUsd: null; underlyingApiCalls: null; actualModelInvocations: number | null;
@@ -133,6 +133,8 @@ export async function runCell(cell: Cell, services: Services, options: {
   catch (error) {
     report.error = error instanceof Error ? error.message : String(error);
     if (options.signal?.aborted) report.status = 'interrupted';
+    else if (report.error.includes('validation_environment_blocked:')) report.status = 'environment_blocked';
+    else if (report.error.includes('validation_not_run:')) report.status = 'validation_not_run';
     else if (report.error.includes('timeout')) report.status = 'timeout';
     else if (report.error.includes('call_limit')) report.status = 'call_limit';
     else if (report.status !== 'checkpoint_failed') report.status = 'failed';

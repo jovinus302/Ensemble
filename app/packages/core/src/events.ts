@@ -48,6 +48,15 @@ export interface DecisionOption {
    */
   answerText?: string;
 }
+export interface ValidationBinding {
+  projectId: Id; taskId: Id; resultId: Id; planVersion: number; specVersion: number;
+  contextDigest: string; artifactDigest: string; policyFingerprint: string;
+}
+export interface ValidationCheck { id: string; status: 'passed' | 'failed' | 'not_run'; detail?: string }
+export type ValidationStatus = 'awaiting' | 'not_run' | 'environment_blocked' | 'passed' | 'failed' | 'cancelled' | 'expired';
+export interface ValidationEvidence extends ValidationBinding {
+  attemptId: Id; status: ValidationStatus; checks: ValidationCheck[]; summary: string;
+}
 export interface EventPayloads {
   judgement_failed: { triggerId: Id; stage: "interpretation" | "judgement"; reason: string };
   member_joined: { memberId: Id; kind: "human" | "agent"; displayName: string; role?: string };
@@ -60,7 +69,10 @@ export interface EventPayloads {
   estimate_updated: { taskId: Id; hours: { min: number; max: number }; source: "human" | "pm" | "measured" };
   task_start_reserved: { taskId: Id; specVersion: number; trigger: Id };
   task_started: { taskId: Id; turnId?: Id };
-  result_submitted: { taskId: Id; resultId: Id; planVersion: number; summary: string; artifactIds: Id[] };
+  result_submitted: { taskId: Id; resultId: Id; planVersion: number; summary: string; artifactIds: Id[]; artifactPaths?: Record<Id, string>; limitations?: string[] };
+  validation_started: ValidationBinding & { attemptId: Id };
+  validation_finished: ValidationEvidence;
+  validation_cancelled: { taskId: Id; attemptId: Id };
   task_checked: { taskId: Id; resultId: Id; reason: string };
   revision_requested: { taskId: Id; resultId: Id; missing: string[] };
   task_blocked: { taskId: Id; reason: string; unblockBy?: Id };

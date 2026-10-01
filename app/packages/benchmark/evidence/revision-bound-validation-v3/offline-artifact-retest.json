@@ -1,0 +1,198 @@
+{
+  "kind": "OFFLINE_REGRESSION_NOT_LIVE",
+  "modelCalls": 0,
+  "historicalResultsUnchanged": true,
+  "beforeEvaluatorSha256": "e60598a215a568b61ca144afd2862ec568960f82c68b7ed97c5807f0e89ec70b",
+  "afterEvaluatorSha256": "f2d2ae94673746a0b91c6f12ae68097401105b6c9330113ac1dfca313e4ac60c",
+  "results": [
+    {
+      "id": "pilot-01",
+      "sourceSha256": "2c2ab1f924a04a01c7934577516be3006af427ae4b55fefe51340f5bc32ded32",
+      "before": {
+        "checks": [
+          {
+            "id": "checkpoint.selection",
+            "pass": true
+          },
+          {
+            "id": "required-fields.blocked",
+            "pass": true
+          },
+          {
+            "id": "party.one-through-six",
+            "pass": true
+          },
+          {
+            "id": "sold-out",
+            "pass": true
+          },
+          {
+            "id": "service-error",
+            "pass": true
+          },
+          {
+            "id": "confirmation.persistence",
+            "pass": true
+          },
+          {
+            "id": "invalid-party.blocked",
+            "pass": true
+          },
+          {
+            "id": "viewport.390",
+            "pass": true
+          },
+          {
+            "id": "viewport.1440",
+            "pass": true
+          },
+          {
+            "id": "console.clean",
+            "pass": true
+          }
+        ],
+        "passed": true
+      },
+      "after": {
+        "checks": [
+          {
+            "id": "checkpoint.selection",
+            "pass": true
+          },
+          {
+            "id": "required-fields.blocked",
+            "pass": true
+          },
+          {
+            "id": "party.one-through-six",
+            "pass": true
+          },
+          {
+            "id": "sold-out",
+            "pass": true
+          },
+          {
+            "id": "service-error",
+            "pass": true
+          },
+          {
+            "id": "confirmation.persistence",
+            "pass": true
+          },
+          {
+            "id": "invalid-party.blocked",
+            "pass": true
+          },
+          {
+            "id": "viewport.390",
+            "pass": true
+          },
+          {
+            "id": "viewport.1440",
+            "pass": true
+          },
+          {
+            "id": "console.clean",
+            "pass": true
+          }
+        ],
+        "passed": true
+      }
+    },
+    {
+      "id": "pilot-02",
+      "sourceSha256": "b6966959fecfa1e25a86c722d730b5b21c2f7eba403d9fb8ddbe7f62080a8247",
+      "before": {
+        "checks": [
+          {
+            "id": "checkpoint.selection",
+            "pass": true
+          },
+          {
+            "id": "required-fields.blocked",
+            "pass": true
+          },
+          {
+            "id": "party.one-through-six",
+            "pass": true
+          },
+          {
+            "id": "sold-out",
+            "pass": true
+          },
+          {
+            "id": "service-error",
+            "pass": true
+          },
+          {
+            "id": "confirmation.persistence",
+            "pass": false,
+            "detail": "Confirmation does not match selected reservation"
+          },
+          {
+            "id": "invalid-party.blocked",
+            "pass": true
+          },
+          {
+            "id": "viewport.390",
+            "pass": true
+          },
+          {
+            "id": "viewport.1440",
+            "pass": true
+          },
+          {
+            "id": "console.clean",
+            "pass": true
+          }
+        ],
+        "passed": false
+      },
+      "after": {
+        "checks": [
+          {
+            "id": "checkpoint.selection",
+            "pass": true
+          },
+          {
+            "id": "required-fields.blocked",
+            "pass": true
+          },
+          {
+            "id": "party.one-through-six",
+            "pass": true
+          },
+          {
+            "id": "sold-out",
+            "pass": true
+          },
+          {
+            "id": "service-error",
+            "pass": true
+          },
+          {
+            "id": "confirmation.persistence",
+            "pass": true
+          },
+          {
+            "id": "invalid-party.blocked",
+            "pass": true
+          },
+          {
+            "id": "viewport.390",
+            "pass": true
+          },
+          {
+            "id": "viewport.1440",
+            "pass": true
+          },
+          {
+            "id": "console.clean",
+            "pass": true
+          }
+        ],
+        "passed": true
+      }
+    }
+  ]
+}

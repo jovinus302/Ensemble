@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 
-export const BASE_SHA = 'a6bfc345bde634422421c500fad264419bc04ec9';
+export const HISTORICAL_BASE_SHA = 'a6bfc345bde634422421c500fad264419bc04ec9';
+// Re-pin only after the production validation change passes the offline checks.
+export const BASE_SHA = 'c5f300a73e9d4a2499285899b3952209841554e1';
 /** New neutral-role experiment; never pool with legacy prototype-role pilot observations. */
-export const PROTOCOL_REVISION = 'development-brief-v2';
+export const PROTOCOL_REVISION = 'revision-bound-validation-v3';
 export const LIMITS: Readonly<{ totalMs: number; calls: number }> = Object.freeze({ totalMs: 20 * 60_000, calls: 24 });
 export type Provider = 'codex' | 'claude';
 export type Task = 'A' | 'B';
@@ -11,13 +13,16 @@ export type Mode = 'fixture' | 'live';
 export interface Condition { provider: Provider; ensemble: boolean }
 export interface Cell extends Condition { task: Task; ordinal: number; id: string }
 export const RUBRIC = Object.freeze({
-  version: 1, widths: [390, 1440],
+  version: 2, widths: [390, 1440],
   common: ['selection', 'sold-out', 'server-error', 'confirmation', 'reload', 'console', 'layout'],
   changed: ['clear-early-time-with-reason', 'eight-after-18', 'reject-nine', 'edit-save-reload'],
   checkpoint: ['build', 'actual-date-time-guests-selection'],
   interpretation: 'n=1 exploratory only; compare within provider; never infer superiority',
 });
 export const RUBRIC_HASH = createHash('sha256').update(JSON.stringify(RUBRIC)).digest('hex');
+export const VALIDATION_MODEL = Object.freeze({ model: 'gpt-6-astra', effort: 'low' });
+export const VALIDATION_CRITERIA = ['trusted-current-revision-pass', 'worker-limitations-preserved', 'judge-after-validation', 'checked-handoff-same-artifact', 'semantic-browser-pass'] as const;
+export const VALIDATION_CRITERIA_HASH = createHash('sha256').update(JSON.stringify(VALIDATION_CRITERIA)).digest('hex');
 export const PROMPT_A = `Complete this React restaurant booking starter. Date/time/1–6 guests, fixed sold-out and server-error fixtures, visible helpful errors, confirmation, saved booking surviving refresh, and usable unclipped 390/1440px layout. Use the existing local POST /api/reservations fixture. Preserve data-testid contract date,time,guests,submit,confirmation,edit,message. Date 2030-06-15 time 19:00 is sold out; 2030-06-16 time 18:00 returns an error. Offer 17:00,18:00,19:00,20:00. Do not replace build.mjs/server.mjs, change fixtures, install dependencies, access network, change permissions/authentication or incur new payments. The external harness runs node build.mjs and browser acceptance; provide buildable React source. Do not request extra shell permissions or claim an external build was already run. Work only in this starter. Report files and limitations when finished.`;
 export const PROMPT_B_INITIAL = `${PROMPT_A}\nThis task has a staged requirement change. First implement real working date/time/guest controls in buildable source. STOP this turn at that checkpoint, report the source files, and await the next instruction before implementing the rest. The external harness must independently build and exercise the controls before sending the next instruction. Do not invent the later change.`;
 export const PROMPT_CHANGE = `Requirement change: maximum 8 guests. Parties of 7 or 8 may book only at or after 18:00. When guest count makes the chosen time invalid, clear that time and show the reason. Permit editing after confirmation; save and reload must show the edited values. Reject 9 guests. Complete all original requirements under this change and build successfully.`;
@@ -29,6 +34,22 @@ export function plan(): Cell[] {
     ['B', 'claude', true], ['B', 'claude', false], ['B', 'codex', false], ['B', 'codex', true],
   ].map(([task, provider, ensemble], i) => ({ task: task as Task, provider: provider as Provider,
     ensemble: ensemble as boolean, ordinal: i + 1, id: `pilot-${String(i + 1).padStart(2, '0')}` }));
+}
+/** The one remaining authorized slot verifies the new path, not a paired performance comparison. */
+export function validationPlan(): Cell[] {
+  return [{ task: 'A', provider: 'codex', ensemble: true, ordinal: 8, id: 'validation-08' }];
+}
+export function validationApproval(value: unknown, hashes: { starterHash: string; evaluatorHash: string; implementationHash: string }): void {
+  const a = value as Record<string, unknown> | null;
+  if (!a || a.liveValidationRuns !== 1 || a.liveEightRuns !== undefined || a.livePairedRuns !== undefined
+    || a.previousConservativeAttempts !== 7 || a.totalAuthorizedSlots !== 8 || a.reruns !== false
+    || a.provider !== 'codex' || a.task !== 'A' || a.ensemble !== true
+    || a.model !== VALIDATION_MODEL.model || a.effort !== VALIDATION_MODEL.effort
+    || a.baseSha !== BASE_SHA || a.rubricHash !== RUBRIC_HASH || a.criteriaHash !== VALIDATION_CRITERIA_HASH
+    || typeof a.source !== 'string' || !a.source.trim() || typeof a.approvedBy !== 'string' || !a.approvedBy.trim()
+    || a.toolsMatched !== true || Object.entries(hashes).some(([key, expected]) => a[key] !== expected)) {
+    throw new Error('Exactly one explicitly approved current-revision Ensemble validation run is required; prior approvals and retries are forbidden');
+  }
 }
 export function approval(value: unknown, hashes?: { starterHash: string; evaluatorHash: string; implementationHash: string }): void {
   const a = value as Record<string, unknown> | null;

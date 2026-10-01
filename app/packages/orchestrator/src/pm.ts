@@ -15,9 +15,10 @@ import { decideAuthority } from './authority-flow.ts';
 import { decideRequest, type DecideExtra, type DecisionFlowOptions } from './decision-flow.ts';
 import { runSweep } from './sweep.ts';
 import { runDigest } from './digest.ts';
+import type { ValidationOptions } from './validation.ts';
 
 export interface MessageAttachment { name: string; mimeType: string; content: string; contentBase64?: string; taskId?: string }
-export interface ProjectManagerOptions extends EventContext {
+export interface ProjectManagerOptions extends EventContext, ValidationOptions {
   store: LedgerStore;
   llm: LlmProvider;
   connector: SessionConnector;
@@ -84,6 +85,7 @@ export class ProjectManager {
     this.sessions = new SessionRunner(options.connector, options.store, this.context, { turnTimeoutMs: options.turnTimeoutMs,
       onBlocked: blocked => { void this.enqueue(() => this.blockedNotice(blocked)).then(posts => { this.background.push(...posts); }).catch(error => this.failures.push(error)); } });
     this.dispatcher = new Dispatcher({ store: options.store, llm: options.llm, model: options.model, context: this.context, clock: options.clock, decisionSettings: options.decisionSettings,
+      trustedValidator: options.trustedValidator, requireValidation: options.requireValidation, validationTimeoutMs: options.validationTimeoutMs,
       connector: { startTask: async (agentId, input) => {
         await this.sessions.startSession(agentId);
         return this.sessions.startTask(agentId, input);
@@ -280,7 +282,10 @@ export class ProjectManager {
   }
   private async readResult(result: SubmittedResult): Promise<ResultContent> {
     const contents = this.options.readResult ? await this.options.readResult(result) : {};
-    for (const event of await this.read() as AnyEvent[]) {
+    const events = await this.read() as AnyEvent[];
+    const submittedAt = events.findLast(event => event.type === 'result_submitted' && event.payload.resultId === result.resultId && event.payload.taskId === result.taskId)?.seq ?? Infinity;
+    for (const event of events) {
+      if (event.seq > submittedAt) continue;
       if (event.type !== 'attachment_recorded' || !result.artifactIds.includes(event.payload.attachmentId)) continue;
       const match = /^data:[^,]*;base64,(.*)$/s.exec(event.payload.uri);
       if (match) contents[event.payload.attachmentId] = Buffer.from(match[1]!, 'base64').toString('utf8');
@@ -666,7 +671,7 @@ export class ProjectManager {
    */
   private async review(taskId: string, resultId: string, recheck?: { by: string; trigger: string }): Promise<PmPost[]> {
     const outcome = await this.dispatcher.onResultSubmitted(taskId, resultId);
-    let notices = outcome.kind === 'revision' || outcome.kind === 'deferred' ? [outcome.notice].filter(Boolean)
+    let notices = outcome.kind === 'revision' || outcome.kind === 'deferred' || outcome.kind === 'validation_pending' ? [outcome.notice].filter(Boolean)
       : outcome.kind === 'error' ? [outcome.message]
       : outcome.kind === 'checked' ? [...await this.acceptedNotice(taskId, resultId, recheck?.by), ...outcome.notices, ...outcome.failures, ...(outcome.limitNotice ? [outcome.limitNotice] : []), ...this.allCheckedNotice(project(await this.read()))] : [];
     let considerationId: string | undefined;
@@ -821,5 +826,7 @@ export class ProjectManager {
     if (this.failures.length) throw new AggregateError(this.failures.splice(0), 'PM session routing failed');
     return this.background.splice(0);
   }
-  async stop(): Promise<void> { this.unsubscribe(); await this.sessions.stop(); await this.flush(); }
+  cancelValidation(taskId?: string): Promise<void> { return this.dispatcher.cancelValidation(taskId); }
+  retryValidation(taskId: string, resultId: string): Promise<ResultOutcome> { return this.dispatcher.onResultSubmitted(taskId, resultId, true); }
+  async stop(): Promise<void> { await this.dispatcher.cancelValidation(); this.unsubscribe(); await this.sessions.stop(); await this.flush(); }
 }
