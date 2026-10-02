@@ -1,6 +1,14 @@
-# Ensemble Product State 모델 (정본)
+# Ensemble Product State 모델 (설계 정본 · 미구현)
 
 상태: Phase 0 확정 전제 및 설계안. 2026-09-28. 개념 배경은 §1.1~§1.3과 §6.1에 통합했다. Ensemble의 제품 의도는 `intent.md` 참조.
+
+> **현재 상태 확인 — 2026-10-02, main `c91234a`**: 이 문서의 정본은 **미래 ProductState 설계의 정본**을 뜻한다. 아래 Desired/Actual·criterion·`computeGap`·제품 상태 승인 카드·goal 달성 전이는 현재 구현됐다는 설명이 아니다. 현재 실행 상태는 [core 이벤트](../app/packages/core/src/events.ts), [ProjectState projection](../app/packages/core/src/projection.ts), [작업 모델](work-model.md)을 따른다. 9월 28일 선택 근거와 미결 질문은 유지한다.
+
+### 현재 제출물 검증과의 구분
+
+[PR #52](https://github.com/jovinus302/Ensemble/pull/52)는 [host 주입 검증기](../app/packages/orchestrator/src/validation.ts)를 통한 제출물 검증 → judge → 작업 인계를 추가했다. `validation.status = passed`는 해당 제출물에 대해 host가 실행한 검사의 통과이며, 아래 ProductState criterion의 `passed`나 목표 달성 승인이 아니다. 검증기 없는 source review는 `not_run`이고, 필수 검증 옵션을 켜지 않은 프로젝트까지 실행 검증을 보장하지 않는다.
+
+benchmark에는 고정 build/browser 실행기가 있지만, 이를 범용 CI 호스팅이나 이 설계의 evidence/requirement 모델 완성으로 해석하지 않는다. [v4 관측 근거](../app/packages/benchmark/evidence/paired-validation-v4/README.md)에는 human reopen 요구사항과 checkpoint/final phase의 digest 바인딩 한계가 남는다. 이 절은 구현과 설계의 경계를 설명하며 아래 권한·증거·비호스팅 원칙을 새 정책으로 바꾸지 않는다.
 
 > **용어 표기 안내**: 이 문서에서 팀이 만들고 있는 대상은 **대상 제품**(Product State의 주체)이라 부른다. 모든 `product`/`product_id` 식별자는 `target_product`/`target_product_id`로 표기한다(`can_decide(target_product, user, kind)`, `computeGap(target_product)`, `project.target_product_id` 등). Ensemble 자신은 항상 "Ensemble"로 쓰고 "제품" 한 단어로 Ensemble을 가리키지 않는다. "Product State"는 "대상 제품의 상태"로 정의한다. `intent.md`의 "AI PM", "Agent/실행 Agent", "사람/사용자" 용어는 이 문서에서도 같은 의미로 쓴다. 이 문서의 "결정권자"는 intent.md의 "사용자"에 해당하는, 대상 제품에 대한 결정 권한을 가진 역할이다(MVP는 1인).
 

@@ -1,5 +1,16 @@
 # AI PM agent — 사용자 결정과 확인된 사실 (계획 입력)
 
+> **현재 읽기 기준 — 2026-10-02, main `c91234a`**: §1~§4는 9월 28일 사용자 결정·실험·미결 질문의 기록이다. §2.1의 모델 가용성과 proxy 동작은 당시 관측으로 현재 접속을 보장하지 않는다. §2.2의 “뼈대만 있다”는 현재 현황이 아니다. ProductState 문서는 **설계 정본**이며 현재 구현 명세가 아니다. 원문과 후속 결정을 지우지 않고 아래 대조를 추가한다.
+
+### 후속 구현 대조 (2026-10-02)
+
+- 실행 Agent의 [Codex·Claude 연결](../app/packages/agents/src/index.ts), PM의 [API·Codex CLI·Claude CLI 선택](../app/packages/llm/src/runtime.ts)이 구현돼 있다. `pmRuntimeFromEnv()` 헬퍼의 기본 경로는 `api`, standalone CLI 기본 effort는 `medium`, 호출 timeout은 5분이다. 웹 Codex PM의 app-server 경로는 기본 `low`·90초로 다르다. 실행 경로별 기본값은 [아키텍처](mvp-architecture.md)를 확인한다. 실제 모델·계정은 실행 설정에 달린다. §1.1의 proxy 결정이 모든 경로를 독점하지 않는다.
+- §4의 자동 행동 상한은 [상태 변경 12회](../app/packages/core/src/action-limit.ts)로 구현됐다. 발언과 장부 기록은 상한을 쓰지 않는다. 가용 시간·작업 추정·일별 요약의 현재 범위는 [작업 모델](work-model.md)을 따른다.
+- [PR #49](https://github.com/jovinus302/Ensemble/pull/49)의 [Coordinator](../app/packages/orchestrator/src/coordination.ts)는 같은 작성자의 새 일반 메시지 저장 후 이전 조율 요청을 취소하고 최신 원장을 확인한다. 첨부·작업 스레드·카드 답변을 무조건 건너뛰는 기능이나 Agent steering은 아니다. [회귀 테스트](../app/packages/orchestrator/test/coordination.test.ts)가 경계를 다룬다.
+- [PR #52](https://github.com/jovinus302/Ensemble/pull/52)의 [제출물 검증](../app/packages/orchestrator/src/validation.ts)은 host 근거를 제출물·작업·계획·정책에 묶고, 필수 검증 모드에서 측정 통과 뒤 judge가 인계를 판단하게 한다. 검증기 없는 source review는 `not_run`이며 실측 통과로 주장하지 않는다. 취소·재검증·stale 근거 차단은 [테스트](../app/packages/orchestrator/test/validation.test.ts)를 참조한다.
+- [v4 관측 기록](../app/packages/benchmark/evidence/paired-validation-v4/README.md)에는 human reopen 조건과 checkpoint/final phase가 context/policy digest에 명시되지 않는 한계가 남는다. 새 제출물의 전체 검증을 확인한 관측을 일반적인 요구사항 바인딩 완전성으로 확대하지 않는다.
+- ProductState criterion `passed`·`computeGap`·목표 승인은 [미구현 설계](product-state-model.md)다. 제출물 `validation.status = passed`나 작업 `checked`와 구분한다. §1.4의 “intent.md를 고치지 않는다”는 당시 계획 작성 범위의 기록으로 보존하며, 이번 갱신은 이후 구현 상태를 별도로 표시한다.
+
 > 2026-09-28 대화에서 사용자가 정한 것과 실제로 확인한 사실만 모았다. 계획서가 아니다. PM agent 구현 계획은 이 문서를 입력으로 새로 쓴다.
 > 제품 의도는 `intent.md`, 데이터 모델·규칙은 `docs/product-state-model.md`, 코드 구조는 `docs/mvp-architecture.md`가 정본이다. 이 문서의 결정이 그 문서들과 다르면 이 문서가 우선한다(§3에 충돌 지점을 적었다).
 

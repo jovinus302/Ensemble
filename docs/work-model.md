@@ -1,5 +1,35 @@
 # 작업 항목·결정 요청 모델 (확정본)
 
+## 현행 동작 보충 — 2026-10-02
+
+이 절은 `main@c91234a` 코드로 확인한 현재 안내다. 아래의 이슈 #26 중심 설명은 당시 작업 모델 기록으로 보존하며, 이후 변경과 충돌하면 이 절을 우선한다. 실행 설정은 [아키텍처 현행 안내](mvp-architecture.md#현행-구현--2026-10-02), 시작 방법은 [README](../README.md)를 참고한다.
+
+### 제출, 검증, 최종 판정
+
+작업의 `checked`는 인계 판정 상태다. 모든 `checked`가 빌드·브라우저 테스트를 실행했다는 뜻은 아니다. PR #52의 호스트 주입형 `TrustedValidator`는 작업자가 제출한 파일의 전체 내용, 원래 상대 경로와 자기보고 한계를 받는다. 작업자에게 검증기 실행 권한을 주거나 작업자 보고를 측정 증거로 승격하지 않는다.
+
+- 호스트 검증을 설정하면 제출 → `validation_started` → `validation_finished` → 최종 judge 순서로 진행한다. `failed`는 측정된 구현 실패로서 수정 요청을 만들고, `environment_blocked`·`not_run`은 구현 결함으로 취급하지 않는다.
+- `requireValidation: true`에서는 현재 제출에 연결된 `passed` 증거가 있어야 judge 및 수동 수락 경로를 통과할 수 있다. 환경 문제나 미실행은 제출 상태에서 대기한다. 검증 통과만으로 `checked`가 되지는 않는다.
+- 일반 웹 앱은 현재 검증기를 주입하지 않으며 UI·환경변수 opt-in도 제공하지 않는다. `trustedValidator`와 `requireValidation`은 `ProjectManager`를 구성하는 호스트 코드의 옵션이다. 기본 소스 검토는 유지하고 검증은 `not_run`으로 표시한다. 벤치마크의 빌드·브라우저 검증 설정은 일반 앱의 기본 기능이 아니다.
+- 증거는 프로젝트·작업·결과 ID, 계획/작업 버전, 제출물 digest, 문맥 digest와 정책 fingerprint에 연결된다. 비동기 검증과 judge 뒤에도 현재성을 확인한다. 취소·만료·중복 재시도와 늦은 결과를 구분하며, `cancelValidation`·`retryValidation`은 호스트 API다.
+- 작업자의 `limitations`는 원장과 judge 입력에 자기보고로 전달된다. 제출 뒤 같은 첨부 ID로 추가한 파일은 이미 제출된 내용의 대체본이 되지 않는다.
+
+근거: [이벤트](../app/packages/core/src/events.ts), [검증기](../app/packages/orchestrator/src/validation.ts), [dispatch](../app/packages/orchestrator/src/dispatch.ts), [파일 수집](../app/packages/orchestrator/src/session-runner.ts), [PM](../app/packages/orchestrator/src/pm.ts).
+
+### 같은 계획 버전의 변경과 감사 범위
+
+확인된 결과를 사람이 다시 열면 `revision_requested`와 `update_sent`로 요구사항을 전달할 수 있다. 이 경로는 반드시 계획 버전을 올리는 것은 아니다. `reopenRequests()`가 요청을 최종 인계 조건에 더한다. 따라서 “모든 요구사항 변경은 계획 vN+1”이라는 설명은 이 경로에 적용되지 않는다.
+
+현재 `contextDigest`는 목표·계획·결정과 관련 이벤트 순서를 해시하며, 재개 요청이나 모든 메시지·업데이트를 포괄하는 최신 요구사항 해시는 아니다. 같은 digest만으로 증거 재사용을 판단하면 안 된다. 결과 ID, 제출물 digest, 검증 시도와 실제 조건도 확인해야 한다. v4의 실제 사례와 범위는 [바인딩 감사](../app/packages/benchmark/evidence/paired-validation-v4/binding-audit-v4-05.json)에 남아 있다.
+
+### 대화 선점과 하루 요약
+
+PR #49의 선점은 같은 작성자가 채널에 연속으로 보낸, 첨부와 작업 스레드가 없는 메시지의 PM 조정 판단에 한정된다. 새 입력을 원장에 먼저 기록한 뒤 이전 판단을 중단하고, 원래 메시지는 보존한다. 카드 응답·첨부·작업 댓글을 취소하거나 실행 중인 모든 worker를 중단하는 기능은 아니다. 근거: [Coordinator](../app/packages/orchestrator/src/coordination.ts).
+
+하루 요약은 이미 구현되어 있다. 자유 진행 프로젝트의 서버가 실행 중일 때 5분 주기로 점검하고, 서울 시간 09:00 이후 하루 한 번을 기준으로 변경이 있는 사람의 완료·새 작업·결정 요청을 코드 템플릿으로 요약한다. `ENSEMBLE_DIGEST=off`로 끌 수 있다. 외부 예약 서비스나 추가 LLM 호출은 사용하지 않는다. 근거: [digest](../app/packages/orchestrator/src/digest.ts), [실행 타이머](../app/apps/web/lib/runtime.ts).
+
+---
+
 > 이슈 #26 설계안을 main에 병합된 코드 기준으로 다시 쓴 확정본이다(2026-10-02). 설계안과 코드가 다른 곳은 **코드를 적고** "설계와 다름"으로 표시했다.
 > 결정의 이유는 `docs/pm-agent-decisions.md` §5, 모듈 위치는 `docs/mvp-architecture.md` §3.1에 있다. 경로는 모두 `app/` 기준이다.
 

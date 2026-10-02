@@ -1,5 +1,26 @@
 # Ensemble MVP 범위 — 핵심 기능
 
+## 현재 범위와 과거 결정의 구분 — 2026-10-02
+
+이 절은 `main@c91234a`를 확인한 현재 범위다. **아래 2026-09-28의 6개 기능 표와 단계 구분은 당시 합의 기록**이며, 현행 구현 여부를 판정하는 목록이 아니다. 현재 실행법은 [README](../README.md), 런타임별 차이는 [아키텍처](mvp-architecture.md#현행-구현--2026-10-02)를 따른다.
+
+| 주제 | 현재 구현 | 남은 경계 |
+|---|---|---|
+| PM 실행 | `api`, `codex`, `claude`, `fake` 선택 | worker 런타임과 별도 설정. CLI 설치·로그인·사용 가능한 모델은 사용자 환경에 의존 |
+| 실행 Agent | `codex`, `claude`, `fake` 연결 | Claude가 아래 F2의 “나중에”에만 해당하던 시점은 지남. 앱의 실제 worker 작업 공간은 저장소 밖이어야 함 |
+| 대화 변경 | 새 채널 입력의 원장 우선 저장, 같은 작성자의 후속 일반 메시지에 의한 이전 PM 판단 선점(PR #49) | 첨부·카드·작업 댓글 또는 모든 worker 실행을 일괄 취소하는 기능은 아님 |
+| 결과 인계 | 소스 검토와 별도로 호스트 주입형 제출물 검증, 자기보고 한계 전달(PR #52) | 일반 앱은 기본 검증기 미설정. `checked`를 자동 빌드·브라우저 통과와 동일시하지 않음 |
+| 정체 점검·하루 요약 | 자유 진행 서버의 5분 점검, 서울 09:00 이후 일일 변경 요약, 기본 활성 | 서버가 꺼져 있어도 동작하는 외부 스케줄러는 아님 |
+| 비교 평가 | 독립된 benchmark 패키지와 버전별 공개 증거 | 소수 파일럿 결과를 일반적인 우월성이나 제품 기본 동작으로 해석하지 않음 |
+
+검증이 필요한 호스트는 `TrustedValidator`와 `requireValidation: true`를 설정한다. 측정 실패는 수정 대상으로, 미실행·환경 차단은 검증 대기로 구분한다. 검증 통과 후에도 최종 인계 판정을 거친다. 상세 상태·취소·재시도 및 문맥 digest의 범위는 [작업 모델 현행 보충](work-model.md#현행-동작-보충--2026-10-02)에 있다.
+
+현행 근거: [웹 런타임](../app/apps/web/lib/runtime.ts), [PM 조정](../app/packages/orchestrator/src/coordination.ts), [검증](../app/packages/orchestrator/src/validation.ts), [하루 요약](../app/packages/orchestrator/src/digest.ts), [v4 증거](../app/packages/benchmark/evidence/paired-validation-v4/README.md). 이 문서 갱신은 모델 호출이나 새 기능 검증 실행을 포함하지 않는다.
+
+---
+
+## 2026-09-28 범위 결정 기록
+
 > 2026-09-28 사용자 요청 "범위를 좁히되 핵심 feature로 정리"에 따라 정리했다. 기준은 사용자가 강조한 네 가지: PM의 조율 → 계획 반영 → 공유, 사람↔Agent 맥락 연결, 기한·배정 판단, 세션 기반 실행 Agent. 이 넷에 직접 필요하지 않은 것은 뒤로 미룬다.
 > 함께 읽을 것: `docs/pm-agent-decisions.md`(사용자 결정), `docs/pm-principles.md`(PM 발언 철학). 이전 초안 `docs/pm-agent-plan.md`는 이 범위로 다시 쓴다.
 

@@ -1,5 +1,7 @@
 # MD2 local browser QA — 2026-10-01
 
+> Historical QA snapshot (2026-10-01). The results, failure counts, environment blockers and pending work below describe that run, not the current main merge status. For the later, separately scoped eight-cell benchmark merged in [PR #53](https://github.com/jovinus302/Ensemble/pull/53), see the [v4 results](../../../app/packages/benchmark/evidence/paired-validation-v4/README.md). Those results do not retroactively pass this snapshot's blocked checks or replace its evidence. Current documentation was reconciled against `main@c91234a` on 2026-10-02.
+
 Follow-up: [completed Claude delivery and obsolete-judgement fixes, validation, and commit-pinned evidence are recorded in issue #46](https://github.com/jovinus302/Ensemble/issues/46). [Remaining provider response/queue latency is tracked separately in open issue #47](https://github.com/jovinus302/Ensemble/issues/47). The full-log maximum queue wait is 511.111 seconds; earlier values below describe individual observations.
 
 Baseline: `726c54e` (PR #36). Narrow fix: `5e72839`; integrated with main through `776e374` (PR #38) at `31ca433`.

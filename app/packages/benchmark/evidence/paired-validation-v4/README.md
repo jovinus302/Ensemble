@@ -32,7 +32,7 @@ For each A pair, Ensemble made 2 PM + 1 worker + 1 judge top-level attempts vers
 
 This batch is separate from the invalid legacy pilot, the corrected Codex A pair, and the single v3 validation observation. Those eight earlier slots remain consumed and their data/verdicts remain unchanged. The user explicitly approved eight new slots after being told that history (Sentinel_44444b08f3fc8191bf1bf2dc740c6247). Each cell is attempted once; no automatic rerun or model substitution.
 
-Production baseline: `main@7cd8de808caf046e0bcc3894a27054dca133d987` (merged PR #52). Benchmark-only preflight corrections and final adapter/evaluator hashes are frozen before launch. No production dependency changes are planned.
+Production baseline: `main@7cd8de808caf046e0bcc3894a27054dca133d987` (merged PR #52). Benchmark-only preflight corrections and final adapter/evaluator hashes are frozen before launch. Production dependencies were held at that baseline during the experiment.
 
 [preregistration.json](preregistration.json) records the frozen model configuration, source/evaluator/implementation hashes, approval scope, stop policy and original execution order. Its implementation commit is `74f8abcfe81fb3493cedb8162509f26b8d86e49d`. Earlier observations and offline retests remain separate evidence; none is substituted into this table.
 
@@ -53,7 +53,7 @@ Each cell has a 20-minute total deadline and 24 top-level CLI request/turn attem
 
 Acceptance remains semantic date/time/party functionality, fixed error fixtures, confirmation/persistence, 390/1440px layout and console; B adds maximum/early-time invalidation with explanation and edit/save/reload. A does not require functional edit. Fixture positives and negative controls are provider-free and never performance observations. Any identified harness/orchestration design defect stops the remaining batch; corrections require a distinct version rather than pooling mixed criteria.
 
-Results are n=1 exploratory within-provider comparisons, not statistical superiority evidence. Failures, timeouts, unavailable models and interruptions remain observations. No extra slots beyond these eight are authorized. The result PR will remain a draft; PR #51 is outside this scope.
+Results are n=1 exploratory within-provider comparisons, not statistical superiority evidence. Failures, timeouts, unavailable models and interruptions remain observations. No extra slots beyond these eight are authorized. The results were merged in [PR #53](https://github.com/jovinus302/Ensemble/pull/53). [PR #51](https://github.com/jovinus302/Ensemble/pull/51) remains a separate draft. This publication status update does not change the frozen experiment baseline, primary observations or evidence hashes.
 
 ## Timing and usage interpretation
 

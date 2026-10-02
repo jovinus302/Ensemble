@@ -1,4 +1,19 @@
-# AI PM 구현 계획
+# AI PM 구현 계획 — 2026-09-28 계획과 현재 구현 대조
+
+## 읽기 기준 (2026-10-02, main `c91234a`)
+
+F1~F6, M1~M4와 마지막 질문은 **2026-09-28 당시 계획 기록**이다. 아래 “구현할 내용”, “이번에 만들지 않는다”, 예정 파일·이벤트명은 현재 기능 목록이 아니다. 원래 계획은 보존한다. 현재 범위는 [MVP 범위](mvp-scope.md), 실행 방법은 [README](../README.md), 상태와 권한은 [작업 모델](work-model.md)을 먼저 본다.
+
+| 항목 | 기준 커밋의 구현과 경계 |
+|---|---|
+| 런타임 | 실행 Agent에 [Codex·Claude 커넥터](../app/packages/agents/src/index.ts), PM에 [API·Codex CLI·Claude CLI 선택](../app/packages/llm/src/runtime.ts)이 있다. 아래 “Claude 연결 제외”, “PM proxy 유지”는 최초 범위이며 현재 제한이 아니다. |
+| 조율·인계 | [ProjectManager](../app/packages/orchestrator/src/pm.ts), [Coordinator](../app/packages/orchestrator/src/coordination.ts), [Dispatcher](../app/packages/orchestrator/src/dispatch.ts), [SessionRunner](../app/packages/orchestrator/src/session-runner.ts)가 구현돼 있다. 현재 이벤트 이름과 전이는 실제 코드·작업 모델을 따른다. |
+| 오래된 PM 판단 중단 | [PR #49](https://github.com/jovinus302/Ensemble/pull/49): 같은 작성자의 새 일반 메시지가 원장에 저장되면 이전 조율 판단을 취소할 수 있다. 첨부·작업 스레드·카드 답변은 이 대체 대상이 아니다. Agent mid-turn steering과 별개이며 대기·호출 시간도 기록한다. |
+| 검증 뒤 인계 | [PR #52](https://github.com/jovinus302/Ensemble/pull/52): host 주입 [TrustedValidator](../app/packages/orchestrator/src/validation.ts)와 `requireValidation`을 제공한다. 필수 모드에서는 현재 제출물 검증 뒤 judge로 넘기고, 구현 실패와 `not_run`·`environment_blocked`를 구분한다. worker 검증 한계도 보존한다. 모든 프로젝트에서 실행 검증이 자동 활성화되지는 않는다. |
+| 검증 경계 | ProductState의 criterion `passed`, 목표 승인 카드, `computeGap`은 [설계안](product-state-model.md)이다. [v4 비교 기록](../app/packages/benchmark/evidence/paired-validation-v4/README.md)은 n=1 관측이며 human reopen 조건·검증 phase의 digest 바인딩 한계도 남아 있다. |
+| 자동 행동 상한 | [현재 코드](../app/packages/core/src/action-limit.ts)는 상태 변경 행동 12회를 센다. 발언과 장부 기록은 세지 않는다. 아래 마지막 표의 “자동 발언 포함 12회”는 과거 추천안이다. |
+
+## 2026-09-28 계획 원문
 
 이번 MVP의 PM은 채널 하나에서 사람 2명과 실행 Agent 2명의 일을 잇는다. 목표와 가용 시간으로 계획을 제안하고, 결과물의 인계 조건을 살펴 다음 작업을 시작한다. 자연스러운 대화에서 필요한 순간에만 말하고, 결론을 계획과 관련 담당자에게 반영한다. 기한 예측은 코드가 계산하고 실행은 Codex 세션이 맡는다. 검증 승인 카드·`passed`·목표 달성 승인·`computeGap`, Claude Code 연결, 여러 채널, 정교한 복구·최적 배정은 이번에 만들지 않는다.
 

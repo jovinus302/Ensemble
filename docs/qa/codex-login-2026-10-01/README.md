@@ -1,5 +1,7 @@
 # Codex login PM and browser QA — 2026-10-01
 
+> Historical QA snapshot (2026-10-01). The results, failure counts, environment blockers and pending work below describe that run, not the current main merge status. For the later, separately scoped eight-cell benchmark merged in [PR #53](https://github.com/jovinus302/Ensemble/pull/53), see the [v4 results](../../../app/packages/benchmark/evidence/paired-validation-v4/README.md). Those results do not retroactively pass this snapshot's blocked checks or replace its evidence. Current documentation was reconciled against `main@c91234a` on 2026-10-02.
+
 Status: **draft / not merge-ready**. Real Codex PM judgments work. The managed cloud's nested Codex worker sandbox cannot launch commands or write artifacts; neither the scripted nor the free scenario has passed final-artifact verification. No API/Claude fallback, fake worker completion, sandbox bypass, deployment, or credential copy was used.
 
 ## Implementation

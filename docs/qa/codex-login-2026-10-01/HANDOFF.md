@@ -1,5 +1,7 @@
 # Local worktree handoff
 
+> Historical QA snapshot (2026-10-01). The results, failure counts, environment blockers and pending work below describe that run, not the current main merge status. For the later, separately scoped eight-cell benchmark merged in [PR #53](https://github.com/jovinus302/Ensemble/pull/53), see the [v4 results](../../../app/packages/benchmark/evidence/paired-validation-v4/README.md). Those results do not retroactively pass this snapshot's blocked checks or replace its evidence. Current documentation was reconciled against `main@c91234a` on 2026-10-02.
+
 Cloud work stopped at the user's request on 2026-10-01 13:12 UTC. No further cloud feature work, QA expansion or merge is authorized by this handoff. Continue in a separate local worktree so the user's concurrent Orca work is untouched.
 
 - Remote branch: `codex/pm-login-browser-qa`

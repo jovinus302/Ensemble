@@ -1,5 +1,41 @@
 # Ensemble MVP 아키텍처 (M0 결정)
 
+## 현행 구현 — 2026-10-02
+
+확인 기준은 `main@c91234a`다. 아래 2026-09-28 환경 확인·M0 배치는 당시의 기록이며, 공급자 모델 목록·인증·네트워크 가능 여부를 현재 환경에 대한 보장으로 읽지 않는다. 이 절이 실행 경로와 기본값을 보충·대체한다. 시작 명령은 [README](../README.md), 제품 범위는 [MVP 범위](mvp-scope.md)를 참고한다.
+
+### 웹 앱의 PM과 worker는 별도 선택
+
+| 설정 | 웹 앱의 현재 경로/기본값 |
+|---|---|
+| `ENSEMBLE_PM_RUNTIME=api` | 기본값. Anthropic Messages API 호환 provider. 모델 환경변수는 `ENSEMBLE_MODEL_PM` → `ENSEMBLE_MODEL` → 코드 기본 `claude-sonnet-5` |
+| `ENSEMBLE_PM_RUNTIME=codex` | 웹 앱은 `CodexLlmProvider`의 app-server 경로. 기본 effort `low`, 호출 제한 1.5분. `ENSEMBLE_PM_TIMEOUT_MS`가 있으면 우선, 없으면 `ENSEMBLE_PM_TIMEOUT_MINUTES` 사용 |
+| `ENSEMBLE_PM_RUNTIME=claude` | `pmRuntimeFromEnv()`의 `ClaudeCliProvider` (`claude -p` 구조화 JSON). 기본 effort `medium`, 호출 제한 5분 |
+| `ENSEMBLE_PM_RUNTIME=fake` | 웹 앱의 규칙 기반 `FakePmLlm`; 실제 모델 평가 결과가 아님 |
+| `ENSEMBLE_AGENT_RUNTIME` | `fake`가 기본. 실제 실행은 `codex` app-server 또는 `claude` CLI connector. `ENSEMBLE_MODEL_AGENT`가 없으면 connector/사용자 런타임 기본 모델을 유지 |
+
+웹 앱의 Codex PM 경로와 독립 CLI 도구가 사용하는 `pmRuntimeFromEnv()`를 혼동하지 않는다. 후자는 `api/codex/claude`만 다루고, Codex는 `codex exec` 기반 `CodexCliProvider`, CLI 공통 기본 effort `medium`·제한 5분이다. `fake` 선택은 웹 런타임이 처리한다. 특히 아래의 CLI 설명은 모든 웹 PM 호출이 `codex exec`라는 뜻이 아니다.
+
+웹 앱은 Claude PM에도 `modelFor('pm', 'anthropic')`의 모델 값을 요청에 전달하므로, 별도 설정이 없으면 코드 기본 `claude-sonnet-5`가 적용된다. 독립 Claude CLI factory의 자체 기본 모델 유지와 다르다. `ENSEMBLE_MODEL_PM`을 명시하면 런타임 간 모델 이름 혼동을 줄일 수 있다. 현재 모델 가용성·요금·로그인 상태를 이 문서가 검사하거나 보장하지는 않는다. 실제 worker 작업 공간은 `ENSEMBLE_AGENT_WORKSPACE_ROOT`로 지정하며 웹 앱은 저장소 내부 경로를 거절한다. 근거: [웹 런타임](../app/apps/web/lib/runtime.ts), [공통 PM 선택](../app/packages/llm/src/runtime.ts), [모델 선택](../app/packages/llm/src/env.ts), [Codex PM app-server](../app/packages/agents/src/codex/llm.ts).
+
+### 조정 판단의 선점과 백그라운드 점검
+
+[Coordinator](../app/packages/orchestrator/src/coordination.ts)는 PR #49 이후 같은 작성자의 새로운 일반 채널 메시지를 내구적으로 기록한 뒤 진행 중인 이전 판단에 abort를 전달한다. 첨부가 있거나 작업 스레드에 속한 입력, 카드 처리는 이 선점 대상이 아니다. 원장 재확인과 커밋 시점의 supersession 검사로 늦은 판단 적용을 막고, 앞선 메시지는 맥락으로 보존한다. 이를 전역 worker 취소나 모든 종류의 입력을 버리는 정책으로 확대 해석하지 않는다.
+
+웹의 자유 진행 모드에는 5분 주기 정체 점검과 하루 요약이 연결되어 있다. 요약 기본값은 서울 09:00, 활성 상태이며 `ENSEMBLE_DIGEST=off`로 비활성화한다. 하루 키로 중복을 막고 변경이 없으면 발언하지 않는다. 서버 실행 중의 타이머이며 외부 cron·예약 서비스가 아니다. [core 규칙](../app/packages/core/src/stuck.ts), [요약 생성](../app/packages/orchestrator/src/digest.ts).
+
+### 호스트 검증 경계와 현재 기본 연결
+
+PR #52는 [validation.ts](../app/packages/orchestrator/src/validation.ts)의 `TrustedValidator`를 호스트 옵션으로 추가했다. worker 제출은 [SessionRunner](../app/packages/orchestrator/src/session-runner.ts)가 경로를 검사하고 파일 내용을 원장 첨부로 고정한다. 원래 상대 경로와 `limitations`도 보존한다. 검증기는 불변 제출 snapshot을 받고, worker 자기보고와 구분되는 측정 증거를 [Dispatcher](../app/packages/orchestrator/src/dispatch.ts)의 최종 judge 앞에 제공한다.
+
+`requireValidation: true`에서는 현재 제출에 연결된 통과 증거가 필요하다. `failed`는 구현 수정, `not_run`·`environment_blocked`는 검증 대기다. 취소·시간 제한·만료·중복 재시도 및 judge 이후 재확인을 처리한다. 현재 웹 런타임은 검증기를 주입하지 않으므로 기본 소스 검토를 유지하고 측정 상태는 `not_run`이다. 일반 웹 UI나 환경변수로 검증기를 켜는 설정은 없으며, opt-in은 `ProjectManager`를 구성하는 호스트 코드의 옵션이다. benchmark 패키지의 실제 빌드·브라우저 runner를 일반 앱의 기본 validator로 간주하지 않는다.
+
+바인딩은 결과·제출물·계획/작업 버전·정책·문맥을 포함하지만, 현재 문맥 digest는 모든 채널 메시지나 같은 계획 버전의 사람 재개 요청을 해시하지 않는다. 인계 판정의 재개 조건과 새 제출의 검증 증거를 함께 확인해야 한다. 이 한계와 실제 v4 경로는 [작업 모델](work-model.md#같은-계획-버전의-변경과-감사-범위)에 설명한다.
+
+---
+
+## M0 및 2026-09-28 아키텍처 기록
+
 > 제품 의도는 `intent.md`, 데이터 모델·enum·규칙은 `docs/product-state-model.md`가 정본이다. 이 문서는 그 둘을 **어떤 코드 구조로 구현하는지**만 정한다.
 
 ## 1. 확정된 결정 (2026-09-28, 사용자)
