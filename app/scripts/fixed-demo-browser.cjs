@@ -1,0 +1,25 @@
+// Set ENSEMBLE_PLAYWRIGHT_PATH when Playwright is installed outside this workspace.
+const {chromium}=require(process.env.ENSEMBLE_PLAYWRIGHT_PATH || 'playwright');
+const assert=require('node:assert/strict'); const fs=require('node:fs');
+(async()=>{
+const browser=await chromium.launch({headless:true}); const page=await browser.newPage({viewport:{width:1600,height:1000}});
+const errors=[],api=[];page.on('pageerror',e=>errors.push(String(e)));page.on('request',r=>{if(r.url().includes('/api/'))api.push(r.url());});
+const origin=process.env.ENSEMBLE_DEMO_ORIGIN || 'http://127.0.0.1:3489'; const base=origin+'/demo'; const phase=async s=>{await page.locator(`.fd[data-phase="${s}"]`).waitFor();};
+const sendExample=async()=>{await page.getByRole('button',{name:'예시 문장 넣기'}).click();await page.getByRole('button',{name:'전송',exact:true}).click();};
+const shot=async name=>page.screenshot({path:`demo-evidence/${name}.png`,fullPage:true});
+fs.mkdirSync('demo-evidence',{recursive:true});await page.goto(base);await phase('intro');await shot('desktop-intro');
+await page.getByRole('button',{name:'팀 대화 시작'}).click();await phase('discussion');await page.waitForTimeout(2700);await phase('discussion');assert.equal(await page.getByRole('button',{name:'전송',exact:true}).isEnabled(),false);
+await page.locator('#demo-message').fill('반대합니다. 실명은 유지해야 해요.');await page.getByRole('button',{name:'전송',exact:true}).click();await phase('discussion');await shot('desktop-disagreement');
+await sendExample();await phase('agreement');await page.waitForTimeout(2700);await phase('agreement');await shot('desktop-human-gate');
+await page.getByRole('button',{name:'예시 문장 넣기'}).click();await page.getByRole('button',{name:'전송',exact:true}).dblclick();await phase('executing');await phase('delivered');
+assert.equal(await page.locator('.fd-message').filter({hasText:'B: 자동 가명화와 fiction 3단계로 확정합니다.'}).count(),1);
+assert.equal(await page.getByRole('button',{name:'노래',exact:true}).count(),1);assert.equal(await page.locator('[data-testid="fiction-disclosure"]').count(),0);await shot('desktop-v1');
+await page.getByRole('button',{name:'노래',exact:true}).click();await sendExample();await phase('revising');await phase('complete');assert.equal(await page.getByRole('button',{name:'노래',exact:true}).count(),0);assert.equal(await page.locator('[data-testid="fiction-disclosure"]').count(),1);assert.equal(await page.getByRole('combobox',{name:'fiction 수위'}).locator('option').count(),3);assert.equal(await page.getByRole('button',{name:'동화',exact:true}).getAttribute('aria-pressed'),'true');await shot('desktop-v11');
+await page.getByRole('button',{name:'처음부터',exact:true}).click();await phase('intro');await page.getByRole('button',{name:'팀 대화 시작'}).click();await sendExample();await sendExample();await phase('executing');await page.getByRole('button',{name:'이전 단계',exact:true}).click();await phase('agreement');await page.waitForTimeout(2600);await phase('agreement');await sendExample();await phase('executing');await page.getByRole('button',{name:'처음부터',exact:true}).click();await page.waitForTimeout(2600);await phase('intro');
+await page.getByRole('button',{name:'팀 대화 시작'}).click();await page.reload();await phase('intro');
+assert.deepEqual(api,[]);await page.goto(origin+'/');await page.goBack();await phase('intro');
+await page.setViewportSize({width:390,height:844});await phase('intro');await page.getByRole('button',{name:'팀 대화 시작'}).click();await shot('mobile-human-gate');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+await sendExample();await sendExample();await phase('delivered');await sendExample();await phase('complete');await shot('mobile-v11');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+await page.setViewportSize({width:320,height:740});await shot('mobile-320');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+assert.deepEqual(errors,[]);fs.writeFileSync('demo-evidence/result.json',JSON.stringify({passed:true,checks:['full flow','human gates wait','empty input disabled','disagreement remains pending','double submission deduplicated','automatic resume','scoped change and D1 retained','back interrupts timer','reset interrupts timer','reload resets','browser back','390px and 320px no horizontal overflow'],errors,demoApiRequests:0,realAppNavigationApi:api},null,2));console.log('PASS',JSON.stringify({errors,api}));await browser.close();
+})().catch(e=>{console.error(e);process.exit(1)});

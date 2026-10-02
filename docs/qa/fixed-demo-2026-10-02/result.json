@@ -1,0 +1,23 @@
+{
+  "passed": true,
+  "checks": [
+    "full flow",
+    "human gates wait",
+    "empty input disabled",
+    "disagreement remains pending",
+    "double submission deduplicated",
+    "automatic resume",
+    "scoped change and D1 retained",
+    "back interrupts timer",
+    "reset interrupts timer",
+    "reload resets",
+    "browser back",
+    "390px and 320px no horizontal overflow"
+  ],
+  "errors": [],
+  "demoApiRequests": 0,
+  "realAppNavigationApi": [
+    "http://127.0.0.1:3489/api/state?me=owner",
+    "http://127.0.0.1:3489/api/events"
+  ]
+}

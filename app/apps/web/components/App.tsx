@@ -117,6 +117,7 @@ export function App() {
       <div className="active-project" hidden={archiveOpen}>
       <header className="topbar">
         <div className="brand">Ensemble</div>
+        <a href="/demo" className="btn-tonal">고정 데모</a>
         <div className="project">
           <span className="project-goal" title={vm.project.goal}>{vm.project.title ?? vm.project.goal ?? "목표 미정"}</span>
           {vm.project.synthetic && <span className="badge badge-demo" title="시연용 가상 자료입니다">시연용</span>}
