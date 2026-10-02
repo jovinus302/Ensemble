@@ -855,3 +855,14 @@
 .fd-graph-node small { font-size:8px; letter-spacing:0; }
 .fd-pacing { display:none; }
 @media(max-width:760px) { .fd-decision-top { flex-wrap:wrap; } .fd-graph-node small { font-size:10px; } }
+.fd-pending-choices { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; padding:9px; border:1px solid #80613d; border-radius:6px; background:#211b14; }
+.fd-pending-choices b { flex-basis:100%; font-size:11px; color:#eac38c; }
+.fd-pending-choices button { font-size:11px; padding:6px 8px; }
+.fd-pending-choices p { font-size:11px; color:#c8b79e; }
+.fd-pending { margin:10px 0; padding:10px; border:1px solid #80613d; border-radius:6px; background:#1c1914; }
+.fd-pending>div { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+.fd-pending b { font-size:12px; color:#ebc58e; }
+.fd-pending span,.fd-pending p,.fd-pending summary { font-size:10px; color:#c9bfae; }
+.fd-pending p { margin-top:6px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.fd-pending details { margin-top:6px; }
+.fd-pending summary { cursor:pointer; }
