@@ -46,3 +46,9 @@ Browser harness: `node scripts/fixed-demo-browser.cjs` from `app/`. It requires 
 Screenshots and machine-readable browser results are in `fixed-demo-2026-10-02/`. Desktop human gate and v1.1, and mobile v1.1 were visually inspected.
 
 Not tested: real model/provider execution, external Figma/repository integration, physical mobile devices, non-Chromium browsers, screen-reader behavior, or measured three-minute performance. None is claimed. No paid benchmarks, reauthentication, PR publication, deployment, or merge occurred.
+
+## Audience clarity follow-up
+
+User review emphasized PM coordinating humans as team members alongside agents. Removed two redundant waiting-agent chat messages so the humans' conflicting views remain visible. Added a persistent agreement → PM coordination → artifact path and human-owned task cards: Seoyeon owns planning/scope, Doyun owns negotiation and output review. PM explicitly hands the finished screen to Doyun; Doyun proposes two changes to Seoyeon, whose explicit chat answer authorizes the revision. Agent cards retain their individual changed outputs. Added a compact mobile team/role line. Added/removed/retained changes now appear before the phone on narrow layouts and beside it on wide presentation layouts. These remain labeled scripted handoffs, not actual human or model sessions. Existing review screenshots were refreshed, with no original attachment or fonts added.
+
+Independent viewer follow-up also added the visible Story template (pseudonymization rules, three fiction levels, allowed formats); the D2 revision removes only the song format there. At 1440×1000, the human/agent task cards, Story output, added/removed/retained summary and changed phone controls are visible together. Browser assertions verify the Story format change as well as the phone change.
