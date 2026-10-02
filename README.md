@@ -62,12 +62,13 @@ ENSEMBLE_PM_RUNTIME=fake ENSEMBLE_AGENT_RUNTIME=fake npm run dev
 `app/`에서:
 
 ```sh
+npm test
 npm run typecheck
 npm run build
 npm run start -w @ensemble/web
 ```
 
-앞의 두 명령은 타입 검사와 웹 빌드입니다. 마지막 명령은 빌드 후 서버를 실행하며, 위 런타임 환경 설정을 동일하게 적용해야 합니다. 자동 테스트와 전용 실행기는 현재 체크아웃에서 제거되었습니다. 과거 테스트 수치는 당시 기록이며 현재 검증 결과가 아닙니다. 남아 있는 `live:*` 관찰 도구는 실제 provider를 호출할 수 있으므로 별도 실행 승인이 필요합니다.
+`npm test`는 provider 호출 없이 핵심 회귀 시나리오만 실행합니다. 범위와 이유는 [필수 테스트 안내](docs/qa/essential-regressions.md)에 있습니다. 이어지는 명령은 타입 검사와 웹 빌드이며, 마지막 명령은 빌드 후 서버를 실행합니다. 위 런타임 환경 설정을 동일하게 적용해야 합니다. 과거 대규모 테스트·벤치마크 실행기는 복원하지 않았으며, 과거 테스트 수치는 현재 검증 결과가 아닙니다. 남아 있는 `live:*` 관찰 도구는 실제 provider를 호출할 수 있으므로 별도 실행 승인이 필요합니다.
 
 이 기준 main에 기록된 v4 사전 검증은 **813개 테스트, typecheck, build 통과**입니다. 당시 build의 기존 동적 파일 추적 경고 3건은 남아 있습니다. [당시 검증 기록](https://github.com/jovinus302/Ensemble/blob/cb84ecc2849f8194e0d5d44d22642a5174ef4c4f/app/packages/benchmark/evidence/paired-validation-v4/preflight/code-checks.json)과 [현재 검증 실행 안내](docs/qa/README.md)를 참조하세요.
 

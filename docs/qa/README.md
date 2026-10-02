@@ -1,13 +1,14 @@
 # QA guide and historical archives
 
-Run the following from `app/` with existing dependencies (Node 24+). These provider-free commands check types and build the web app; they do not run automated tests.
+Run the following from `app/` with existing dependencies (Node 24+). These provider-free commands run the small [essential regression suite](essential-regressions.md), check types, and build the web app.
 
 ```sh
+npm test
 npm run typecheck
 npm run build
 ```
 
-Automated test suites, dedicated browser/smoke runners, and the standalone benchmark execution package have been removed from this checkout. Historical results below are preserved as observations of their recorded revisions, not current coverage. The removed source remains recoverable through Git at the [pre-removal snapshot](https://github.com/jovinus302/Ensemble/tree/64373b8f9dbf2cbc27c77c220ed46f809822b3e2). Restoring historical code does not authorize provider calls.
+The former broad test suites, dedicated browser/smoke runners, and standalone benchmark execution package remain removed. Only the small essential suite is maintained in `app/test/`, using Node’s built-in runner and the existing `tsx` dependency. Historical results below are preserved as observations of their recorded revisions, not current coverage. The removed source remains recoverable through Git at the [pre-removal snapshot](https://github.com/jovinus302/Ensemble/tree/64373b8f9dbf2cbc27c77c220ed46f809822b3e2). Restoring historical code does not authorize provider calls.
 
 Write new QA screenshots, reports, logs and generated artifacts beneath an ignored `.local/` directory, never into these historical folders. Check `git check-ignore` for the intended destination before collecting output. Preserve failures and distinguish fixture, offline re-evaluation and authorized live observations.
 
