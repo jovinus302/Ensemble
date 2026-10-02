@@ -2,7 +2,11 @@
 
 Tracking: https://github.com/jovinus302/Ensemble/issues/35
 
-## Current revision: trusted validation before handoff
+## Current batch: paired-validation-v4
+
+The user approved **eight new slots** after the previous eight were exhausted. [V4 protocol and evidence](evidence/paired-validation-v4/README.md) define the new fixed-main experiment. Old v3 authorization stays closed; each new cell is claimed once in sequence, with review between cells and no automatic retry/model substitution. The original observations are not pooled with this batch.
+
+## Prior revision: trusted validation before handoff
 
 `revision-bound-validation-v3` fixes the validation lifecycle and date oracle. It is not a new paired performance study. The five legacy attempts remain invalid for comparing orchestration because direct runs inherited a conflicting prototype role. The separate corrected Codex Task A pair consumed two more slots: Ensemble failed handoff despite a later 10/10 browser result; direct recorded 9/10 because the original oracle required an ISO display string. Original observations and diagnoses are preserved in [draft PR #51](https://github.com/jovinus302/Ensemble/pull/51), not overwritten here.
 

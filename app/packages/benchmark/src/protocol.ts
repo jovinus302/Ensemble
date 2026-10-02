@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 
 export const HISTORICAL_BASE_SHA = 'a6bfc345bde634422421c500fad264419bc04ec9';
 // Frozen production validation baseline: 788 offline tests, typecheck, build and browser controls passed.
-export const BASE_SHA = 'd6f1660dd7460e631445e25db141bcff99f956ec';
+export const BASE_SHA = '7cd8de808caf046e0bcc3894a27054dca133d987';
 /** New neutral-role experiment; never pool with legacy prototype-role pilot observations. */
-export const PROTOCOL_REVISION = 'revision-bound-validation-v3';
+export const PROTOCOL_REVISION = 'paired-validation-v4';
 export const LIMITS: Readonly<{ totalMs: number; calls: number }> = Object.freeze({ totalMs: 20 * 60_000, calls: 24 });
 export type Provider = 'codex' | 'claude';
 export type Task = 'A' | 'B';
@@ -26,6 +26,27 @@ export function assertLiveCapacity(): void {
   if (LIVE_RUNS_REMAINING === 0) throw new Error('All eight authorized slots are consumed; no additional live run or retry is authorized');
 }
 export const VALIDATION_MODEL = Object.freeze({ model: 'gpt-6-astra', effort: 'low' });
+export const PAIRED_MODELS = Object.freeze({ codex: VALIDATION_MODEL, claude: Object.freeze({ model: 'claude-opus-4-8', effort: 'xhigh' }) });
+export const PAIRED_APPROVAL_SOURCE = 'Sentinel_44444b08f3fc8191bf1bf2dc740c6247';
+export const NEW_BATCH_SLOTS = 8;
+export type ProviderConfig = Record<Provider, { model: string; effort: string }>;
+export interface ProtocolHashes { starterHash: string; evaluatorHash: string; implementationHash: string }
+export function pairedPlan(): Cell[] { return plan().map(cell => ({ ...cell, id: `v4-${String(cell.ordinal).padStart(2, '0')}` })); }
+export function pairedApproval(value: unknown, hashes: ProtocolHashes, config: unknown): asserts config is ProviderConfig {
+  const a = value as Record<string, unknown> | null;
+  const matchesModels = (candidate: unknown) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return false;
+    const entries = candidate as Record<string, { model?: unknown; effort?: unknown }>;
+    return Object.keys(entries).length === 2 && Object.entries(PAIRED_MODELS).every(([provider, expected]) =>
+      entries[provider]?.model === expected.model && entries[provider]?.effort === expected.effort
+      && Object.keys(entries[provider]!).length === 2);
+  };
+  if (!a || a.protocolRevision !== PROTOCOL_REVISION || a.livePairedRuns !== NEW_BATCH_SLOTS || a.liveEightRuns !== undefined
+    || a.liveValidationRuns !== undefined || a.previousConservativeAttempts !== 8 || a.totalAuthorizedSlots !== 16 || a.reruns !== false
+    || a.source !== PAIRED_APPROVAL_SOURCE || typeof a.approvedBy !== 'string' || !a.approvedBy.trim() || a.toolsMatched !== true
+    || a.baseSha !== BASE_SHA || a.rubricHash !== RUBRIC_HASH || Object.entries(hashes).some(([key, expected]) => a[key] !== expected)
+    || !matchesModels(config) || !matchesModels(a.config)) throw new Error('New v4 eight-cell approval with exact frozen models, provenance and hashes is required; old approvals and retries are forbidden');
+}
 export const VALIDATION_CRITERIA = ['trusted-current-revision-pass', 'worker-limitations-preserved', 'judge-after-validation', 'checked-handoff-same-artifact', 'semantic-browser-pass'] as const;
 export const VALIDATION_CRITERIA_HASH = createHash('sha256').update(JSON.stringify(VALIDATION_CRITERIA)).digest('hex');
 export const PROMPT_A = `Complete this React restaurant booking starter. Date/time/1–6 guests, fixed sold-out and server-error fixtures, visible helpful errors, confirmation, saved booking surviving refresh, and usable unclipped 390/1440px layout. Use the existing local POST /api/reservations fixture. Preserve data-testid contract date,time,guests,submit,confirmation,edit,message. Date 2030-06-15 time 19:00 is sold out; 2030-06-16 time 18:00 returns an error. Offer 17:00,18:00,19:00,20:00. Do not replace build.mjs/server.mjs, change fixtures, install dependencies, access network, change permissions/authentication or incur new payments. The external harness runs node build.mjs and browser acceptance; provide buildable React source. Do not request extra shell permissions or claim an external build was already run. Work only in this starter. Report files and limitations when finished.`;

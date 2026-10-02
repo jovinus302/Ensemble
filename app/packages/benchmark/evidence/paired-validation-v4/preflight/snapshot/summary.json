@@ -1,0 +1,407 @@
+{
+  "mode": "fixture",
+  "actualModelInvocations": 0,
+  "results": [
+    {
+      "id": "A-reference",
+      "expected": "passed",
+      "status": "passed",
+      "summary": "Host measured immutable submitted revision ede82ad1e50bf1d08964d66503cec4d9b05cc9db4ab69b35992a521f6eecb6b4: build passed; browser passed.",
+      "checks": [
+        {
+          "id": "build",
+          "status": "passed"
+        },
+        {
+          "id": "checkpoint.selection",
+          "status": "passed"
+        },
+        {
+          "id": "required-fields.blocked",
+          "status": "passed"
+        },
+        {
+          "id": "party.one-through-six",
+          "status": "passed"
+        },
+        {
+          "id": "sold-out",
+          "status": "passed"
+        },
+        {
+          "id": "service-error",
+          "status": "passed"
+        },
+        {
+          "id": "confirmation.persistence",
+          "status": "passed"
+        },
+        {
+          "id": "invalid-party.blocked",
+          "status": "passed"
+        },
+        {
+          "id": "viewport.390",
+          "status": "passed"
+        },
+        {
+          "id": "viewport.1440",
+          "status": "passed"
+        },
+        {
+          "id": "console.clean",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "id": "B-checkpoint",
+      "expected": "passed",
+      "status": "passed",
+      "summary": "Host measured immutable submitted revision ede82ad1e50bf1d08964d66503cec4d9b05cc9db4ab69b35992a521f6eecb6b4: build passed; browser passed.",
+      "checks": [
+        {
+          "id": "build",
+          "status": "passed"
+        },
+        {
+          "id": "checkpoint.selection",
+          "status": "passed"
+        },
+        {
+          "id": "console.clean",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "id": "B-reference",
+      "expected": "passed",
+      "status": "passed",
+      "summary": "Host measured immutable submitted revision ede82ad1e50bf1d08964d66503cec4d9b05cc9db4ab69b35992a521f6eecb6b4: build passed; browser passed.",
+      "checks": [
+        {
+          "id": "build",
+          "status": "passed"
+        },
+        {
+          "id": "checkpoint.selection",
+          "status": "passed"
+        },
+        {
+          "id": "required-fields.blocked",
+          "status": "passed"
+        },
+        {
+          "id": "party.one-through-six",
+          "status": "passed"
+        },
+        {
+          "id": "sold-out",
+          "status": "passed"
+        },
+        {
+          "id": "service-error",
+          "status": "passed"
+        },
+        {
+          "id": "confirmation.persistence",
+          "status": "passed"
+        },
+        {
+          "id": "invalid-party.blocked",
+          "status": "passed"
+        },
+        {
+          "id": "change.large-party-early-blocked",
+          "status": "passed"
+        },
+        {
+          "id": "change.six-to-seven-clears-time",
+          "status": "passed"
+        },
+        {
+          "id": "change.eight-evening-and-edit",
+          "status": "passed"
+        },
+        {
+          "id": "viewport.390",
+          "status": "passed"
+        },
+        {
+          "id": "viewport.1440",
+          "status": "passed"
+        },
+        {
+          "id": "console.clean",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "id": "invalid-JSX",
+      "expected": "failed",
+      "status": "failed",
+      "summary": "Error: Fixed build exited 1: X [ERROR] Expected \"(\" but found \"{\"\n\n    src/App.jsx:1:24:\n      1 │ export default function {\n        │                         ^\n        ╵                         (\n\nC:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752\r\n  let error = new Error(text);\r\n              ^\r\n\r\nError: Build failed with 1 error:\r\nsrc/App.jsx:1:24: ERROR: Expected \"(\" but found \"{\"\r\n    at failureErrorWithLog (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752:15)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1211:25\r\n    at runOnEndCallbacks (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1592:45)\r\n    at buildResponseToResult (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1209:7)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1236:16\r\n    at responseCallbacks.<computed> (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:886:9)\r\n    at handleIncomingPacket (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:941:12)\r\n    at Socket.readFromStdout (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:864:7)\r\n    at Socket.emit (node:events:509:28)\r\n    at addChunk (node:internal/streams/readable:563:12) {\r\n  errors: [Getter/Setter],\r\n  warnings: [Getter/Setter]\r\n}\r\n\r\nNode.js v24.18.0\r\n",
+      "checks": [
+        {
+          "id": "build",
+          "status": "failed",
+          "detail": "Error: Fixed build exited 1: X [ERROR] Expected \"(\" but found \"{\"\n\n    src/App.jsx:1:24:\n      1 │ export default function {\n        │                         ^\n        ╵                         (\n\nC:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752\r\n  let error = new Error(text);\r\n              ^\r\n\r\nError: Build failed with 1 error:\r\nsrc/App.jsx:1:24: ERROR: Expected \"(\" but found \"{\"\r\n    at failureErrorWithLog (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752:15)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1211:25\r\n    at runOnEndCallbacks (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1592:45)\r\n    at buildResponseToResult (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1209:7)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1236:16\r\n    at responseCallbacks.<computed> (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:886:9)\r\n    at handleIncomingPacket (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:941:12)\r\n    at Socket.readFromStdout (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:864:7)\r\n    at Socket.emit (node:events:509:28)\r\n    at addChunk (node:internal/streams/readable:563:12) {\r\n  errors: [Getter/Setter],\r\n  warnings: [Getter/Setter]\r\n}\r\n\r\nNode.js v24.18.0\r\n"
+        }
+      ]
+    },
+    {
+      "id": "outside-snapshot-import",
+      "expected": "failed",
+      "status": "failed",
+      "summary": "Error: Fixed build exited 1: X [ERROR] Import outside captured submission or installed dependencies [plugin captured-submission-only]\n\n    ../../../../../../../../node_modules/esbuild/lib/main.js:1552:21:\n      1552 │         let result = await callback({\n           ╵                      ^\n\n    at file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:18:81\n    at async requestCallbacks.on-load (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1552:22)\n    at async handleRequest (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:911:11)\n\n  This error came from the \"onLoad\" callback registered here:\n\n    ../../../../../../../../node_modules/esbuild/lib/main.js:1426:20:\n      1426 │       let promise = setup({\n           ╵                     ^\n\n    at setup (file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:16:13)\n    at handlePlugins (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1426:21)\n    at buildOrContextImpl (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1139:5)\n    at Object.buildOrContext (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:963:5)\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2320:15\n    at new Promise (<anonymous>)\n    at Object.build (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2319:25)\n    at build (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2170:51)\n    at file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:13:7\n\n  The plugin \"captured-submission-only\" was triggered by this import\n\n    src/App.jsx:1:7:\n      1 │ import \"C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensem...\n        ╵        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\nC:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752\r\n  let error = new Error(text);\r\n              ^\r\n\r\nError: Build failed with 1 error:\r\n../../../../../../../../node_modules/esbuild/lib/main.js:1552:21: ERROR: [plugin: captured-submission-only] Import outside captured submission or installed dependencies\r\n    at failureErrorWithLog (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752:15)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1211:25\r\n    at runOnEndCallbacks (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1592:45)\r\n    at buildResponseToResult (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1209:7)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1236:16\r\n    at responseCallbacks.<computed> (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:886:9)\r\n    at handleIncomingPacket (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:941:12)\r\n    at Socket.readFromStdout (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:864:7)\r\n    at Socket.emit (node:events:509:28)\r\n    at addChunk (node:internal/streams/readable:563:12) {\r\n  errors: [Getter/Setter],\r\n  warnings: [Getter/Setter]\r\n}\r\n\r\nNode.js v24.18.0\r\n",
+      "checks": [
+        {
+          "id": "build",
+          "status": "failed",
+          "detail": "Error: Fixed build exited 1: X [ERROR] Import outside captured submission or installed dependencies [plugin captured-submission-only]\n\n    ../../../../../../../../node_modules/esbuild/lib/main.js:1552:21:\n      1552 │         let result = await callback({\n           ╵                      ^\n\n    at file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:18:81\n    at async requestCallbacks.on-load (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1552:22)\n    at async handleRequest (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:911:11)\n\n  This error came from the \"onLoad\" callback registered here:\n\n    ../../../../../../../../node_modules/esbuild/lib/main.js:1426:20:\n      1426 │       let promise = setup({\n           ╵                     ^\n\n    at setup (file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:16:13)\n    at handlePlugins (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1426:21)\n    at buildOrContextImpl (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1139:5)\n    at Object.buildOrContext (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:963:5)\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2320:15\n    at new Promise (<anonymous>)\n    at Object.build (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2319:25)\n    at build (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2170:51)\n    at file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:13:7\n\n  The plugin \"captured-submission-only\" was triggered by this import\n\n    src/App.jsx:1:7:\n      1 │ import \"C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensem...\n        ╵        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\nC:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752\r\n  let error = new Error(text);\r\n              ^\r\n\r\nError: Build failed with 1 error:\r\n../../../../../../../../node_modules/esbuild/lib/main.js:1552:21: ERROR: [plugin: captured-submission-only] Import outside captured submission or installed dependencies\r\n    at failureErrorWithLog (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752:15)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1211:25\r\n    at runOnEndCallbacks (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1592:45)\r\n    at buildResponseToResult (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1209:7)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1236:16\r\n    at responseCallbacks.<computed> (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:886:9)\r\n    at handleIncomingPacket (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:941:12)\r\n    at Socket.readFromStdout (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:864:7)\r\n    at Socket.emit (node:events:509:28)\r\n    at addChunk (node:internal/streams/readable:563:12) {\r\n  errors: [Getter/Setter],\r\n  warnings: [Getter/Setter]\r\n}\r\n\r\nNode.js v24.18.0\r\n"
+        }
+      ]
+    }
+  ],
+  "records": [
+    {
+      "type": "trusted-validation-start",
+      "projectId": "offline-fixture",
+      "taskId": "A",
+      "resultId": "A-reference",
+      "artifactDigest": "e2589a61a83c3b2961d6e30d90f5fd9fd9759efed3fdd13d5692e064bc8dc765",
+      "contextDigest": "offline-fixture",
+      "policyFingerprint": "offline-snapshot-fixture",
+      "snapshotDigest": "ede82ad1e50bf1d08964d66503cec4d9b05cc9db4ab69b35992a521f6eecb6b4",
+      "checkpoint": false,
+      "snapshot": "C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\packages\\benchmark\\.local\\v4-preflight\\nonlive-20261002-001014\\snapshot\\A-reference\\1-dd56b9106b8a5c5d7ad3d5f15c23279364a370a0fa8c93ef190c43c6d3c1edba"
+    },
+    {
+      "type": "trusted-validation-complete",
+      "projectId": "offline-fixture",
+      "taskId": "A",
+      "resultId": "A-reference",
+      "artifactDigest": "e2589a61a83c3b2961d6e30d90f5fd9fd9759efed3fdd13d5692e064bc8dc765",
+      "status": "passed",
+      "summary": "Host measured immutable submitted revision ede82ad1e50bf1d08964d66503cec4d9b05cc9db4ab69b35992a521f6eecb6b4: build passed; browser passed.",
+      "checks": [
+        {
+          "id": "build",
+          "status": "passed"
+        },
+        {
+          "id": "checkpoint.selection",
+          "status": "passed"
+        },
+        {
+          "id": "required-fields.blocked",
+          "status": "passed"
+        },
+        {
+          "id": "party.one-through-six",
+          "status": "passed"
+        },
+        {
+          "id": "sold-out",
+          "status": "passed"
+        },
+        {
+          "id": "service-error",
+          "status": "passed"
+        },
+        {
+          "id": "confirmation.persistence",
+          "status": "passed"
+        },
+        {
+          "id": "invalid-party.blocked",
+          "status": "passed"
+        },
+        {
+          "id": "viewport.390",
+          "status": "passed"
+        },
+        {
+          "id": "viewport.1440",
+          "status": "passed"
+        },
+        {
+          "id": "console.clean",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "type": "trusted-validation-start",
+      "projectId": "offline-fixture",
+      "taskId": "B",
+      "resultId": "B-checkpoint",
+      "artifactDigest": "e2589a61a83c3b2961d6e30d90f5fd9fd9759efed3fdd13d5692e064bc8dc765",
+      "contextDigest": "offline-fixture",
+      "policyFingerprint": "offline-snapshot-fixture",
+      "snapshotDigest": "ede82ad1e50bf1d08964d66503cec4d9b05cc9db4ab69b35992a521f6eecb6b4",
+      "checkpoint": true,
+      "snapshot": "C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\packages\\benchmark\\.local\\v4-preflight\\nonlive-20261002-001014\\snapshot\\B-checkpoint\\1-c18f8ba71c39c3a2264f2e2f9a2e96293214a527427a00f7cc61dd710b2d454e"
+    },
+    {
+      "type": "trusted-validation-complete",
+      "projectId": "offline-fixture",
+      "taskId": "B",
+      "resultId": "B-checkpoint",
+      "artifactDigest": "e2589a61a83c3b2961d6e30d90f5fd9fd9759efed3fdd13d5692e064bc8dc765",
+      "status": "passed",
+      "summary": "Host measured immutable submitted revision ede82ad1e50bf1d08964d66503cec4d9b05cc9db4ab69b35992a521f6eecb6b4: build passed; browser passed.",
+      "checks": [
+        {
+          "id": "build",
+          "status": "passed"
+        },
+        {
+          "id": "checkpoint.selection",
+          "status": "passed"
+        },
+        {
+          "id": "console.clean",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "type": "trusted-validation-start",
+      "projectId": "offline-fixture",
+      "taskId": "B",
+      "resultId": "B-reference",
+      "artifactDigest": "e2589a61a83c3b2961d6e30d90f5fd9fd9759efed3fdd13d5692e064bc8dc765",
+      "contextDigest": "offline-fixture",
+      "policyFingerprint": "offline-snapshot-fixture",
+      "snapshotDigest": "ede82ad1e50bf1d08964d66503cec4d9b05cc9db4ab69b35992a521f6eecb6b4",
+      "checkpoint": false,
+      "snapshot": "C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\packages\\benchmark\\.local\\v4-preflight\\nonlive-20261002-001014\\snapshot\\B-reference\\1-10a046137a21b3c94bc618c809a3ca7c78b43bb2fc4b8194461f6d6eebc609e0"
+    },
+    {
+      "type": "trusted-validation-complete",
+      "projectId": "offline-fixture",
+      "taskId": "B",
+      "resultId": "B-reference",
+      "artifactDigest": "e2589a61a83c3b2961d6e30d90f5fd9fd9759efed3fdd13d5692e064bc8dc765",
+      "status": "passed",
+      "summary": "Host measured immutable submitted revision ede82ad1e50bf1d08964d66503cec4d9b05cc9db4ab69b35992a521f6eecb6b4: build passed; browser passed.",
+      "checks": [
+        {
+          "id": "build",
+          "status": "passed"
+        },
+        {
+          "id": "checkpoint.selection",
+          "status": "passed"
+        },
+        {
+          "id": "required-fields.blocked",
+          "status": "passed"
+        },
+        {
+          "id": "party.one-through-six",
+          "status": "passed"
+        },
+        {
+          "id": "sold-out",
+          "status": "passed"
+        },
+        {
+          "id": "service-error",
+          "status": "passed"
+        },
+        {
+          "id": "confirmation.persistence",
+          "status": "passed"
+        },
+        {
+          "id": "invalid-party.blocked",
+          "status": "passed"
+        },
+        {
+          "id": "change.large-party-early-blocked",
+          "status": "passed"
+        },
+        {
+          "id": "change.six-to-seven-clears-time",
+          "status": "passed"
+        },
+        {
+          "id": "change.eight-evening-and-edit",
+          "status": "passed"
+        },
+        {
+          "id": "viewport.390",
+          "status": "passed"
+        },
+        {
+          "id": "viewport.1440",
+          "status": "passed"
+        },
+        {
+          "id": "console.clean",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "type": "trusted-validation-start",
+      "projectId": "offline-fixture",
+      "taskId": "A",
+      "resultId": "invalid-JSX",
+      "artifactDigest": "b99db209b9ebe3e86d61fedc5e3b391c9b4dfe036ea59d01c21a9f96cd669c9d",
+      "contextDigest": "offline-fixture",
+      "policyFingerprint": "offline-snapshot-fixture",
+      "snapshotDigest": "d0e718f44b9eeed0385c9d7a065f87729262daf50cca9dfc22f4eb69d291e041",
+      "checkpoint": false,
+      "snapshot": "C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\packages\\benchmark\\.local\\v4-preflight\\nonlive-20261002-001014\\snapshot\\invalid-JSX\\1-f9180f0033601ca26899cb5988dcf2436c241858e632d160a47bae174349ea42"
+    },
+    {
+      "type": "trusted-validation-complete",
+      "projectId": "offline-fixture",
+      "taskId": "A",
+      "resultId": "invalid-JSX",
+      "artifactDigest": "b99db209b9ebe3e86d61fedc5e3b391c9b4dfe036ea59d01c21a9f96cd669c9d",
+      "status": "failed",
+      "summary": "Error: Fixed build exited 1: X [ERROR] Expected \"(\" but found \"{\"\n\n    src/App.jsx:1:24:\n      1 │ export default function {\n        │                         ^\n        ╵                         (\n\nC:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752\r\n  let error = new Error(text);\r\n              ^\r\n\r\nError: Build failed with 1 error:\r\nsrc/App.jsx:1:24: ERROR: Expected \"(\" but found \"{\"\r\n    at failureErrorWithLog (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752:15)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1211:25\r\n    at runOnEndCallbacks (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1592:45)\r\n    at buildResponseToResult (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1209:7)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1236:16\r\n    at responseCallbacks.<computed> (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:886:9)\r\n    at handleIncomingPacket (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:941:12)\r\n    at Socket.readFromStdout (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:864:7)\r\n    at Socket.emit (node:events:509:28)\r\n    at addChunk (node:internal/streams/readable:563:12) {\r\n  errors: [Getter/Setter],\r\n  warnings: [Getter/Setter]\r\n}\r\n\r\nNode.js v24.18.0\r\n",
+      "checks": [
+        {
+          "id": "build",
+          "status": "failed",
+          "detail": "Error: Fixed build exited 1: X [ERROR] Expected \"(\" but found \"{\"\n\n    src/App.jsx:1:24:\n      1 │ export default function {\n        │                         ^\n        ╵                         (\n\nC:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752\r\n  let error = new Error(text);\r\n              ^\r\n\r\nError: Build failed with 1 error:\r\nsrc/App.jsx:1:24: ERROR: Expected \"(\" but found \"{\"\r\n    at failureErrorWithLog (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752:15)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1211:25\r\n    at runOnEndCallbacks (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1592:45)\r\n    at buildResponseToResult (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1209:7)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1236:16\r\n    at responseCallbacks.<computed> (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:886:9)\r\n    at handleIncomingPacket (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:941:12)\r\n    at Socket.readFromStdout (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:864:7)\r\n    at Socket.emit (node:events:509:28)\r\n    at addChunk (node:internal/streams/readable:563:12) {\r\n  errors: [Getter/Setter],\r\n  warnings: [Getter/Setter]\r\n}\r\n\r\nNode.js v24.18.0\r\n"
+        }
+      ]
+    },
+    {
+      "type": "trusted-validation-start",
+      "projectId": "offline-fixture",
+      "taskId": "A",
+      "resultId": "outside-snapshot-import",
+      "artifactDigest": "9697fa322b24f9451b8c7881c533afccd7531392621f7e55fc6c5b7bf8fdbbb5",
+      "contextDigest": "offline-fixture",
+      "policyFingerprint": "offline-snapshot-fixture",
+      "snapshotDigest": "e36e97b634da33f987351b15a04802452d852ae4090c12a0ace7794dc19677fd",
+      "checkpoint": false,
+      "snapshot": "C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\packages\\benchmark\\.local\\v4-preflight\\nonlive-20261002-001014\\snapshot\\outside-snapshot-import\\1-da22451a719044434ffd3fa95d9e2b7e3fc949df5ebec5e59faf474efb5b57db"
+    },
+    {
+      "type": "trusted-validation-complete",
+      "projectId": "offline-fixture",
+      "taskId": "A",
+      "resultId": "outside-snapshot-import",
+      "artifactDigest": "9697fa322b24f9451b8c7881c533afccd7531392621f7e55fc6c5b7bf8fdbbb5",
+      "status": "failed",
+      "summary": "Error: Fixed build exited 1: X [ERROR] Import outside captured submission or installed dependencies [plugin captured-submission-only]\n\n    ../../../../../../../../node_modules/esbuild/lib/main.js:1552:21:\n      1552 │         let result = await callback({\n           ╵                      ^\n\n    at file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:18:81\n    at async requestCallbacks.on-load (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1552:22)\n    at async handleRequest (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:911:11)\n\n  This error came from the \"onLoad\" callback registered here:\n\n    ../../../../../../../../node_modules/esbuild/lib/main.js:1426:20:\n      1426 │       let promise = setup({\n           ╵                     ^\n\n    at setup (file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:16:13)\n    at handlePlugins (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1426:21)\n    at buildOrContextImpl (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1139:5)\n    at Object.buildOrContext (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:963:5)\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2320:15\n    at new Promise (<anonymous>)\n    at Object.build (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2319:25)\n    at build (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2170:51)\n    at file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:13:7\n\n  The plugin \"captured-submission-only\" was triggered by this import\n\n    src/App.jsx:1:7:\n      1 │ import \"C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensem...\n        ╵        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\nC:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752\r\n  let error = new Error(text);\r\n              ^\r\n\r\nError: Build failed with 1 error:\r\n../../../../../../../../node_modules/esbuild/lib/main.js:1552:21: ERROR: [plugin: captured-submission-only] Import outside captured submission or installed dependencies\r\n    at failureErrorWithLog (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752:15)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1211:25\r\n    at runOnEndCallbacks (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1592:45)\r\n    at buildResponseToResult (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1209:7)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1236:16\r\n    at responseCallbacks.<computed> (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:886:9)\r\n    at handleIncomingPacket (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:941:12)\r\n    at Socket.readFromStdout (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:864:7)\r\n    at Socket.emit (node:events:509:28)\r\n    at addChunk (node:internal/streams/readable:563:12) {\r\n  errors: [Getter/Setter],\r\n  warnings: [Getter/Setter]\r\n}\r\n\r\nNode.js v24.18.0\r\n",
+      "checks": [
+        {
+          "id": "build",
+          "status": "failed",
+          "detail": "Error: Fixed build exited 1: X [ERROR] Import outside captured submission or installed dependencies [plugin captured-submission-only]\n\n    ../../../../../../../../node_modules/esbuild/lib/main.js:1552:21:\n      1552 │         let result = await callback({\n           ╵                      ^\n\n    at file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:18:81\n    at async requestCallbacks.on-load (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1552:22)\n    at async handleRequest (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:911:11)\n\n  This error came from the \"onLoad\" callback registered here:\n\n    ../../../../../../../../node_modules/esbuild/lib/main.js:1426:20:\n      1426 │       let promise = setup({\n           ╵                     ^\n\n    at setup (file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:16:13)\n    at handlePlugins (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1426:21)\n    at buildOrContextImpl (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1139:5)\n    at Object.buildOrContext (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:963:5)\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2320:15\n    at new Promise (<anonymous>)\n    at Object.build (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2319:25)\n    at build (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:2170:51)\n    at file:///C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensemble-validation/app/packages/benchmark/scripts/build-snapshot.mjs:13:7\n\n  The plugin \"captured-submission-only\" was triggered by this import\n\n    src/App.jsx:1:7:\n      1 │ import \"C:/Users/siheon.ryu/Documents/Codex/2026-10-01/task-2/ensem...\n        ╵        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\nC:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752\r\n  let error = new Error(text);\r\n              ^\r\n\r\nError: Build failed with 1 error:\r\n../../../../../../../../node_modules/esbuild/lib/main.js:1552:21: ERROR: [plugin: captured-submission-only] Import outside captured submission or installed dependencies\r\n    at failureErrorWithLog (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1752:15)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1211:25\r\n    at runOnEndCallbacks (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1592:45)\r\n    at buildResponseToResult (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1209:7)\r\n    at C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:1236:16\r\n    at responseCallbacks.<computed> (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:886:9)\r\n    at handleIncomingPacket (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:941:12)\r\n    at Socket.readFromStdout (C:\\Users\\siheon.ryu\\Documents\\Codex\\2026-10-01\\task-2\\ensemble-validation\\app\\node_modules\\esbuild\\lib\\main.js:864:7)\r\n    at Socket.emit (node:events:509:28)\r\n    at addChunk (node:internal/streams/readable:563:12) {\r\n  errors: [Getter/Setter],\r\n  warnings: [Getter/Setter]\r\n}\r\n\r\nNode.js v24.18.0\r\n"
+        }
+      ]
+    }
+  ]
+}

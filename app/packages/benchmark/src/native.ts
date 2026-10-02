@@ -57,6 +57,7 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
   let failure: unknown;
   let pending = 0;
   let completedTurns = 0;
+  let supersededResult: string | undefined;
   const active = new Set<string>();
   const turnStarts = new Map<string, number>();
   const prepared = new Set<string>();
@@ -156,6 +157,9 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
     async change(prompt) {
       check(); if (!started || !connector) throw new Error('Driver not started');
       if (pm) {
+        const previous = project(await store.read()).tasks.get(taskId);
+        if (previous?.status !== 'checked' || previous.validation?.status !== 'passed') throw new Error('Requirement change requires the validated checkpoint on the original task');
+        supersededResult = previous.checkedResultId;
         const before = completedTurns;
         await pm.postMessage('owner', prompt);
         await pm.flush();
@@ -172,6 +176,8 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
         if (pending || active.size || pm.isProcessing) return false;
         const state = project(await store.read());
         const tasks = [...state.tasks.values()];
+        const originalTask = state.tasks.get(taskId);
+        if (supersededResult && (!originalTask || originalTask.status === 'cancelled')) throw new Error('Requirement change replaced the original benchmark task');
         const waiting = tasks.find(task => task.validation?.status === 'environment_blocked' || task.validation?.status === 'not_run');
         if (waiting) throw new Error(`validation_${waiting.validation!.status}: ${waiting.validation!.summary}`);
         if (tasks.some(task => task.status === 'blocked' || task.reviewFailedResultId)) throw new Error('Ensemble task blocked or native handoff review failed');
@@ -179,6 +185,8 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
         const settled = tasks.length > 0 && tasks.every(task => task.status === 'checked');
         if (settled) for (const task of tasks) {
           if (task.validation?.status !== 'passed') throw new Error('validation_not_run: handoff has no current passed trusted evidence');
+          if (task.spec.id === taskId && supersededResult && (task.checkedResultId === supersededResult || task.validation.resultId === supersededResult))
+            throw new Error('validation_not_run: requirement change reused checkpoint evidence instead of a new submission');
           options.onValidatedHandoff?.(task.validation);
         }
         return settled;
