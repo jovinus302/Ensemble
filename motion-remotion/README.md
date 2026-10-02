@@ -1,4 +1,16 @@
-# Ensemble Motion — Remotion (Phase 2a: S01-S04)
+# Ensemble Motion — Remotion
+
+## Current source status (2026-10-02)
+
+The repository contains several generations of compositions. Phase 2a below describes the original v2 SVG-world implementation, not the complete current composition list. [Root.tsx](src/Root.tsx) also registers `UiMockupFlat`, `PitchV3`, `StyleFrameV3`, `StyleFrameV4`, `OpeningV4` and `PitchV4`.
+
+- `Preview2a` implements v2 S01–S04 (750 frames); `Full` remains its 1,500-frame timeline with S05–S08 holding the S04 end state.
+- `PitchV3` is a registered intermediate implementation; its registration explicitly says full beat-by-beat motion is not complete. See [v3 review](review/log-v3-sf.md) and [v3 continuation notes](review/next-v3.md).
+- V4 has implemented style-frame, opening and full-pitch components under `src/v4/`. `PitchV4` uses the [1,834-frame timeline](src/v4/pitch/pitchTimeline.ts) at 30 fps (about 61.1 seconds), with a 388-frame opening. Its design references are [storyboard v4](storyboard-v4.md), [design review](review/design-v4.md) and [style-frame review log](review/log-v4-sf.md).
+
+This status is based on source and existing review documents at `main@c91234a`. No new render or visual acceptance was performed for this documentation update; composition registration and an implemented timeline alone do not establish final render approval. Earlier storyboards and review findings remain historical records.
+
+## Original Phase 2a implementation
 
 Persistent-world pitch video. One 3840x2160 SVG world (nodes/lines/packets/badges,
 pure function of frame) + a continuous camera (translate/scale, spring-driven) that

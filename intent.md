@@ -1,5 +1,16 @@
 # Ensemble — Product Intent
 
+> **문서 역할과 확인일 — 2026-10-02, main `c91234a`**: 이 문서는 제품 의도와 초기 질문의 기록이다. 실행 방법·구현 범위는 [README](README.md), [MVP 범위](docs/mvp-scope.md), [작업 모델](docs/work-model.md)을 본다. 아래 9월 28일 질문은 이력을 보존하며, 후속 결정과 구현 상태를 다음 표로 연결한다. 구현을 제품 가설 검증 완료로 해석하지 않는다.
+
+| 초기 질문 / 의도 | 현재 확인 위치와 경계 |
+|---|---|
+| Q1 채널 플랫폼 | [사용자 결정 §1.1](docs/pm-agent-decisions.md): 자체 Slack형 웹앱으로 정했다. 실제 Slack 연동은 아니다. 아래 “미정”은 초기 질문 기록이다. |
+| PM·실행 Agent 런타임 | [PM runtime](app/packages/llm/src/runtime.ts)은 API·Codex CLI·Claude CLI를 선택하며 [실행 Agent](app/packages/agents/src/index.ts)에도 Codex·Claude 커넥터가 있다. 모델·계정·도구는 실행 설정으로 확인한다. |
+| 조율과 실행 연결 | [현재 구현 대조](docs/pm-agent-plan.md)와 [작업 모델](docs/work-model.md)에 계획·결정·인계 범위가 있다. [PR #49](https://github.com/jovinus302/Ensemble/pull/49)의 오래된 PM 조율 취소는 Agent steering과 별개다. |
+| 결과를 확인한 뒤 이어 주기 | [PR #52](https://github.com/jovinus302/Ensemble/pull/52)는 host 검증기를 선택적으로 주입해 제출물 검증 뒤 judge가 인계하도록 한다. 미실행·환경 차단·실측 실패를 구분하며 모든 작업의 브라우저 검증이나 목표 달성 판정은 아니다. |
+| ProductState / Q3·Q4 | [ProductState](docs/product-state-model.md)는 미구현 설계안이다. criterion `passed`, `computeGap`, 목표 승인 UI를 현재 기능으로 읽지 않는다. 현재 위임·결정 요청은 [사용자 결정 §5](docs/pm-agent-decisions.md)를 따른다. |
+| Q6·Q8 성과 가설 | [8회 비교](app/packages/benchmark/evidence/paired-validation-v4/README.md)는 두 과제의 조건당 1회 관측이다. 일반적인 우열, 실제 팀의 수동 조율 시간 감소, 외부 사용자 가설까지 검증하지 않았다. |
+
 > **용어 정리**
 > - **AI PM**: 팀의 프로젝트 매니저 역할을 하는 AI. §6의 여섯 가지 일을 맡는다. 사용자 원문을 그대로 인용한 곳에서는 "PM"으로 표기한다.
 > - **Agent / 실행 Agent**: 작업을 배정받아 수행하는 AI 팀원. 예: 경쟁사 조사 Agent, 프로토타입 제작 Agent.

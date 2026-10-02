@@ -1,5 +1,9 @@
 # AI PM의 발언 철학
 
+> **구현 대조 — 2026-10-02, main `c91234a`**: 아래 9월 28일 합의는 제품 원칙이며 모든 발언의 품질을 보장하는 테스트 결과가 아니다. 현재 [PM prompt](../app/packages/orchestrator/src/pm-prompt.ts)와 [Coordinator](../app/packages/orchestrator/src/coordination.ts)는 판단과 근거를 `pm_considered`·`pm_spoke`에 남긴다. [PR #49](https://github.com/jovinus302/Ensemble/pull/49)는 같은 작성자의 새 일반 메시지에 의해 대체된 이전 PM 조율 요청을 취소한다. 첨부·작업 스레드·카드 답변은 대체 대상이 아니며 실행 Agent steering과 별개다. 대기·호출 시간도 발언 유용성과는 별도 지표다.
+
+[PR #52](https://github.com/jovinus302/Ensemble/pull/52)의 제출물 검증은 아래 “사실이나 계산에 근거한 말”을 지원한다. [TrustedValidator](../app/packages/orchestrator/src/validation.ts)를 주입한 필수 검증 경로에서는 측정 뒤 인계를 판단하고, 미실행·환경 차단·worker 자기보고를 구분한다. 모든 프로젝트의 실행 검증이나 [ProductState](product-state-model.md)의 목표 달성 판정을 뜻하지 않는다. 현재 실행 범위는 [구현 계획 대조](pm-agent-plan.md)와 [작업 모델](work-model.md)을 참조한다.
+
 > 2026-09-28 사용자와 합의. PM이 채팅에서 언제 말하고 언제 조용히 있을지를 규칙 목록이 아니라 원칙으로 정한다. 규칙은 상황이 바뀌면 깨지지만, 원칙은 처음 보는 상황에서도 판단 근거가 되고 사람이 그 판단을 따져 볼 수 있다.
 
 ## 한 문장
