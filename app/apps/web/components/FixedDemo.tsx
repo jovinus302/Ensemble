@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { AGREE, CHANGE, DISCUSS, demoReducer, initialDemo, type Speaker } from '../lib/fixed-demo';
+import { AGREE, CHANGE, DISCUSS, demoReducer, initialDemo, type Speaker, type Phase } from '../lib/fixed-demo';
 import './fixed-demo.css';
 
 const people: { id: Speaker; name: string; role: string; initials: string; kind: string }[] = [
@@ -31,7 +31,7 @@ export function FixedDemo() {
   }, [busy, phase, state.run]);
   useEffect(() => { setDraft(''); }, [phase, state.run]);
   useEffect(() => { setFormat('동화'); setFictionLevel('낮음 · 일상에 가깝게'); }, [state.run]);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [state.messages.length]);
+  useEffect(() => { end.current?.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }, [state.messages.length]);
   useEffect(() => { if (revision === 2 && format === '노래') setFormat('동화'); }, [revision, format]);
   return <main className="fd" data-phase={phase}>
     <header className="fd-top"><a className="fd-brand" href="/demo"><i />ensemble</a><nav aria-label="시연 단계">{['Connect', 'Align', 'Deliver', 'Tuning & Loop'].map((label, i) => <span key={label} aria-current={i === step ? 'step' : undefined}>{label}</span>)}</nav><div className="fd-controls"><span className="fd-demo-label">SCRIPTED DEMO</span><button disabled={!state.history.length} onClick={() => dispatch({ type: 'back' })}>이전 단계</button><button onClick={() => dispatch({ type: 'reset' })}>처음부터</button><a href="/">실제 작업 화면 ↗</a></div></header>
@@ -48,9 +48,8 @@ export function FixedDemo() {
         </div>
       </section>
       <section className="fd-work" aria-label="작업 맥락과 결과"><div className="fd-work-heading"><div><span className="fd-label">WORK CONTEXT</span><h2>{phase === 'intro' ? '함께 결정하고, 함께 완성하기' : !agreed ? '한 결정이 두 작업을 막고 있습니다' : revision === 2 ? '요청한 두 곳만 바뀌었습니다' : '합의가 실행으로 연결됩니다'}</h2></div><span className="fd-version">{revision ? `v1.${revision - 1}` : '초안'}</span></div>
-        <div className="fd-causality" aria-label="합의와 실행의 연결"><span className={agreed ? 'done' : 'current'}>① 사람끼리 합의</span><i>→</i><span className={agreed ? 'done' : ''}>② PM이 작업 재개</span><i>→</i><span className={revision ? 'done' : ''}>③ 화면에 반영</span></div>
         <div className={`fd-decision ${agreed ? 'resolved' : ''}`}><span className="fd-label">D1 · FICTION / 공유 기준</span><strong>{agreed ? 'B 확정 · 자동 가명화 + fiction 3단계' : '창작의 자유 ↔ 실존 인물 보호'}</strong><p>{agreed ? '결정자 김서연 · 제안 박도윤 · PM 기록 완료' : phase === 'intro' ? '목표: 하루의 기록으로 공유 가능한 이야기를 만들기' : `대기 이유: ${phase === 'agreement' ? '김서연의 최종 확정 답변' : '박도윤·김서연의 합의 필요'}`}</p>{!agreed && <div className="fd-options"><span>A · 실명 유지 / 공유 보류</span><span>B · 자동 가명화 / 3단계 선택</span></div>}</div>
-        <h3 className="fd-team-heading">Ensemble PM이 조율하는 팀 작업</h3><div className="fd-task-grid"><div className="fd-task human"><span className="fd-label">사람 · 기획 / 범위 결정</span><b>김서연</b><p>{phase === 'complete' ? 'D1 유지 · 수정 범위 확정' : phase === 'delivered' ? '도윤의 검토 의견 · 범위 결정 중' : agreed ? 'D1 결정 전달 완료' : '도윤과 방향 합의 중'}</p></div><div className="fd-task human"><span className="fd-label">사람 · UX / 화면 검토</span><b>박도윤</b><p>{revision ? '화면 검토 · 수정 2건 제안' : agreed ? 'PM 배정 · 결과 화면 검토 대기' : phase === 'agreement' ? '서연에게 절충안 전달 완료' : 'PM 배정 · 서연과 절충안 논의'}</p></div>{['Story Agent', 'UI Agent'].map((agent, i) => <div className="fd-task" key={agent}><span className="fd-label">{i ? '화면' : '생성 템플릿'} · 담당</span><b>{agent}</b><p>{busy ? phase === 'revising' ? i ? '안내·포맷 선택만 수정 중' : '노래 템플릿만 제외 중' : 'D1 기준 반영 중' : revision ? revision === 2 ? i ? '완료 · fiction 안내 추가 / 노래 선택 제거' : '완료 · 노래 템플릿만 제외' : i ? '완료 · 가명화 / 3단계 화면' : '완료 · 가명화 / 3단계 템플릿' : '대기 · D1 결정 필요'}</p></div>)}</div>
+        <CoordinationGraph key={state.run + phase} phase={phase} revision={revision} />
         <div className="fd-artifact"><div className="fd-artifact-title"><h3>Pages · 화면 미리보기</h3><small>로컬 데모 결과물</small></div><div className="fd-artifact-notes"><div className="fd-template" data-testid="story-template"><b>Story · 생성 템플릿 {revision ? `v1.${revision - 1}` : '대기'}</b>{revision ? <><p>인물·장소 → 자동 가명화</p><p>fiction → 낮음 / 중간 / 높음</p><p>포맷 → {revision === 2 ? '숏폼 · 동화 · 에세이' : '숏폼 · 동화 · 노래 · 에세이'}</p><small>데모 템플릿 · 실제 생성 없음</small></> : <p>D1 합의 후 규칙과 포맷을 반영합니다.</p>}</div>          {phase === 'revising' || phase === 'complete' ? <div className="fd-change-list"><b>D2 · 서연의 변경 요청</b><p>추가: fiction 안내 · 제거: 노래 포맷</p><p>유지: D1 가명화 / 3단계 · 나머지 포맷</p><small>{revision === 2 ? 'PM 데모 확인: 안내 있음 · 노래 없음 · D1 유지' : '기존 v1.0 표시 중 · 영향받은 영역만 갱신 예정'}</small></div> : <p className="fd-artifact-note">사람의 결정 D1 → 템플릿·화면 → PM 결과 확인</p>}</div><div className="fd-phone"><div className="fd-phone-top">9:41 <span>●●● ▮</span></div><h3>Pages<span>오늘을, 이야기로.</span></h3>{!revision ? <div className="fd-placeholder">{busy ? '확정된 기준으로 화면 구성 중…' : 'D1 합의 후 미리보기가 완성됩니다.'}<small>생성 템플릿 + 화면 구성</small></div> : <><div className="fd-story"><small>오늘의 Page · 가명화 적용</small><h4>퇴근길, 비를 피한 고양이</h4><p>이름 없는 골목에서 만난 작은 친구.<br />오늘의 기억이 새로운 이야기가 됩니다.</p>{revision === 2 && <p className="fd-disclosure" data-testid="fiction-disclosure">이 이야기는 fiction을 포함합니다. 인물·장소는 가명입니다.</p>}</div><label className="fd-fiction">fiction 수위<select aria-label="fiction 수위" value={fictionLevel} onChange={e => setFictionLevel(e.target.value)}><option>낮음 · 일상에 가깝게</option><option>중간 · 상상 더하기</option><option>높음 · 자유로운 이야기</option></select></label><p className="fd-format-label">지금 만들기 · 포맷 미리보기</p><div className="fd-formats">{(revision === 2 ? ['숏폼', '동화', '에세이'] : ['숏폼', '동화', '노래', '에세이']).map(f => <button key={f} aria-pressed={format === f} onClick={() => setFormat(f)}>{f}</button>)}</div><p className="fd-preview-note">{format} 선택됨 · 실제 생성은 실행하지 않습니다</p></>}<div className="fd-phone-nav">home <span>채팅</span><span>feed</span></div></div>
 
         </div>
@@ -59,4 +58,31 @@ export function FixedDemo() {
       </section>
     </div>
   </main>;
+}
+
+/** A supporting map of the conversation, never a separate execution engine. */
+function CoordinationGraph({ phase, revision }: { phase: Phase; revision: number }) {
+  const decided = ['executing', 'delivered', 'revising', 'complete'].includes(phase);
+  const changing = phase === 'revising' || phase === 'complete';
+  const working = phase === 'executing' || phase === 'revising';
+  const humanActive = phase === 'discussion' || phase === 'agreement' || phase === 'delivered';
+  const pmStatus = phase === 'intro' ? '역할 연결' : phase === 'discussion' ? '두 사람에게 조율 요청' : phase === 'agreement' ? '서연의 최종 결정 대기' : phase === 'executing' ? 'D1 기록 → 작업 배정' : phase === 'delivered' ? '도윤에게 결과 검토 요청' : phase === 'revising' ? 'D2 영향만 다시 배정' : '변경·유지 결과 확인';
+  return <figure className="fd-graph" data-testid="coordination-graph" data-stage={phase} data-active-path={working ? changing ? 'scoped-revision' : 'decision-handoff' : humanActive ? 'human-review' : 'none'} aria-label="PM이 연결하는 사람의 결정, 담당 작업, 결과물">
+    <figcaption><span>PM 조율 맵</span><small>{changing ? '변경 경로만 강조 · D1 유지' : '사람의 판단 → PM 배정 → 결과'}</small></figcaption>
+    <div className="fd-graph-canvas">
+      <svg className="fd-graph-lines" viewBox="0 0 400 150" preserveAspectRatio="none" aria-hidden="true">
+        <path className={humanActive ? 'active human' : ''} d="M88 25 C115 25 110 75 135 75 M88 125 C115 125 110 75 135 75" />
+        <path className={working ? 'active' : ''} d="M185 75 C210 75 205 25 230 25 M185 75 C210 75 205 125 230 125" />
+        <path className={changing ? 'active changed' : phase === 'executing' ? 'active' : ''} d="M285 25 L320 25 M285 125 L320 125" />
+      </svg>
+      <div className={`fd-graph-node human person-one ${phase === 'agreement' ? 'active' : ''}`}><small>사람 · 방향 결정</small><b>김서연</b><span>{changing ? 'D2 범위 확정' : decided ? 'D1 확정 · 인계' : '최종 판단 대기'}</span></div>
+      <div className={`fd-graph-node human person-two ${phase === 'discussion' || phase === 'delivered' ? 'active' : ''}`}><small>사람 · UX 검토</small><b>박도윤</b><span>{revision ? '결과 검토 · 2건 제안' : decided ? '결과 검토 대기' : phase === 'agreement' ? '절충안 전달 완료' : '절충안 검토'}</span></div>
+      <div className="fd-graph-node pm coordinator"><small>조율 · 기록 · 확인</small><b>Ensemble PM</b><span>{pmStatus}</span></div>
+      <div className={`fd-graph-node agent story-owner ${working ? 'active' : ''}`}><small>에이전트 · 담당</small><b>Story Agent</b><span>{changing ? '노래만 제외' : decided ? 'D1 → 생성 규칙' : 'D1 결정 대기'}</span></div>
+      <div className={`fd-graph-node agent ui-owner ${working ? 'active' : ''}`}><small>에이전트 · 담당</small><b>UI Agent</b><span>{changing ? '안내·선택지 수정' : decided ? 'D1 → 첫 화면' : 'D1 결정 대기'}</span></div>
+      <div className={`fd-graph-node output story-output ${changing ? 'changed' : ''}`}><small>결과 · Story</small><b>생성 템플릿</b><span>{changing ? (phase === 'revising' ? '− 노래 · 반영 중' : '− 노래 · 반영 완료') : revision ? '가명화 · 3단계' : '규칙 반영 대기'}</span></div>
+      <div className={`fd-graph-node output ui-output ${changing ? 'changed' : ''}`}><small>결과 · UI</small><b>Pages 화면</b><span>{changing ? (phase === 'revising' ? '+ 안내 / − 노래 · 반영 중' : '+ 안내 / − 노래 · 반영 완료') : revision ? 'v1.0 전달 완료' : '화면 반영 대기'}</span></div>
+    </div>
+    <p className="fd-graph-status" role="status" key={phase}><i />{pmStatus}{changing && ' · 유지: 가명화 / fiction 3단계 / 나머지 포맷'}</p>
+  </figure>;
 }
