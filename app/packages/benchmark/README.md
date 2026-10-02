@@ -1,5 +1,7 @@
 # Paired restaurant-booking pilot
 
+Historical generated reports, artifacts and screenshots are archived at fixed commit `cb84ecc2849f8194e0d5d44d22642a5174ef4c4f`. The [evidence index](evidence/README.md) links retained batch pages and original artifact trees. Ordinary offline tests retain their fixtures and starters; historical replay requires restoring the relevant fixed archive. This cleanup does not alter live guards or authorize new calls.
+
 Tracking: https://github.com/jovinus302/Ensemble/issues/35
 
 ## Current batch: paired-validation-v4

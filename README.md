@@ -70,7 +70,7 @@ npm run start -w @ensemble/web
 
 앞의 세 명령은 unit/integration 테스트, 타입 검사, 웹 빌드입니다. 마지막 명령은 빌드 후 서버를 실행하며, 위 런타임 환경 설정을 동일하게 적용해야 합니다. `smoke:*`, `live:*`, `benchmark:live`는 이름만 보고 오프라인 검사로 실행하지 마세요. 실제 provider 호출 여부와 별도 실행 승인을 먼저 확인해야 합니다.
 
-이 기준 main에 기록된 v4 사전 검증은 **813개 테스트, typecheck, build 통과**입니다. 당시 build의 기존 동적 파일 추적 경고 3건은 남아 있습니다. 이번 문서 변경에서 그 실행을 다시 수행했다는 의미는 아닙니다. [검증 기록](app/packages/benchmark/evidence/paired-validation-v4/preflight/code-checks.json)을 참조하세요.
+이 기준 main에 기록된 v4 사전 검증은 **813개 테스트, typecheck, build 통과**입니다. 당시 build의 기존 동적 파일 추적 경고 3건은 남아 있습니다. [당시 검증 기록](https://github.com/jovinus302/Ensemble/blob/cb84ecc2849f8194e0d5d44d22642a5174ef4c4f/app/packages/benchmark/evidence/paired-validation-v4/preflight/code-checks.json)과 [현재 검증 실행 안내](docs/qa/README.md)를 참조하세요.
 
 ## 문서 지도와 읽는 순서
 
@@ -82,7 +82,7 @@ npm run start -w @ensemble/web
 | 4. PM 행동·결정의 근거 | [PM 원칙](docs/pm-principles.md), [PM 계획](docs/pm-agent-plan.md), [결정 기록](docs/pm-agent-decisions.md) | 원칙·계획·시점별 결정 |
 | 5. 아직 설계 중인 모델 | [Product State](docs/product-state-model.md) | 제안, 구현 완료 아님 |
 | 6. 비교 측정 | [벤치마크 안내](app/packages/benchmark/README.md), [v4 결과](app/packages/benchmark/evidence/paired-validation-v4/README.md) | 고정 기준의 실험·재현 자료 |
-| 7. 당시 QA 재현 | [Codex 로그인](docs/qa/codex-login-2026-10-01/README.md), [로컬 양쪽 provider](docs/qa/local-dual-provider-2026-10-01/README.md), [MD2 QA](docs/qa/md2-dual-provider-2026-10-01/README.md) | 역사적 실패·차단·후속 수정 기록 |
+| 7. 검증 실행과 과거 증거 | [QA 실행 안내·증거 보관 위치](docs/qa/README.md) | 재현 명령, 유지한 fixture와 스크립트, 고정 커밋의 역사적 실패·수정 기록 |
 | 8. 화면·영상·외부 조사 | [DESIGN](DESIGN.md), [MOTION](MOTION.md), [Remotion](motion-remotion/README.md), [Argo 비교](docs/argo/ensemble-comparison.md) | 디자인/영상 제안과 조사; 앱 구현과 구분 |
 
 ## 비교 결과의 범위

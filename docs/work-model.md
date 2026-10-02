@@ -20,7 +20,7 @@
 
 확인된 결과를 사람이 다시 열면 `revision_requested`와 `update_sent`로 요구사항을 전달할 수 있다. 이 경로는 반드시 계획 버전을 올리는 것은 아니다. `reopenRequests()`가 요청을 최종 인계 조건에 더한다. 따라서 “모든 요구사항 변경은 계획 vN+1”이라는 설명은 이 경로에 적용되지 않는다.
 
-현재 `contextDigest`는 목표·계획·결정과 관련 이벤트 순서를 해시하며, 재개 요청이나 모든 메시지·업데이트를 포괄하는 최신 요구사항 해시는 아니다. 같은 digest만으로 증거 재사용을 판단하면 안 된다. 결과 ID, 제출물 digest, 검증 시도와 실제 조건도 확인해야 한다. v4의 실제 사례와 범위는 [바인딩 감사](../app/packages/benchmark/evidence/paired-validation-v4/binding-audit-v4-05.json)에 남아 있다.
+현재 `contextDigest`는 목표·계획·결정과 관련 이벤트 순서를 해시하며, 재개 요청이나 모든 메시지·업데이트를 포괄하는 최신 요구사항 해시는 아니다. 같은 digest만으로 증거 재사용을 판단하면 안 된다. 결과 ID, 제출물 digest, 검증 시도와 실제 조건도 확인해야 한다. v4의 실제 사례와 범위는 [바인딩 감사](https://github.com/jovinus302/Ensemble/blob/cb84ecc2849f8194e0d5d44d22642a5174ef4c4f/app/packages/benchmark/evidence/paired-validation-v4/binding-audit-v4-05.json)에 남아 있다.
 
 ### 대화 선점과 하루 요약
 
