@@ -1,0 +1,115 @@
+{
+  "ordering": "Report event order; native ledger nested order retained, not an inferred global wallclock order",
+  "sequence": [
+    {
+      "reportEventIndex": 0,
+      "event": {
+        "type": "direct_config",
+        "provider": "codex",
+        "model": "gpt-6-astra",
+        "effort": "low",
+        "systemInstructions": "Implement the requested development task in the supplied React starter workspace.\nFollow the task requirements and preserve the provided project structure and test contracts.\nEdit source files only within the assigned workspace. The external harness runs builds and browser checks.\nDo not install dependencies, access external networks, change authentication or permissions, make payments, commit, or publish.\nDo not delegate to other agents. If a tool is denied, do not retry it or bypass the restriction.\nState any unfinished work or unverified behavior accurately.",
+        "reportingProtocol": "plain",
+        "underlyingApiCalls": null,
+        "workerUsage": null
+      }
+    },
+    {
+      "reportEventIndex": 1,
+      "event": {
+        "type": "call-attempt",
+        "role": "worker",
+        "count": 1,
+        "startMs": 1887.6799999999998
+      }
+    },
+    {
+      "reportEventIndex": 2,
+      "event": {
+        "type": "direct_reply",
+        "text": "I’ll inspect the starter and implement only the date, time, and 1–6 guest controls, then stop for the harness checkpoint. I’ll preserve the existing test IDs and leave submission, fixtures, and booking persistence for the next instruction.\n\nProposition: the controls must update React state, offer the four specified times, and remain usable at 390px and 1440px. I’ll check the source and available validation commands without claiming a harness build. Hypothesis review: **SOUND**; this is the explicit first-stage scope."
+      }
+    },
+    {
+      "reportEventIndex": 3,
+      "event": {
+        "type": "direct_reply",
+        "text": "The starter already has React state for all three controls, but the time selector is disabled. I’ll enable it, retain the numeric guest input with its 1–6 bounds, add required-field validation, and make the form responsive. Submission will remain inactive at this checkpoint, as requested."
+      }
+    },
+    {
+      "reportEventIndex": 4,
+      "event": {
+        "type": "direct_reply",
+        "text": "Checkpoint reached. Changed `src/App.jsx`:\n\n- Enabled state-controlled date/time/guest inputs.\n- Added all four requested times and required 1–6 integer guest validation.\n- Preserved existing test IDs and added responsive styling.\n\nSource review: **PASS — COMMITTED CHANGE** (classification only; no Git commit). Build and browser behavior remain unverified pending the external harness.\n\nBooking submission, errors, confirmation, and persistence are intentionally deferred. Awaiting the next instruction."
+      }
+    },
+    {
+      "reportEventIndex": 5,
+      "event": {
+        "type": "direct_worker_duration",
+        "status": "completed",
+        "elapsedMs": 89652.654,
+        "usage": null,
+        "underlyingApiCalls": null
+      }
+    },
+    {
+      "reportEventIndex": 6,
+      "event": {
+        "type": "checkpoint",
+        "checks": [
+          {
+            "id": "checkpoint.selection",
+            "pass": true
+          },
+          {
+            "id": "console.clean",
+            "pass": true
+          }
+        ],
+        "passed": true
+      }
+    },
+    {
+      "reportEventIndex": 7,
+      "event": {
+        "type": "call-attempt",
+        "role": "worker",
+        "count": 2,
+        "startMs": 94144.8351
+      }
+    },
+    {
+      "reportEventIndex": 8,
+      "event": {
+        "type": "direct_reply",
+        "text": "I’ll complete booking submission, fixture errors, confirmation, editing, and refresh persistence with the new 1–8 guest rule. For 7–8 guests, selecting that party size will clear a previously selected 17:00 time and explain why.\n\nProposition: only valid bookings reach the local API; successful edits replace the saved booking; failed submissions retain editable values and show helpful errors. Existing test IDs and fixture files remain unchanged. Hypothesis review: **SOUND**. I’ll review these paths in source and run the supplied build."
+      }
+    },
+    {
+      "reportEventIndex": 9,
+      "event": {
+        "type": "direct_reply",
+        "text": "The booking flow is implemented, including saved edits and the large-party time restriction. The supplied build command failed because the environment blocked esbuild’s child-process launch (`spawn EPERM`); I won’t retry it or request extra permissions.\n\nI’ll finish with a source-level check of validation and saved-booking recovery. Build and browser acceptance will remain unverified here."
+      }
+    },
+    {
+      "reportEventIndex": 10,
+      "event": {
+        "type": "direct_reply",
+        "text": "Updated `src/App.jsx` with:\n\n- 1–8 guests; rejects 9.\n- 7–8 guests restricted to 18:00 onward, clearing invalid times with an explanation.\n- Local API submission, helpful errors, confirmation, editing, and saved edits surviving refresh.\n- Responsive styling and preserved test IDs.\n\nValidation and mocked booking-flow checks passed. Build attempted but blocked by esbuild’s `spawn EPERM`; successful build and browser checks at 390/1440px remain unverified. The external harness must complete those checks. Fixture and build files were unchanged."
+      }
+    },
+    {
+      "reportEventIndex": 11,
+      "event": {
+        "type": "direct_worker_duration",
+        "status": "completed",
+        "elapsedMs": 152466.187,
+        "usage": null,
+        "underlyingApiCalls": null
+      }
+    }
+  ]
+}

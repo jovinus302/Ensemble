@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "protocolRevision": "paired-validation-v4",
+  "mode": "live",
+  "cell": {
+    "task": "A",
+    "provider": "codex",
+    "ensemble": false,
+    "ordinal": 2,
+    "id": "v4-02"
+  },
+  "blindId": "eb599265-4691-4fbe-b914-2958fa039086",
+  "baseSha": "7cd8de808caf046e0bcc3894a27054dca133d987",
+  "rubricHash": "63a743bd20fe9861cf4b7e0e31f52892af8aabfd88f157cf48887948849e8a95",
+  "model": "gpt-6-astra",
+  "effort": "low",
+  "cacheState": "unknown",
+  "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+  "status": "passed",
+  "error": null,
+  "preparationMs": 10,
+  "taskMs": 210964,
+  "totalMs": 210974,
+  "checkpointMs": null,
+  "changeMs": null,
+  "afterChangeMs": null,
+  "humanInterventions": [],
+  "humanRequests": [],
+  "checks": [
+    {
+      "id": "checkpoint.selection",
+      "pass": true
+    },
+    {
+      "id": "required-fields.blocked",
+      "pass": true
+    },
+    {
+      "id": "party.one-through-six",
+      "pass": true
+    },
+    {
+      "id": "sold-out",
+      "pass": true
+    },
+    {
+      "id": "service-error",
+      "pass": true
+    },
+    {
+      "id": "confirmation.persistence",
+      "pass": true
+    },
+    {
+      "id": "invalid-party.blocked",
+      "pass": true
+    },
+    {
+      "id": "viewport.390",
+      "pass": true
+    },
+    {
+      "id": "viewport.1440",
+      "pass": true
+    },
+    {
+      "id": "console.clean",
+      "pass": true
+    }
+  ],
+  "calls": [
+    {
+      "role": "worker",
+      "startMs": 1927.9387000000002,
+      "endMs": 1963.4506000000001,
+      "status": "completed"
+    }
+  ],
+  "events": [
+    {
+      "type": "direct_config",
+      "provider": "codex",
+      "model": "gpt-6-astra",
+      "effort": "low",
+      "systemInstructions": "Implement the requested development task in the supplied React starter workspace.\nFollow the task requirements and preserve the provided project structure and test contracts.\nEdit source files only within the assigned workspace. The external harness runs builds and browser checks.\nDo not install dependencies, access external networks, change authentication or permissions, make payments, commit, or publish.\nDo not delegate to other agents. If a tool is denied, do not retry it or bypass the restriction.\nState any unfinished work or unverified behavior accurately.",
+      "reportingProtocol": "plain",
+      "underlyingApiCalls": null,
+      "workerUsage": null
+    },
+    {
+      "type": "call-attempt",
+      "role": "worker",
+      "count": 1,
+      "startMs": 1927.9387000000002
+    },
+    {
+      "type": "direct_reply",
+      "text": "I’ll inspect the starter, complete the reservation flow, and preserve the API fixture and test IDs. I’ll check what I can locally and clearly distinguish that from the external build and browser checks."
+    },
+    {
+      "type": "direct_reply",
+      "text": "The fixture returns HTTP 409 for the sold-out slot and 503 for the service-error slot.\n\nBefore editing: the confirmed outcome is a validated booking form, helpful errors with retry, confirmation after API success, and a saved booking restored on refresh. I’ll interpret “Edit” as reopening the saved details while retaining the previous confirmation until a replacement succeeds. The layout will use two columns on desktop and stack on mobile. Hypothesis review: **SOUND**. I’ll check compilation locally and review the request, persistence, and error paths; browser acceptance remains with the external harness."
+    },
+    {
+      "type": "direct_reply",
+      "text": "The form now submits to the local fixture, preserves entries after errors, and saves successful bookings for refresh. Editing also includes a way to return to the current confirmation. The responsive styles stack the page on narrow screens. I’m checking compilation next; visual fit still needs the external browser check."
+    },
+    {
+      "type": "direct_reply",
+      "text": "The compilation attempt was blocked by `spawn EPERM`; I won’t retry or request extra permissions. Source review confirms the test IDs and fixture request shape are retained, but build and browser behavior remain unverified. I’m also retaining the starter’s numeric guest input so existing automation can fill it directly."
+    },
+    {
+      "type": "direct_reply",
+      "text": "Updated `src/App.jsx` with validation, four dinner times, 1–6 guests, fixture-backed booking, helpful errors, confirmation, editing, refresh persistence, and responsive styling.\n\nPreserved all test IDs and left build/server fixtures unchanged.\n\nVerification limitation: compilation was blocked by `spawn EPERM`. Build success and unclipped 390/1440px browser layouts remain unverified pending the external harness."
+    },
+    {
+      "type": "direct_worker_duration",
+      "status": "completed",
+      "elapsedMs": 200160.90889999998,
+      "usage": null,
+      "underlyingApiCalls": null
+    }
+  ],
+  "usage": null,
+  "costUsd": null,
+  "underlyingApiCalls": null,
+  "actualModelInvocations": null
+}

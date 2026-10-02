@@ -1,0 +1,79 @@
+{
+  "kind": "OFFLINE_PORTABLE_COLLECTOR_REPRODUCTION",
+  "modelCalls": 0,
+  "checkedAtUtc": "2026-10-02T01:24:15.064275+00:00",
+  "passed": true,
+  "reportCount": 8,
+  "sourceFilesByteMatched": 70,
+  "screenshotsByteMatched": 24,
+  "collectorSha256": "11a17253f63742ec374d9b7d9ec3086dc3313d169cddb1108339cf06fdbd05b2",
+  "referenceResultsSha256": "b71fe49113710e985119747e1ed4f072a8bc6915ab9c71b97773228d06d5c282",
+  "portableResultsSha256": "6c102f70ef55b74d92b7889ded893f631d0f0814610d256972570ed0e610aca3",
+  "rows": [
+    {
+      "cell": "v4-01",
+      "rawReportSha256": "a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9",
+      "rawProvenanceMatched": true,
+      "sourceFilesByteMatched": 10,
+      "screenshotsByteMatched": 4,
+      "primaryMetricsMatched": true
+    },
+    {
+      "cell": "v4-02",
+      "rawReportSha256": "5769ec7e9e2962b0756870786093ee45e4d6b6b58408bab291257fcb01baa9bb",
+      "rawProvenanceMatched": true,
+      "sourceFilesByteMatched": 5,
+      "screenshotsByteMatched": 2,
+      "primaryMetricsMatched": true
+    },
+    {
+      "cell": "v4-03",
+      "rawReportSha256": "02261c6640d0a9f3ce3cbb6dc0b0accc97b02f766b612c68567bede83635f618",
+      "rawProvenanceMatched": true,
+      "sourceFilesByteMatched": 5,
+      "screenshotsByteMatched": 2,
+      "primaryMetricsMatched": true
+    },
+    {
+      "cell": "v4-04",
+      "rawReportSha256": "6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b",
+      "rawProvenanceMatched": true,
+      "sourceFilesByteMatched": 10,
+      "screenshotsByteMatched": 4,
+      "primaryMetricsMatched": true
+    },
+    {
+      "cell": "v4-05",
+      "rawReportSha256": "47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d",
+      "rawProvenanceMatched": true,
+      "sourceFilesByteMatched": 15,
+      "screenshotsByteMatched": 4,
+      "primaryMetricsMatched": true
+    },
+    {
+      "cell": "v4-06",
+      "rawReportSha256": "2803ab05c67772eb629d3140b04e47d2a2448043557e1f8573586829e34bee12",
+      "rawProvenanceMatched": true,
+      "sourceFilesByteMatched": 5,
+      "screenshotsByteMatched": 2,
+      "primaryMetricsMatched": true
+    },
+    {
+      "cell": "v4-07",
+      "rawReportSha256": "1c5fd991c639b765bb87c9836292c279e37bbeaeed57d0f020058b73da9ca5db",
+      "rawProvenanceMatched": true,
+      "sourceFilesByteMatched": 5,
+      "screenshotsByteMatched": 2,
+      "primaryMetricsMatched": true
+    },
+    {
+      "cell": "v4-08",
+      "rawReportSha256": "416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016",
+      "rawProvenanceMatched": true,
+      "sourceFilesByteMatched": 15,
+      "screenshotsByteMatched": 4,
+      "primaryMetricsMatched": true
+    }
+  ],
+  "scope": "All eight completed v4 reports; immutable source and screenshot bytes plus raw report provenance and primary metrics. Sanitized ledger text may differ in path placeholders, and collection timestamps differ. No live/model execution."
+}

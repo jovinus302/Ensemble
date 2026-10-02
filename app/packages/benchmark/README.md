@@ -2,11 +2,15 @@
 
 Tracking: https://github.com/jovinus302/Ensemble/issues/35
 
-## Current revision: trusted validation before handoff
+## Current batch: paired-validation-v4
+
+The user approved **eight new slots** after the previous eight were exhausted. [V4 protocol and evidence](evidence/paired-validation-v4/README.md) define the new fixed-main experiment. Old v3 authorization stays closed; each new cell is claimed once in sequence, with review between cells and no automatic retry/model substitution. The original observations are not pooled with this batch. **All eight new cells completed and passed** (A: 10/10 browser checks; B: 13/13). All four within-provider/task pairs observed longer total elapsed time for Ensemble in this n=1 batch; see the evidence report for full times, calls, partial usage and limitations. All eight new slots are consumed; zero remain, and no rerun is authorized.
+
+## Prior revision: trusted validation before handoff
 
 `revision-bound-validation-v3` fixes the validation lifecycle and date oracle. It is not a new paired performance study. The five legacy attempts remain invalid for comparing orchestration because direct runs inherited a conflicting prototype role. The separate corrected Codex Task A pair consumed two more slots: Ensemble failed handoff despite a later 10/10 browser result; direct recorded 9/10 because the original oracle required an ISO display string. Original observations and diagnoses are preserved in [draft PR #51](https://github.com/jovinus302/Ensemble/pull/51), not overwritten here.
 
-All eight original slots are now conservatively consumed. The preregistered final Ensemble + Codex Task A validation-flow observation passed: 416.659 seconds, PM 2 + worker 1 + judge 1 top-level attempts, browser 10/10 and all five flow criteria. Worker limitations were retained; host validation sequence 22 preceded sufficient review 23 and checked handoff 24. There were no human interventions or cleanup errors. See [v3 evidence](evidence/revision-bound-validation-v3/README.md). It cannot establish a performance difference. The final executable CLI rejects every live run because no slots remain; the historical one-cell guard rejected prior eight-run/pair approvals and all resume requests, and never overwrites an attempt directory. An atomic local slot claim prevents reusing the approval with another output path. No retry is authorized. PR #51 and this separate feature PR must not be merged automatically.
+All eight original slots are now conservatively consumed. The preregistered final Ensemble + Codex Task A validation-flow observation passed: 416.659 seconds, PM 2 + worker 1 + judge 1 top-level attempts, browser 10/10 and all five flow criteria. Worker limitations were retained; host validation sequence 22 preceded sufficient review 23 and checked handoff 24. There were no human interventions or cleanup errors. See [v3 evidence](evidence/revision-bound-validation-v3/README.md). It cannot establish a performance difference. The historical v3 CLI rejected every further live run because no original slots remained; the historical one-cell guard rejected prior eight-run/pair approvals and all resume requests, and never overwrites an attempt directory. An atomic local slot claim prevents reusing the approval with another output path. No retry is authorized. PR #51 remains a separate draft. The v3 feature was merged as PR #52 by explicit approval; the v4 result PR must remain a draft.
 
 ### Production contract
 

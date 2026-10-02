@@ -1,0 +1,127 @@
+{
+  "protocolRevision": "paired-validation-v4",
+  "newAuthorizedSlots": 8,
+  "newConsumedSlots": 8,
+  "newCompletedCells": 8,
+  "remainingAuthorizedSlots": 0,
+  "historicalConsumedSlots": 8,
+  "reruns": 0,
+  "modelSubstitutions": 0,
+  "frozenImplementationCommit": "74f8abcfe81fb3493cedb8162509f26b8d86e49d",
+  "liveCallsDuringEvidenceCollection": 0,
+  "receiptHashesMatchRawReports": true,
+  "cells": [
+    {
+      "cell": {
+        "task": "A",
+        "provider": "codex",
+        "ensemble": true,
+        "ordinal": 1,
+        "id": "v4-01"
+      },
+      "claimedAt": "2026-10-02T00:20:21.886Z",
+      "completedAt": "2026-10-02T00:25:04.143Z",
+      "status": "passed",
+      "reportSha256": "a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9",
+      "manifestFingerprint": "2577aa5c7fdcc8223bd798b1fa449c6b6fdabc84e767709b276843892e79fffa"
+    },
+    {
+      "cell": {
+        "task": "A",
+        "provider": "codex",
+        "ensemble": false,
+        "ordinal": 2,
+        "id": "v4-02"
+      },
+      "claimedAt": "2026-10-02T00:25:53.005Z",
+      "completedAt": "2026-10-02T00:29:24.005Z",
+      "status": "passed",
+      "reportSha256": "5769ec7e9e2962b0756870786093ee45e4d6b6b58408bab291257fcb01baa9bb",
+      "manifestFingerprint": "2577aa5c7fdcc8223bd798b1fa449c6b6fdabc84e767709b276843892e79fffa"
+    },
+    {
+      "cell": {
+        "task": "A",
+        "provider": "claude",
+        "ensemble": false,
+        "ordinal": 3,
+        "id": "v4-03"
+      },
+      "claimedAt": "2026-10-02T00:30:01.834Z",
+      "completedAt": "2026-10-02T00:34:08.871Z",
+      "status": "passed",
+      "reportSha256": "02261c6640d0a9f3ce3cbb6dc0b0accc97b02f766b612c68567bede83635f618",
+      "manifestFingerprint": "2577aa5c7fdcc8223bd798b1fa449c6b6fdabc84e767709b276843892e79fffa"
+    },
+    {
+      "cell": {
+        "task": "A",
+        "provider": "claude",
+        "ensemble": true,
+        "ordinal": 4,
+        "id": "v4-04"
+      },
+      "claimedAt": "2026-10-02T00:34:52.258Z",
+      "completedAt": "2026-10-02T00:40:33.564Z",
+      "status": "passed",
+      "reportSha256": "6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b",
+      "manifestFingerprint": "2577aa5c7fdcc8223bd798b1fa449c6b6fdabc84e767709b276843892e79fffa"
+    },
+    {
+      "cell": {
+        "task": "B",
+        "provider": "claude",
+        "ensemble": true,
+        "ordinal": 5,
+        "id": "v4-05"
+      },
+      "claimedAt": "2026-10-02T00:41:36.529Z",
+      "completedAt": "2026-10-02T00:57:28.767Z",
+      "status": "passed",
+      "reportSha256": "47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d",
+      "manifestFingerprint": "2577aa5c7fdcc8223bd798b1fa449c6b6fdabc84e767709b276843892e79fffa"
+    },
+    {
+      "cell": {
+        "task": "B",
+        "provider": "claude",
+        "ensemble": false,
+        "ordinal": 6,
+        "id": "v4-06"
+      },
+      "claimedAt": "2026-10-02T01:02:19.161Z",
+      "completedAt": "2026-10-02T01:11:38.107Z",
+      "status": "passed",
+      "reportSha256": "2803ab05c67772eb629d3140b04e47d2a2448043557e1f8573586829e34bee12",
+      "manifestFingerprint": "2577aa5c7fdcc8223bd798b1fa449c6b6fdabc84e767709b276843892e79fffa"
+    },
+    {
+      "cell": {
+        "task": "B",
+        "provider": "codex",
+        "ensemble": false,
+        "ordinal": 7,
+        "id": "v4-07"
+      },
+      "claimedAt": "2026-10-02T01:12:20.260Z",
+      "completedAt": "2026-10-02T01:16:37.028Z",
+      "status": "passed",
+      "reportSha256": "1c5fd991c639b765bb87c9836292c279e37bbeaeed57d0f020058b73da9ca5db",
+      "manifestFingerprint": "2577aa5c7fdcc8223bd798b1fa449c6b6fdabc84e767709b276843892e79fffa"
+    },
+    {
+      "cell": {
+        "task": "B",
+        "provider": "codex",
+        "ensemble": true,
+        "ordinal": 8,
+        "id": "v4-08"
+      },
+      "claimedAt": "2026-10-02T01:17:23.480Z",
+      "completedAt": "2026-10-02T01:22:45.639Z",
+      "status": "passed",
+      "reportSha256": "416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016",
+      "manifestFingerprint": "2577aa5c7fdcc8223bd798b1fa449c6b6fdabc84e767709b276843892e79fffa"
+    }
+  ]
+}

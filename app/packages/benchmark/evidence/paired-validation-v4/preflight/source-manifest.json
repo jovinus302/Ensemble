@@ -1,0 +1,57 @@
+{
+  "kind": "V4_PROVIDER_FREE_PREFLIGHT",
+  "actualModelInvocations": 0,
+  "baseSha": "7cd8de808caf046e0bcc3894a27054dca133d987",
+  "sourceFiles": [
+    {
+      "file": "browser/acceptance.mjs",
+      "sha256": "f2d2ae94673746a0b91c6f12ae68097401105b6c9330113ac1dfca313e4ac60c"
+    },
+    {
+      "file": "browser/smoke.mjs",
+      "sha256": "cadc92689eb86e9cacc4648dbbf1c7b920f235e14aea1c581398e2113015504e"
+    },
+    {
+      "file": "fixtures/reference.jsx",
+      "sha256": "e2589a61a83c3b2961d6e30d90f5fd9fd9759efed3fdd13d5692e064bc8dc765"
+    },
+    {
+      "file": "fixtures/oracle-variants.mjs",
+      "sha256": "8ff170be210e7de42b3e4d71fc814e36ae2ec998a0d84bce13fdbbfe2830d617"
+    },
+    {
+      "file": "scripts/validate-snapshot.ts",
+      "sha256": "238b52a23b91e4fd447a8022cf9e1efc2248d3d9e42d019b317a4b8c5905b002"
+    },
+    {
+      "file": "scripts/build-snapshot.mjs",
+      "sha256": "38740513fa7c4209b224b6a0f688d1c7540b31aa4cc0264322c94b826e7f1aa6"
+    },
+    {
+      "file": "src/validator.ts",
+      "sha256": "a2a550ae77f612bc30fd7f765305e2453711c6f5ba9e305aacf739e247bdd043"
+    },
+    {
+      "file": "starter/build.mjs",
+      "sha256": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa"
+    },
+    {
+      "file": "starter/server.mjs",
+      "sha256": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f"
+    },
+    {
+      "file": "starter/index.html",
+      "sha256": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839"
+    },
+    {
+      "file": "starter/package.json",
+      "sha256": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e"
+    },
+    {
+      "file": "starter/src/App.jsx",
+      "sha256": "1312191a05101be74ef6ae8327003f93253ae0cc805a917f3608db9a6f5becfe"
+    }
+  ],
+  "recordedAt": "2026-10-02T00:11:46.745Z",
+  "sourceFilesUnchanged": true
+}

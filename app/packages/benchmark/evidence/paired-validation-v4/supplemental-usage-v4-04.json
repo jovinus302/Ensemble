@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "measurement": "supplemental local session-log observation; primary report usage remains null",
+  "cell": "v4-04",
+  "reportSha256": "6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b",
+  "workspace": "app/packages/benchmark/.local/paired-validation-v4/work/v4-04/sessions/v4-04/prototype-agent",
+  "sources": [
+    {
+      "path": "claude-projects/<exact-v4-workspace>/2de08de5-270c-49fb-914d-2b77abff0c70.jsonl",
+      "sha256": "82495f96bc5cd646e7969a222eb8db229fd9c1162ef5925a85bdbf272f4eb369",
+      "sessionIds": [
+        "2de08de5-270c-49fb-914d-2b77abff0c70"
+      ]
+    }
+  ],
+  "coverage": {
+    "role": "worker only",
+    "assistantUsageEntries": 23,
+    "cwdScope": "resolved exact owned workspace and descendants, anchored session ID; sibling/escape paths excluded",
+    "deduplicatedMessages": 13,
+    "deduplicationKey": [
+      "sessionId",
+      "message.id"
+    ],
+    "observedModels": [
+      "claude-opus-4-8"
+    ],
+    "requestedEffort": "xhigh",
+    "independentlyObservedEffort": null,
+    "pmJudgeUsageIncluded": false,
+    "billingCompleteness": "unknown"
+  },
+  "usage": {
+    "inputTokensExcludingCache": 26,
+    "cacheReadInputTokens": 366629,
+    "cacheWriteInputTokens": 29507,
+    "outputTokens": 19187,
+    "reasoningOutputTokens": 12922,
+    "inputTokensIncludingCache": 396162,
+    "totalTokens": 415349
+  },
+  "underlyingApiCalls": null,
+  "costUsd": null,
+  "notes": [
+    "Claude input_tokens excludes cache reads/writes; including-cache total adds each category once.",
+    "cacheReadInputTokens and cacheWriteInputTokens are subsets of inputTokensIncludingCache; do not add them again.",
+    "reasoningOutputTokens is a subset of outputTokens; do not add it again.",
+    "iterations and cache_creation TTL breakdowns repeat totals and are not added.",
+    "Distinct message IDs are not an inferred billable API call count."
+  ],
+  "pmJudgeSuccessfulResponseUsage": {
+    "observedResponses": 3,
+    "inputTokens": 33030,
+    "outputTokens": 4360,
+    "coverage": "Successful native_usage responses only; failed/unreported requests unknown. Not billing-complete.",
+    "inputSemantics": "ClaudeCliProvider includes input+cache_read+cache_creation exactly once; Codex input includes cached-input subset.",
+    "cacheBreakdown": null
+  }
+}

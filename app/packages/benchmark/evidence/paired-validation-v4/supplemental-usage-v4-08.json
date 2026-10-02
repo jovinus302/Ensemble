@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "measurement": "supplemental local session-log observation; primary report usage remains null",
+  "cell": "v4-08",
+  "reportSha256": "416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016",
+  "workspace": "app/packages/benchmark/.local/paired-validation-v4/work/v4-08/sessions/v4-08/prototype-agent",
+  "sources": [
+    {
+      "path": "codex-sessions/rollout-2026-10-02T10-18-05-01a0fa30-9989-7942-8dae-ebff6b60f11f.jsonl",
+      "sha256": "b16b7a78fc53f1d451cbc3d180ccd83373745ca2bfa5a7c5c5a195897e3a7ac0",
+      "threadId": "01a0fa30-9989-7942-8dae-ebff6b60f11f",
+      "cumulativeEvents": 10
+    }
+  ],
+  "coverage": {
+    "role": "worker only",
+    "threadCount": 1,
+    "aggregation": "last cumulative token_count per exact own thread; never sum cumulative events",
+    "observedModels": [
+      "gpt-6-astra"
+    ],
+    "observedEfforts": [
+      "low"
+    ],
+    "billingCompleteness": "unknown"
+  },
+  "usage": {
+    "inputTokensIncludingCache": 250668,
+    "cacheReadInputTokens": 219136,
+    "cacheWriteInputTokens": 0,
+    "outputTokens": 4430,
+    "reasoningOutputTokens": 86,
+    "totalTokens": 255098
+  },
+  "costUsd": null,
+  "underlyingApiCalls": null,
+  "notes": [
+    "Cached input is already included in input_tokens; reasoning output is already included in output_tokens. Do not add subsets again.",
+    "Absent cache-write or other counters remain null; zero is used only when explicit in source.",
+    "No combined billing-complete total is inferred."
+  ],
+  "pmJudgeSuccessfulResponseUsage": {
+    "observedResponses": 6,
+    "inputTokens": 212524,
+    "outputTokens": 1411,
+    "coverage": "Successful native_usage responses only; failed/unreported requests unknown. Not billing-complete.",
+    "inputSemantics": "ClaudeCliProvider includes input+cache_read+cache_creation exactly once; Codex input includes cached-input subset.",
+    "cacheBreakdown": null
+  }
+}
