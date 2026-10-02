@@ -7,22 +7,10 @@
     "apps/*"
   ],
   "scripts": {
-    "benchmark:plan": "tsx packages/benchmark/scripts/run.ts",
-    "benchmark:preflight": "tsx packages/benchmark/scripts/preflight.ts",
-    "benchmark:schema-repro": "tsx packages/benchmark/scripts/reproduce-schema.ts",
-    "benchmark:fixture": "tsx packages/benchmark/scripts/run.ts --fixture",
-    "benchmark:live": "tsx packages/benchmark/scripts/run.ts --live",
-    "benchmark:browser": "node packages/benchmark/browser/smoke.mjs",
     "dev": "npm run dev -w @ensemble/web",
     "build": "npm run build -w @ensemble/web",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json && npm run typecheck -w @ensemble/web",
-    "smoke:llm": "tsx packages/llm/scripts/smoke.ts",
-    "smoke:codex": "tsx packages/agents/scripts/smoke-codex.ts",
     "live:pm": "tsx packages/orchestrator/scripts/live-coordination.ts",
-    "smoke:pm": "tsx packages/orchestrator/scripts/smoke-pm-runtime.ts",
-    "live:http": "tsx scripts/live-http.ts",
     "demo:full": "tsx scripts/demo-full.ts"
   },
   "devDependencies": {
@@ -30,8 +18,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.2"
+    "typescript": "^7.0.2"
   },
   "allowScripts": {
     "esbuild@0.28.2": true

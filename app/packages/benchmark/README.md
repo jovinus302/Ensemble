@@ -1,6 +1,8 @@
 # Paired restaurant-booking pilot
 
-Historical generated reports, artifacts and screenshots are archived at fixed commit `cb84ecc2849f8194e0d5d44d22642a5174ef4c4f`. The [evidence index](evidence/README.md) links retained batch pages and original artifact trees. Ordinary offline tests retain their fixtures and starters; historical replay requires restoring the relevant fixed archive. This cleanup does not alter live guards or authorize new calls.
+> Historical benchmark documentation. The standalone benchmark source, test fixtures, starter, browser harness, and runner commands have been removed from the current checkout. Recover the former package through Git at the [pre-removal snapshot](https://github.com/jovinus302/Ensemble/tree/64373b8f9dbf2cbc27c77c220ed46f809822b3e2/app/packages/benchmark). Descriptions below record that implementation and its historical results; they are not current runnable instructions. All paid-run budgets remain exhausted.
+
+Historical generated reports, artifacts and screenshots are archived at fixed commit `cb84ecc2849f8194e0d5d44d22642a5174ef4c4f`. The [evidence index](evidence/README.md) links retained batch pages and original artifact trees. Historical replay requires restoring the relevant fixed archive. Removal of the runner does not authorize new calls.
 
 Tracking: https://github.com/jovinus302/Ensemble/issues/35
 
@@ -60,34 +62,11 @@ The manifest is written before any run. It fixes the plan, source/evaluator hash
 - All checks are explicit pass/fail, preserving failures and diagnostic details. Requirement fidelity is assessed against those frozen checks and optional blinded human inspection; no generated subjective score pretends to be a human review. Cleanup failure stops the entire batch and leaves remaining cells explicitly unrun; an unstable workspace is not copied as a finished artifact.
 - Partial PM/judge usage is preserved in `native_usage` events. Complete usage and cost remain null because worker usage/hidden retries are unavailable. Do not infer dollar cost. `humanRequests` records requests for help separately from `humanInterventions` (actual additional help); standardized initial/change prompts are experimental inputs. The automated pilot never answers ad-hoc human requests and records that blockage as failure.
 
-## Reproduce without providers
+## Current local checks and historical reproduction
 
-From `app/`, use the lockfile and an already available Node 24+, dependencies and Chromium. No login, billing or permission changes are part of this workflow.
+From `app/`, the remaining provider-free checks are `npm run typecheck` and `npm run build`. They do not execute the removed benchmark or establish new benchmark performance.
 
-```powershell
-npm ci --ignore-scripts
-npm run benchmark:plan -- --validation-run
-# Offline negative/positive schema diagnostic; no provider calls.
-npm run benchmark:preflight
-# Exact old-transformer negative control and fixed-transformer positive control:
-npm run benchmark:schema-repro
-npm test
-npm run typecheck
-npm run build
-$env:BENCH_APP_ROOT = (Get-Location).Path
-# Use an existing Playwright installation if it is not resolvable by this project:
-$env:BENCH_PLAYWRIGHT = 'C:/absolute/path/to/playwright/index.mjs'
-npm run benchmark:browser
-npm run benchmark:fixture -- --validation-run
-# Exercise immutable snapshot validation itself with A/B and a bad-JSX negative:
-npx tsx packages/benchmark/scripts/validate-snapshot.ts
-```
-
-`benchmark:browser` checks A/B references, equivalent localized dates and alternate storage, plus negative controls for missing controls, invalidation, wrong date/time/party, persistence/edit restoration and blocked external access. `benchmark:fixture` runs all eight harness cells using the handwritten reference component. Every output says `mode: fixture`, has zero model invocations and contains no provider execution. It does not simulate native PM decisions or usage. Native driver unit tests use fake connectors/providers and never fall through to a model.
-
-The fixture server has fixed POST `/api/reservations` responses: `2030-06-15T19:00` → 409, `2030-06-16T18:00` → 503, otherwise deterministic success. It accepts `{date,time,guests}`. Tests depend on `data-testid` controls `date,time,guests,submit,confirmation,edit,message`; confirmation visibly identifies the selected date, time and count semantically. Build and fixture server files are immutable and checked before acceptance. The same contract is visible in every task prompt.
-
-Outputs default to `.local/<mode>-<timestamp>/`: manifest, per-cell reports, summary, original workspaces, screenshots, and blind source packages. `report.schema.json` specifies machine-readable fields. Keep failed workspaces/evidence. Never publish logs containing private runtime data without review.
+The old fixture/snapshot/browser reproduction procedures, fixtures, starter, and report schema are available in the pre-removal snapshot linked above. Their results must remain labeled as fixture, offline re-evaluation, or authorized historical live observations. Preserve failed evidence and keep private runtime logs out of publication.
 
 ## Historical single validation-flow execution (now closed)
 
@@ -97,10 +76,7 @@ Before the final slot was consumed, the CLI refused live execution without `--va
 
 After the offline checks pass, the approval file must contain `liveValidationRuns: 1`, `previousConservativeAttempts: 7`, `totalAuthorizedSlots: 8`, `reruns: false`, `provider: "codex"`, `task: "A"`, `ensemble: true`, `model: "gpt-6-astra"`, `effort: "low"`, actual `approvedBy`/`source`, `toolsMatched: true`, and the plan's base/rubric/starter/evaluator/implementation hashes plus `criteriaHash`. Never invent authorization. The selected model/effort must match the preregistration.
 
-```powershell
-npm run benchmark:plan -- --validation-run
-npm run benchmark:live -- --validation-run --approval-file C:/approved/authorization.json --config C:/approved/models.json --output C:/new/validation-attempt
-```
+The former single-run CLI procedure is retained only in the [archived guide](https://github.com/jovinus302/Ensemble/tree/64373b8f9dbf2cbc27c77c220ed46f809822b3e2/app/packages/benchmark/README.md); its commands are not available in this checkout.
 
 Success criteria are current-revision trusted pass, preserved worker limitations, judge after validation, checked handoff tied to that artifact, and semantic browser pass. A failed/blocked/interrupted/timeout attempt consumes the remaining slot conservatively; no rerun follows. Removing `PAUSE` does not authorize another run. SIGINT/SIGTERM preserve partial evidence and trigger bounded cleanup.
 
