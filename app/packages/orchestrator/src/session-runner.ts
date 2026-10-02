@@ -349,7 +349,9 @@ export class SessionRunner {
     await this.store.transaction(this.context.projectId, events => {
       const pending: NewLedgerEvent[] = [
         ...attachments.map(a => this.event(agentId, 'attachment_recorded', { attachmentId: a.id, name: a.name, mimeType: a.mimeType, uri: a.uri, taskId }, `${resultId}:attachment:${a.id}`)),
-        this.event(agentId, 'result_submitted', { taskId, resultId, planVersion: report.planVersion, summary: report.summary, artifactIds: attachmentIds }, resultId),
+        this.event(agentId, 'result_submitted', { taskId, resultId, planVersion: report.planVersion, summary: report.summary, artifactIds: attachmentIds,
+          artifactPaths: Object.fromEntries(files.map((file, index) => [attachmentIds[index]!, file.path.replaceAll('\\', '/')])),
+          limitations: [...(report.limitations ?? [])] }, resultId),
       ];
       const text = summarizeForHuman(project(withPending(events, pending)), taskId, report);
       pending.push(this.event(agentId, 'reply_recorded', { memberId: agentId, taskId, turnId, text, attachmentIds }, `${resultId}:summary`));

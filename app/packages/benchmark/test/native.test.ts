@@ -51,6 +51,6 @@ it.each(['codex', 'claude'] as const)('uses neutral %s worker instructions and a
   const ledger = events.find(e => e.type === 'native_ledger').events;
   expect(ledger.find((e: any) => e.type === 'goal_set').payload.text).toBe(PROMPT_B_INITIAL);
   const criteria = ledger.find((e: any) => e.type === 'plan_committed').payload.tasks[0].handoffConditions[0];
-  expect(criteria).toContain('external benchmark harness validates the build');
+  expect(criteria).toContain('trusted validator validates the captured submitted source build');
   expect(criteria).toContain('not required for this initial handoff');
 });

@@ -9,7 +9,9 @@ import {
 import type { LedgerStore } from '@ensemble/store';
 import type { LlmProvider } from '@ensemble/llm';
 import type { SendUpdateResult, TaskInstructionsInput, UpdateInstructionsInput } from '@ensemble/agents';
-import { handoffEvents, judgeHandoff, reviewKey, type CitationFailure, type HandoffReview, type ResultContent, type SubmittedResult } from './handoff.ts';
+import { handoffEvents, judgeHandoff, structuralProblems, reviewKey, type CitationFailure, type HandoffReview, type ResultContent, type SubmittedResult } from './handoff.ts';
+import { ResultValidator, validationArtifact, type ValidationOptions } from './validation.ts';
+import type { ValidationEvidence } from '@ensemble/core';
 import { answerChangeId, answerUpdate, buildTaskContext, fileOwnerFor, humanizeRefs, MAX_REVISIONS, questionMessageId, relevantDecisions, revisionCount, revisionUpdate, startNotice, taskQuestions } from './context.ts';
 import type { Delivery } from './session-runner.ts';
 
@@ -21,7 +23,7 @@ export interface TaskStarter {
   deliver?(agentId: string, taskId: Id, input: UpdateInstructionsInput): Promise<Delivery>;
 }
 
-export interface DispatcherOptions {
+export interface DispatcherOptions extends ValidationOptions {
   store: LedgerStore;
   connector: TaskStarter;
   llm: LlmProvider;
@@ -51,6 +53,7 @@ export const questionRequestId = (questionId: Id) => `missing-info:${questionId}
 
 export interface StartedTask { taskId: Id; agentId: Id; turnId: Id }
 export type ResultOutcome =
+  | { kind: 'validation_pending'; evidence: ValidationEvidence; notice: string }
   | { kind: 'skipped'; reason: string }
   /**
    * The judge could not reach a verdict (a technical failure, not a content problem): the goal's
@@ -94,8 +97,11 @@ export function reopenRequests(events: readonly LedgerEvent[], taskId: Id): stri
 
 export class Dispatcher {
   private queue: Promise<unknown> = Promise.resolve();
+  private readonly validator: ResultValidator;
+  private readonly validationRetries = new Map<string, Promise<ResultOutcome>>();
 
-  constructor(private readonly options: DispatcherOptions) {}
+  constructor(private readonly options: DispatcherOptions) { this.validator = new ResultValidator(options); }
+  cancelValidation(taskId?: Id): Promise<void> { return this.validator.cancel(taskId); }
 
   /** Operations run one at a time, so a duplicate trigger always sees the first one's writes. */
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -112,7 +118,20 @@ export class Dispatcher {
   }
   private name(state: ProjectState, id: Id): string { return state.members.get(id)?.displayName ?? id; }
 
-  onResultSubmitted(taskId: Id, resultId: Id): Promise<ResultOutcome> {
+  onResultSubmitted(taskId: Id, resultId: Id, retryValidation = false): Promise<ResultOutcome> {
+    const key = JSON.stringify([taskId, resultId]);
+    if (retryValidation) {
+      const pending = this.validationRetries.get(key);
+      if (pending) return pending;
+    }
+    const pending = this.processResultSubmitted(taskId, resultId, retryValidation);
+    if (retryValidation) {
+      this.validationRetries.set(key, pending);
+      void pending.then(() => this.validationRetries.delete(key), () => this.validationRetries.delete(key));
+    }
+    return pending;
+  }
+  private processResultSubmitted(taskId: Id, resultId: Id, retryValidation: boolean): Promise<ResultOutcome> {
     return this.enqueue(async () => {
       const { events, state } = await this.ledger();
       const result = typed(events).find((e): e is Extract<AnyEvent, { type: 'result_submitted' }> => e.type === 'result_submitted' && e.payload.resultId === resultId)?.payload;
@@ -125,13 +144,31 @@ export class Dispatcher {
       const waitingOn = task.spec.dependsOn.filter((id) => { const dep = state.tasks.get(id)?.status; return dep !== undefined && dep !== 'checked' && dep !== 'cancelled'; });
       if (waitingOn.length) return { kind: 'deferred', waitingOn, notice: this.waitNotice(state, events, taskId, resultId, waitingOn) };
 
-      const judged = await judgeHandoff({ state, result, resultContent: await this.options.readResult(result),
-        decisions: relevantDecisions(state, taskId), llm: this.options.llm, model: this.options.model, requests: reopenRequests(events, taskId) });
+      const content = await this.options.readResult(result);
+      let validation: ValidationEvidence | undefined;
+      let judgeResult = result;
+      let judgeContent = content;
+      if (!structuralProblems(state, result, content).length) {
+        try { validation = await this.validator.run(state, result, content, retryValidation); }
+        catch (error) { return { kind: 'error', message: String(error), cause: 'Invalid immutable validation snapshot' }; }
+        if (['cancelled', 'expired'].includes(validation.status) || (this.options.requireValidation && validation.status !== 'passed' && validation.status !== 'failed'))
+          return { kind: 'validation_pending', evidence: validation, notice: `Trusted validation ${validation.status}: ${validation.summary}` };
+        const artifact = validationArtifact(validation);
+        judgeResult = { ...result, artifactIds: [...result.artifactIds, artifact.id] };
+        judgeContent = { ...content, [artifact.id]: artifact.content };
+      }
+      const judged = validation?.status === 'failed'
+        ? { ok: true as const, llmCalls: 0, review: { taskId, resultId, verdict: 'insufficient' as const, met: [], missing: validation.checks.filter(c => c.status === 'failed').map(c => `${c.id}: ${c.detail ?? validation!.summary}`), evidence: [validationArtifact(validation).id] } }
+        : await judgeHandoff({ state, result: judgeResult, resultContent: judgeContent,
+          decisions: relevantDecisions(state, taskId), llm: this.options.llm, model: this.options.model, requests: reopenRequests(events, taskId) });
       if (!judged.ok) return { kind: 'error', message: judged.error, cause: judged.cause, ...(judged.citationFailures?.length ? { citationFailures: judged.citationFailures } : {}) };
+      if (validation && !await this.validator.isCurrent(validation)) return { kind: 'skipped', reason: 'Validation binding expired during final judgement' };
 
       const { result: decided } = await this.options.store.transaction(this.options.context.projectId, (current) => {
         const now = project(current);
-        if (current.some((e) => e.idempotencyKey === reviewKey(resultId)) || now.tasks.get(taskId)?.status !== 'submitted') return { append: [], result: null };
+        if (current.some((e) => e.idempotencyKey === reviewKey(resultId)) || now.tasks.get(taskId)?.status !== 'submitted'
+          || now.tasks.get(taskId)?.results.at(-1)?.resultId !== resultId
+          || (validation && !this.validator.matchesState(validation, now, typed(current)))) return { append: [], result: null };
         const recorded = handoffEvents(now, judged.review, this.options.context);
         const review = recorded[0]!.payload as HandoffReview;
         if (review.verdict !== 'sufficient') return { append: recorded, result: { review, starts: [] as Id[], limited: false } };
@@ -161,11 +198,18 @@ export class Dispatcher {
    */
   acceptResult(taskId: Id, by: Id, reason: string, key: string): Promise<Extract<ResultOutcome, { kind: 'checked' }>> {
     return this.enqueue(async () => {
+      if (this.options.requireValidation) {
+        const task = (await this.ledger()).state.tasks.get(taskId);
+        if (!task?.validation || task.validation.status !== 'passed' || !await this.validator.isCurrent(task.validation))
+          throw new Error('Current passed trusted validation is required before acceptance');
+      }
       const actor = { kind: 'human' as const, id: by };
       const { result: decided } = await this.options.store.transaction(this.options.context.projectId, (current) => {
         const now = project(current);
         const task = now.tasks.get(taskId);
         const latest = task?.results.at(-1);
+        if (this.options.requireValidation && (!task?.validation || task.validation.status !== 'passed'
+          || !this.validator.matchesState(task.validation, now, typed(current)))) throw new Error('Current passed trusted validation is required before acceptance');
         if (!task || !latest || !now.plan || !['blocked', 'submitted', 'revising'].includes(task.status)) return { append: [], result: null };
         const append: NewLedgerEvent[] = [];
         if (task.status === 'blocked') append.push(this.event('task_resumed', { taskId }, `${key}:resume`, actor));

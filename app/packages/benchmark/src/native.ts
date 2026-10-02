@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { CodexSessionConnector, ClaudeSessionConnector, type SessionConnector } from '@ensemble/agents';
-import { project, type NewLedgerEvent } from '@ensemble/core';
+import { project, type NewLedgerEvent, type ValidationEvidence } from '@ensemble/core';
 import { CodexCliProvider, ClaudeCliProvider, type LlmProvider } from '@ensemble/llm';
-import { ProjectManager, buildTaskContext } from '@ensemble/orchestrator';
+import { ProjectManager, buildTaskContext, type TrustedValidator } from '@ensemble/orchestrator';
 import { MemoryLedgerStore } from '@ensemble/store';
 import { PROMPT_B_INITIAL } from './protocol.ts';
 import { createDirectDriver } from './direct.ts';
@@ -14,6 +14,8 @@ export interface NativeDriverOptions {
   meter: <T>(role: 'pm' | 'worker' | 'judge', operation: () => Promise<T>) => Promise<T>;
   onWorkspace: (path: string) => Promise<void>;
   record: (event: unknown) => void;
+  trustedValidator?: TrustedValidator;
+  onValidatedHandoff?: (evidence: ValidationEvidence) => void;
 }
 
 /** Construction is inert. Only start/change may call a provider; the caller owns approval and the total run deadline. */
@@ -32,7 +34,7 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
   // B must stop at the externally tested checkpoint. Judging the full initial goal here
   // would trigger revisions that implement the remaining requirements before the change.
   const handoffConditions = options.prompt === PROMPT_B_INITIAL
-    ? ['Initial checkpoint only: supplied source files implement real date, time and 1–6 guest selection controls. The external benchmark harness validates the build and browser selection after this handoff; do not require worker-run build evidence. Stop at this checkpoint. Confirmation, persistence and other remaining goal requirements are deliberately deferred until the next instruction and are not required for this initial handoff.']
+    ? ['Initial checkpoint only: supplied source files implement real date, time and 1–6 guest selection controls. The host trusted validator validates the captured submitted source build and browser selection before final handoff review; do not treat worker self-report as measured evidence. Stop at this checkpoint. Confirmation, persistence and other remaining goal requirements are deliberately deferred until the next instruction and are not required for this initial handoff.']
     : [options.prompt];
   const actor = { kind: 'human' as const, id: 'owner' };
   const seed = (type: NewLedgerEvent['type'], payload: unknown): NewLedgerEvent => ({ ...context, actor, type, payload, idempotencyKey: `benchmark:${type}:${randomUUID()}` });
@@ -137,6 +139,10 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
           });
         } };
         pm = new ProjectManager({ ...context, store, llm, connector, model: options.model, turnTimeoutMs: 20 * 60_000,
+          trustedValidator: options.trustedValidator && {
+            policyFingerprint: options.trustedValidator.policyFingerprint,
+            validate: (input, validationSignal) => options.trustedValidator!.validate(input, AbortSignal.any([signal, validationSignal])),
+          }, requireValidation: true, validationTimeoutMs: 120_000,
           onTiming: timing => options.record({ type: 'native_pm_timing', ...timing }) });
         // Coordination is part of measured Ensemble work, even with a fixed initial task.
         await pm.postMessage('owner', options.prompt);
@@ -166,9 +172,16 @@ export async function createNativeDriver(options: NativeDriverOptions): Promise<
         if (pending || active.size || pm.isProcessing) return false;
         const state = project(await store.read());
         const tasks = [...state.tasks.values()];
+        const waiting = tasks.find(task => task.validation?.status === 'environment_blocked' || task.validation?.status === 'not_run');
+        if (waiting) throw new Error(`validation_${waiting.validation!.status}: ${waiting.validation!.summary}`);
         if (tasks.some(task => task.status === 'blocked' || task.reviewFailedResultId)) throw new Error('Ensemble task blocked or native handoff review failed');
         if (state.pendingAuthority.size || [...state.decisionRequests.values()].some(request => request.status === 'open')) throw new Error('Ensemble requires human intervention');
-        return tasks.length > 0 && tasks.every(task => task.status === 'checked');
+        const settled = tasks.length > 0 && tasks.every(task => task.status === 'checked');
+        if (settled) for (const task of tasks) {
+          if (task.validation?.status !== 'passed') throw new Error('validation_not_run: handoff has no current passed trusted evidence');
+          options.onValidatedHandoff?.(task.validation);
+        }
+        return settled;
       }
       return false;
     },

@@ -4,14 +4,14 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { BASE_SHA } from '../src/protocol.ts';
+import { HISTORICAL_BASE_SHA } from '../src/protocol.ts';
 import { APP_ROOT, PACKAGE_ROOT } from '../src/local.ts';
 import { interpretationSchema, untypedLiterals } from '../src/preflight.ts';
 import { strictSchema } from '../../llm/src/cli.ts';
 
 // Reconstruct the exact old production transformer without calling its CLI runner.
 // Its only runtime import is node:child_process; defining runCli does not execute it.
-const oldSource = (await promisify(execFile)('git', ['show', `${BASE_SHA}:app/packages/llm/src/cli.ts`],
+const oldSource = (await promisify(execFile)('git', ['show', `${HISTORICAL_BASE_SHA}:app/packages/llm/src/cli.ts`],
   { cwd: APP_ROOT, windowsHide: true })).stdout;
 const local = path.join(PACKAGE_ROOT, '.local');
 await mkdir(local, { recursive: true });
@@ -23,7 +23,7 @@ const before = legacy.strictSchema(input);
 const after = strictSchema(input);
 const negative = untypedLiterals(before);
 const positive = untypedLiterals(after);
-const result = { modelCalls: 0, baseline: BASE_SHA, legacySourceSha256: createHash('sha256').update(oldSource).digest('hex'),
+const result = { modelCalls: 0, baseline: HISTORICAL_BASE_SHA, legacySourceSha256: createHash('sha256').update(oldSource).digest('hex'),
   negativeControl: { reproduced: negative.includes('$.properties.ops.items.anyOf[0].properties.type'), paths: negative },
   positiveControl: { passed: positive.length === 0, paths: positive },
   note: 'Exact legacy transformer and current transformer over the same populated PM interpretation schema; no provider acceptance claim', before, after };

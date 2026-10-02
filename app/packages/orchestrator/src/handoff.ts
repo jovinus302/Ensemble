@@ -249,7 +249,7 @@ function buildRequest(input: JudgeInput, conditions: string[]): LlmRequest {
   const { result, resultContent, decisions, state, model } = input;
   const files = result.artifactIds.map((path) => `### 파일: ${path}\n${resultContent[path] ?? ''}`);
   const { exclusions, limits } = taskScope(state.tasks.get(result.taskId)?.spec ?? {});
-  const body = [
+    const body = [
     // The IDs keep a proxy response cache from reusing a verdict for a different result.
     `taskId: ${result.taskId} · resultId: ${result.resultId} · planVersion: ${result.planVersion}`,
     `작업: ${state.tasks.get(result.taskId)?.spec.title ?? result.taskId}`,
@@ -259,7 +259,9 @@ function buildRequest(input: JudgeInput, conditions: string[]): LlmRequest {
     '## 확정 결정', ...(decisions.length ? decisions.map((d) => `- ${d.decisionId}: ${d.summary}`) : ['- 없음']),
     '## 결과 요약', result.summary,
     '## 결과 파일', ...files,
-  ].join('\n');
+      'Worker limitations (self-reported, not independently measured):', ...(result.limitations ?? []),
+      'Host trusted-validation artifacts describe measured checks only within their stated scope. NOT_RUN or environment_blocked means measurements are unavailable, not implementation failure. Do not treat worker limitations as measured failures. Source-only review must not claim empirical verification.',
+    ].join('\n');
   const system = exclusions.length || limits.length ? `${SYSTEM}\n${SCOPE_RULES}` : SYSTEM;
   return { model, system, messages: [{ role: 'user', content: body }], tools: [reviewTool], forceTool: REVIEW_TOOL, maxTokens: 2000 };
 }

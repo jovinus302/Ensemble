@@ -7,6 +7,15 @@ import path from 'node:path';
 
 const cell = plan()[4]!;
 const options = { mode: 'fixture' as const, model: 'fixture', effort: 'none', starterHash: 'test', pollMs: 1 };
+it.each([
+  ['validation_environment_blocked: browser launch denied', 'environment_blocked'],
+  ['validation_not_run: submitted files are absent', 'validation_not_run'],
+] as const)('retains host validation blockage as %s without a false implementation verdict', async (error, expected) => {
+  const f = fake({ driver: async () => ({ start: async () => {}, change: async () => {}, stop: async () => {}, settled: async () => { throw new Error(error); } }) });
+  const report = await runCell(cell, f.services, options);
+  expect(report.status).toBe(expected); expect(report.checks).toEqual([]);
+  expect(f.log).not.toContain('build'); expect(f.log).not.toContain('acceptance');
+});
 function fake(overrides: Partial<Services> = {}) {
   const log: string[] = [];
   const services: Services = {

@@ -1,5 +1,5 @@
 import type { Id, LedgerEvent } from "./ledger.ts";
-import type { AnyEvent, EventPayloads, TaskSpec } from "./events.ts";
+import type { AnyEvent, EventPayloads, TaskSpec, ValidationEvidence } from "./events.ts";
 import { isAutomationAction } from './action-limit.ts';
 import { applyWorkEvent, emptyTaskMeta, isParentTask, rollupParents, type TaskMeta } from './work.ts';
 import { applyDecisionEvent, decisionApproved, type DecisionRequestState } from './decision-requests.ts';
@@ -14,6 +14,8 @@ export interface TaskState {
   results: { resultId: Id; planVersion: number }[];
   checkedResultId?: Id;
   reviewFailedResultId?: Id;
+  /** Host verification of the current submitted snapshot; never a worker self-check. */
+  validation?: ValidationEvidence;
   blocked?: { reason: string; unblockBy?: Id; prevStatus: TaskStatus };
   updates: TaskUpdate[];
   // Work-item fields. `project()` always sets them; they are optional only so hand-built states stay valid.
@@ -95,10 +97,13 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
     if (isAutomationAction(event)) state.automation.actionsSinceResume++;
     switch (event.type) {
       case "member_joined": state.members.set(event.payload.memberId, event.payload); break;
-      case "goal_set": state.goal = event.payload; break;
+      case "goal_set":
+        for (const task of state.tasks.values()) if (task.validation) task.validation.status = 'expired';
+        state.goal = event.payload; break;
       case "plan_proposed": state.pendingPlans.set(event.payload.proposalId, event.payload); break;
       case "plan_decided": state.pendingPlans.delete(event.payload.proposalId); break;
       case "plan_committed": {
+        for (const task of state.tasks.values()) if (task.validation) task.validation.status = 'expired';
         const p = event.payload;
         state.plan = { version: p.version, tasks: p.tasks, reason: p.reason, approvedBy: p.approvedBy };
         const ids = new Set(p.tasks.map((spec) => spec.id));
@@ -166,7 +171,27 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
           for (const task of state.tasks.values()) if (task.status === 'submitted' && task.results.at(-1)?.resultId === event.payload.triggerId) task.reviewFailedResultId = event.payload.triggerId;
         }
         break;
-      case "decision_recorded": state.decisions.set(event.payload.decisionId, event.payload); break;
+      case "decision_recorded":
+        for (const task of state.tasks.values()) if (task.validation) task.validation.status = 'expired';
+        state.decisions.set(event.payload.decisionId, event.payload); break;
+      case "validation_cancelled": {
+        const task = state.tasks.get(event.payload.taskId);
+        if (event.actor.kind === 'system' && event.actor.id === 'trusted-validator' && task?.status === 'submitted'
+          && task.validation?.attemptId === event.payload.attemptId) task.validation = { ...task.validation, status: 'cancelled', summary: 'Trusted validation cancelled' };
+        break;
+      }
+      case "validation_started": case "validation_finished": {
+        const p = event.payload;
+        const task = state.tasks.get(p.taskId);
+        if (event.actor.kind !== 'system' || event.actor.id !== 'trusted-validator' || p.projectId !== event.projectId
+          || !task || task.status !== 'submitted' || task.results.at(-1)?.resultId !== p.resultId
+          || task.specVersion !== p.specVersion || state.plan?.version !== p.planVersion) break;
+        if (event.type === 'validation_started') task.validation = { ...p, status: 'awaiting', checks: [], summary: 'Awaiting trusted validation' };
+        else if (task.validation?.attemptId === p.attemptId && task.validation.status === 'awaiting'
+          && task.validation.artifactDigest === p.artifactDigest && task.validation.contextDigest === p.contextDigest
+          && task.validation.policyFingerprint === p.policyFingerprint) task.validation = { ...event.payload, checks: event.payload.checks.map(check => ({ ...check })) };
+        break;
+      }
       case "authority_requested": state.pendingAuthority.set(event.payload.requestId, event.payload); break;
       case "authority_granted": state.pendingAuthority.delete(event.payload.requestId); break;
       case "change_notified": state.notified.add(notifiedKey(event.payload.changeId, event.payload.recipientId)); break;
@@ -188,6 +213,7 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
           case "task_started": task.status = "running"; break;
           case "result_submitted":
             delete task.reviewFailedResultId;
+            delete task.validation;
             task.results.push({ resultId: event.payload.resultId, planVersion: event.payload.planVersion });
             task.status = "submitted"; break;
           case "task_checked":

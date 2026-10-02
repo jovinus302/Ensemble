@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Context, Inspection, Services } from './harness.ts';
 import { type Cell, type Mode } from './protocol.ts';
+import { createLocalSnapshotRunner, createSnapshotValidator } from './validator.ts';
 
 export const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const APP_ROOT = path.resolve(PACKAGE_ROOT, '../..');
@@ -44,6 +45,8 @@ export function localServices(cell: Cell, options: {
   let workspace = runRoot;
   let server: ChildProcess | undefined;
   let url: string | undefined;
+  let measured: { snapshot: string; checkpoint: boolean; inspection: Inspection } | undefined;
+  const revisions = new Map<string, NonNullable<typeof measured>>();
   const children = new Map<ChildProcess, ReturnType<typeof trackOwnedChild>>();
   const env = { ...process.env, BENCH_APP_ROOT: APP_ROOT, BENCH_TASK: cell.task, PORT: '0' };
   async function command(file: string, signal: AbortSignal): Promise<void> {
@@ -88,7 +91,29 @@ export function localServices(cell: Cell, options: {
       }
       // The CLI validates approval before it reaches this lazy import. No provider in fixture mode.
       const { createNativeDriver } = await import('./native.ts');
-      return createNativeDriver({ ...context, provider: cell.provider, ensemble: cell.ensemble, model: options.model, effort: options.effort,
+      let checkpoint = cell.task === 'B';
+      const policyFingerprint = createHash('sha256').update('trusted-submission-v1').update(cell.task)
+        .update(await readFile(path.join(PACKAGE_ROOT, 'src/validator.ts')))
+        .update(await readFile(path.join(PACKAGE_ROOT, 'scripts/build-snapshot.mjs')))
+        .update(await readFile(path.join(PACKAGE_ROOT, 'browser/acceptance.mjs')))
+        .update(await readFile(path.join(PACKAGE_ROOT, 'starter/build.mjs')))
+        .update(await readFile(path.join(PACKAGE_ROOT, 'starter/server.mjs')))
+        .update(await readFile(path.join(PACKAGE_ROOT, 'starter/package.json')))
+        .update(await readFile(path.join(PACKAGE_ROOT, 'starter/index.html'))).digest('hex');
+      const trustedValidator = createSnapshotValidator({ starterRoot: path.join(PACKAGE_ROOT, 'starter'),
+        outputRoot: path.join(options.outputRoot, 'validation', cell.id), policyFingerprint,
+        checkpoint: () => checkpoint, record: context.record,
+        onMeasured: (snapshot, checkpoint, inspection, input) => {
+          revisions.set(`${input.resultId}:${input.artifactDigest}:${input.contextDigest}:${input.policyFingerprint}`, { snapshot, checkpoint, inspection });
+        },
+        runner: () => createLocalSnapshotRunner({ appRoot: APP_ROOT, packageRoot: PACKAGE_ROOT, task: cell.task }) });
+      const driver = await createNativeDriver({ ...context, provider: cell.provider, ensemble: cell.ensemble, model: options.model, effort: options.effort,
+        trustedValidator,
+        onValidatedHandoff(evidence) {
+          measured = revisions.get(`${evidence.resultId}:${evidence.artifactDigest}:${evidence.contextDigest}:${evidence.policyFingerprint}`);
+          if (!measured) throw new Error('validation_not_run: approved revision does not match host snapshot');
+          context.record({ type: 'trusted-validation-accepted', ...evidence, snapshot: measured.snapshot });
+        },
         workspaceRoot: path.join(runRoot, 'sessions'), projectId: cell.id,
         async onWorkspace(folder) {
           const relative = path.relative(await realpath(runRoot), await realpath(folder));
@@ -99,9 +124,22 @@ export function localServices(cell: Cell, options: {
           await writeFile(path.join(folder, 'BENCHMARK.txt'), `Build environment: BENCH_APP_ROOT=${APP_ROOT}\nRun node build.mjs. No dependencies need installing.\n`);
         },
       });
+      return { ...driver, async change(prompt) { checkpoint = false; measured = undefined; await driver.change(prompt); } };
     },
-    async build(signal) { await assertInfrastructure(); await command('build.mjs', signal); },
+    async build(signal) {
+      signal.throwIfAborted();
+      if (options.mode === 'live' && cell.ensemble) {
+        if (!measured) throw new Error('validation_not_run: no measured submitted revision');
+        return; // The same immutable revision was built before the judge. Do not remeasure mutable worker files.
+      }
+      await assertInfrastructure(); await command('build.mjs', signal);
+    },
     async inspect(checkpoint, signal) {
+      signal.throwIfAborted();
+      if (options.mode === 'live' && cell.ensemble) {
+        if (!measured || measured.checkpoint !== checkpoint) throw new Error('validation_not_run: no evidence for this task phase');
+        return structuredClone(measured.inspection);
+      }
       await assertInfrastructure();
       const browser = await import(pathToFileURL(path.join(PACKAGE_ROOT, 'browser/acceptance.mjs')).href) as {
         inspect(url: string, options: { task: string; checkpoint: boolean; outputDir: string; signal: AbortSignal }): Promise<Inspection>;
@@ -110,8 +148,9 @@ export function localServices(cell: Cell, options: {
     },
     async freezeArtifact(blindId) {
       const target = path.join(options.outputRoot, 'blind', blindId);
-      const artifactHash = await treeHash(workspace); // Reject links before copying review artifacts.
-      await cp(workspace, target, { recursive: true, filter: file =>
+      const source = options.mode === 'live' && cell.ensemble && measured ? measured.snapshot : workspace;
+      const artifactHash = await treeHash(source); // Reject links before copying review artifacts.
+      await cp(source, target, { recursive: true, filter: file =>
         !['node_modules', 'dist', '.git', '.codex', '.claude', 'BENCHMARK.txt'].includes(path.basename(file)) });
       // Avoid condition/model/provider names in the reviewer package.
       await writeFile(path.join(target, 'REVIEW.json'), JSON.stringify({ blindId, task: cell.task, artifactHash }, null, 2));
