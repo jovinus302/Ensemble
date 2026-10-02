@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 1,
+  "protocolRevision": "paired-validation-v4",
+  "mode": "live",
+  "cell": {
+    "task": "A",
+    "provider": "claude",
+    "ensemble": false,
+    "ordinal": 3,
+    "id": "v4-03"
+  },
+  "blindId": "eae52a55-742e-43fe-84de-a63487563384",
+  "baseSha": "7cd8de808caf046e0bcc3894a27054dca133d987",
+  "rubricHash": "63a743bd20fe9861cf4b7e0e31f52892af8aabfd88f157cf48887948849e8a95",
+  "model": "claude-opus-4-8",
+  "effort": "xhigh",
+  "cacheState": "unknown",
+  "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+  "status": "passed",
+  "error": null,
+  "preparationMs": 11,
+  "taskMs": 247002,
+  "totalMs": 247013,
+  "checkpointMs": null,
+  "changeMs": null,
+  "afterChangeMs": null,
+  "humanInterventions": [],
+  "humanRequests": [],
+  "checks": [
+    {
+      "id": "checkpoint.selection",
+      "pass": true
+    },
+    {
+      "id": "required-fields.blocked",
+      "pass": true
+    },
+    {
+      "id": "party.one-through-six",
+      "pass": true
+    },
+    {
+      "id": "sold-out",
+      "pass": true
+    },
+    {
+      "id": "service-error",
+      "pass": true
+    },
+    {
+      "id": "confirmation.persistence",
+      "pass": true
+    },
+    {
+      "id": "invalid-party.blocked",
+      "pass": true
+    },
+    {
+      "id": "viewport.390",
+      "pass": true
+    },
+    {
+      "id": "viewport.1440",
+      "pass": true
+    },
+    {
+      "id": "console.clean",
+      "pass": true
+    }
+  ],
+  "calls": [
+    {
+      "role": "worker",
+      "startMs": 215.9601,
+      "endMs": 237.47309999999993,
+      "status": "completed"
+    }
+  ],
+  "events": [
+    {
+      "type": "direct_config",
+      "provider": "claude",
+      "model": "claude-opus-4-8",
+      "effort": "xhigh",
+      "systemInstructions": "Implement the requested development task in the supplied React starter workspace.\nFollow the task requirements and preserve the provided project structure and test contracts.\nEdit source files only within the assigned workspace. The external harness runs builds and browser checks.\nDo not install dependencies, access external networks, change authentication or permissions, make payments, commit, or publish.\nDo not delegate to other agents. If a tool is denied, do not retry it or bypass the restriction.\nState any unfinished work or unverified behavior accurately.",
+      "reportingProtocol": "plain",
+      "underlyingApiCalls": null,
+      "workerUsage": null
+    },
+    {
+      "type": "call-attempt",
+      "role": "worker",
+      "count": 1,
+      "startMs": 215.9601
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": "I'll start by exploring the workspace structure to understand what's provided.\n\nNote: The task instructions explicitly say \"Do not delegate to other agents\" and to work only in this starter — I'll follow that and do the work directly."
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": "Let me read all the key files to understand the contracts."
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": "Now I fully understand the contracts. Let me analyze:\n\n- **`server.mjs`** (must not change): `POST /api/reservations` → `409 {error:'This time is sold out.'}` for `2030-06-15T19:00`, `503 {error:'Reservation service unavailable. Please try again.'}` for `2030-06-16T18:00`, else `200 {id:'fixture-reservation', ...data}`.\n- **`build.mjs`** (must not change): bundles `src/App.jsx` with esbuild (automatic JSX), resolving React from the app's `node_modules`.\n- **data-testid contract needed**: `date, time, guests, submit, confirmation, edit, message` (starter is missing `confirmation` and `edit`, and the time `<select>` is `disabled`).\n\nLet me write the complete implementation."
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": "Now let me verify the source actually builds. The `build.mjs` needs `BENCH_APP_ROOT` and resolves esbuild/React from the app's `node_modules`. Let me check those dependencies exist, then run a local verification build."
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": "The app root is outside my sandbox for file listing, but let me attempt the actual build — `node build.mjs` writes `dist/` inside my workspace while reading esbuild/React from the app root."
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": "That command requires approval, and my task instructions say not to request extra shell permissions or claim an external build was run — so I'll leave the build to the harness and not push on that prompt. Let me instead confirm my change set is clean within the workspace."
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": ""
+    },
+    {
+      "type": "direct_reply",
+      "text": "Both git and the build command require approval in this sandbox, and my instructions say not to request extra shell permissions or claim an external build was run — so I'll leave build/verification to the harness and report honestly. My only change was to `src/App.jsx` (via the Write tool).\n\n## Summary\n\nI completed the restaurant booking app by rewriting **`src/App.jsx`** only. No other files were touched (`build.mjs`, `server.mjs`, fixtures, `index.html`, `package.json` left intact; no deps installed, no network, no permission/auth changes).\n\n### What it implements\n- **Form inputs** — Date (`type=\"date\"`), Time `<select>` (now **enabled**; starter had `disabled`) offering exactly `17:00, 18:00, 19:00, 20:00`, and Guests (`type=\"number\"`, min 1 / max 6).\n- **POST to the existing fixture** — submits `{ date, time, guests }` to `/api/reservations`.\n- **Visible, helpful errors** in the `message` element (red, `role=\"status\"`):\n  - Client-side validation: missing date, missing time, party size outside 1–6.\n  - **Sold-out** (`2030-06-15` + `19:00`) → surfaces the server's 409 \"This time is sold out.\"\n  - **Server error** (`2030-06-16` + `18:00`) → surfaces the 503 \"Reservation service unavailable. Please try again.\"\n  - Network/unreachable → generic retry message.\n- **Confirmation** view (`data-testid=\"confirmation\"`) showing date/time/guests, with an **Edit** button (`data-testid=\"edit\"`) that returns to the prefilled form.\n- **Persistence across refresh** — a successful booking is written to `localStorage` and re-read on mount, so the confirmation view survives a reload.\n- **Usable 390/1440px layout** — centered max-width card, `box-sizing: border-box`, full-width 44px-min controls, no fixed widths → no horizontal clipping at either width.\n\n### data-testid contract (all 7 preserved)\n`date`, `time`, `guests`, `submit`, `message` (form view) + `confirmation`, `edit` (confirmation view).\n\n### Limitations / not verified\n- **I did not run `node build.mjs` or the browser acceptance checks.** Both the build command and even `git status` triggered permission prompts in this sandbox, and I'm instructed not to request extra shell permissions or claim an external build was run — so I left building/verification to the external harness as intended.\n- Source correctness was confirmed by manual review only (clean ESM imports, automatic-JSX-compatible, single `createRoot` render). The code uses standard React with no new dependencies, so it is compatible with the provided esbuild `build.mjs` pipeline.\n- Design choice: `localStorage` keeps the last confirmed booking until a new successful submit overwrites it; clicking **Edit** returns to the prefilled form but does not erase the saved booking, so a refresh mid-edit intentionally restores the last confirmation."
+    },
+    {
+      "type": "direct_worker_duration",
+      "status": "completed",
+      "elapsedMs": 238428.8052,
+      "usage": null,
+      "underlyingApiCalls": null
+    }
+  ],
+  "usage": null,
+  "costUsd": null,
+  "underlyingApiCalls": null,
+  "actualModelInvocations": null
+}

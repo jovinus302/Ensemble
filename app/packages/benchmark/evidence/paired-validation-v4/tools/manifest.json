@@ -1,0 +1,10 @@
+{
+  "kind": "artifact-tooling-not-measured-runtime",
+  "collector": "collect_evidence.py",
+  "sha256": "11a17253f63742ec374d9b7d9ec3086dc3313d169cddb1108339cf06fdbd05b2",
+  "python": "3.9+",
+  "dependencies": "standard library only",
+  "selfTest": "passed",
+  "modelCalls": 0,
+  "testedAtUtc": "2026-10-02T01:15:52.0656874Z"
+}

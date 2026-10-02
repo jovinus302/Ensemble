@@ -1,0 +1,1870 @@
+{
+  "kind": "v4-evidence-collection",
+  "protocolRevision": "paired-validation-v4",
+  "mode": "live-reports",
+  "collectorModelCalls": 0,
+  "generatedAtUtc": "2026-10-02T01:22:56.587695+00:00",
+  "plannedCells": 8,
+  "availableReportCount": 8,
+  "allEightReportsAvailable": true,
+  "noReportYet": [],
+  "remainingWithoutReport": 0,
+  "warnings": [],
+  "partial": false,
+  "fixtureResultsExcluded": true,
+  "legacyResultsExcluded": true,
+  "interpretation": "Exploratory within-provider paired observations only. Partial reports are not a completed eight-cell result; no superiority or significance claim. Missing report does not prove unstarted.",
+  "metricDefinitions": {
+    "initialMs": "B checkpointMs: elapsed from run start, including preparation",
+    "initialImplementationMs": "B checkpointMs minus preparationMs",
+    "afterChangeMs": "Includes final validation and cleanup after change injection",
+    "taskMs": "totalMs minus preparationMs",
+    "totalMs": "Includes preparation, PM, worker, judge, host validation and cleanup",
+    "workerCallRows": "Submission latency; use fullWorkerDurations for full worker wall time",
+    "costAndApiCalls": "Unknown totals remain null; partial native_usage is not complete worker cost"
+  },
+  "reports": [
+    {
+      "schemaVersion": 1,
+      "protocolRevision": "paired-validation-v4",
+      "mode": "live",
+      "cell": {
+        "task": "A",
+        "provider": "codex",
+        "ensemble": true,
+        "ordinal": 1,
+        "id": "v4-01"
+      },
+      "blindId": "6962d6cf-a8e9-43a1-b44a-520381b6137a",
+      "baseSha": "7cd8de808caf046e0bcc3894a27054dca133d987",
+      "rubricHash": "63a743bd20fe9861cf4b7e0e31f52892af8aabfd88f157cf48887948849e8a95",
+      "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+      "model": "gpt-6-astra",
+      "effort": "low",
+      "cacheState": "unknown",
+      "status": "passed",
+      "error": null,
+      "preparationMs": 12,
+      "taskMs": 282211,
+      "totalMs": 282223,
+      "checkpointMs": null,
+      "changeMs": null,
+      "afterChangeMs": null,
+      "checks": [
+        {
+          "id": "checkpoint.selection",
+          "pass": true
+        },
+        {
+          "id": "required-fields.blocked",
+          "pass": true
+        },
+        {
+          "id": "party.one-through-six",
+          "pass": true
+        },
+        {
+          "id": "sold-out",
+          "pass": true
+        },
+        {
+          "id": "service-error",
+          "pass": true
+        },
+        {
+          "id": "confirmation.persistence",
+          "pass": true
+        },
+        {
+          "id": "invalid-party.blocked",
+          "pass": true
+        },
+        {
+          "id": "viewport.390",
+          "pass": true
+        },
+        {
+          "id": "viewport.1440",
+          "pass": true
+        },
+        {
+          "id": "console.clean",
+          "pass": true
+        }
+      ],
+      "calls": [
+        {
+          "role": "pm",
+          "startMs": 305.47270000000003,
+          "endMs": 20256.2841,
+          "status": "completed"
+        },
+        {
+          "role": "pm",
+          "startMs": 20257.9316,
+          "endMs": 36751.6056,
+          "status": "completed"
+        },
+        {
+          "role": "worker",
+          "startMs": 37944.7111,
+          "endMs": 37977.5726,
+          "status": "completed"
+        },
+        {
+          "role": "judge",
+          "startMs": 258281.095,
+          "endMs": 281815.0094,
+          "status": "completed"
+        }
+      ],
+      "usage": null,
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "actualModelInvocations": null,
+      "humanInterventions": [],
+      "humanRequests": [],
+      "rawReportSha256": "a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9",
+      "rawReportPath": "reports/v4-01.json",
+      "curatedReportPath": "reports/v4-01/a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9.json",
+      "ledgerPath": "ledgers/v4-01/a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9.json",
+      "topLevelAttempts": 4,
+      "attemptsByRole": {
+        "pm": 2,
+        "worker": 1,
+        "judge": 1
+      },
+      "browserPassed": 10,
+      "browserTotal": 10,
+      "initialMs": null,
+      "initialImplementationMs": null,
+      "fullWorkerDurations": [
+        {
+          "type": "native_worker_duration",
+          "turnId": "01a0f9fc-593d-7520-9c2b-53103346436d",
+          "elapsedMs": 213911.0091,
+          "status": "completed",
+          "usage": null
+        }
+      ],
+      "partialPmJudgeUsage": [
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "interpret_coordination",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 28842,
+            "outputTokens": 151
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "judge_coordination",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 26866,
+            "outputTokens": 89
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "judge",
+          "tool": "record_handoff_review",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 53737,
+            "outputTokens": 259
+          },
+          "underlyingApiCalls": null
+        }
+      ],
+      "cleanupEvents": [],
+      "checkpointEvents": [],
+      "limitations": [
+        {
+          "location": "events[16].event.report.limitations",
+          "value": [
+            "node build.mjs 실행은 esbuild 프로세스 생성 단계에서 spawn EPERM으로 차단되었습니다. 권한 변경이나 우회는 하지 않았으며 빌드 성공은 확인하지 못했습니다.",
+            "브라우저 동작 및 390px·1440px 실제 렌더링은 검증하지 못했습니다. 외부 하네스의 빌드·브라우저 검증이 필요합니다."
+          ]
+        },
+        {
+          "location": "events[27].events[15].payload.limitations",
+          "value": [
+            "node build.mjs 실행은 esbuild 프로세스 생성 단계에서 spawn EPERM으로 차단되었습니다. 권한 변경이나 우회는 하지 않았으며 빌드 성공은 확인하지 못했습니다.",
+            "브라우저 동작 및 390px·1440px 실제 렌더링은 검증하지 못했습니다. 외부 하네스의 빌드·브라우저 검증이 필요합니다."
+          ]
+        }
+      ],
+      "directReplies": [],
+      "reportWriteTimeUtc": "2026-10-02T00:25:04.140574+00:00",
+      "finalizationCaveat": "Report may be a teardown-time preliminary write. Collect after the cell completes; preserve all observed versions. File mtime is not a model stop time.",
+      "artifacts": [
+        {
+          "kind": "frozen-final",
+          "path": "artifacts/v4-01/a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9/frozen-final",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "95ae08525d10b17f44ed1a4c06b751c115f385306e2b6766c91de7284257a002"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        },
+        {
+          "kind": "validation-event-0018",
+          "path": "artifacts/v4-01/a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9/validation-event-0018",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "95ae08525d10b17f44ed1a4c06b751c115f385306e2b6766c91de7284257a002"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "screenshots/v4-01/a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9/frozen-final/viewport-1440.png",
+          "sha256": "8f3c78fb9cb8f457e179ee48572aa347c36dfe8800b23893ec5748d5dcc2d7ef"
+        },
+        {
+          "path": "screenshots/v4-01/a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9/frozen-final/viewport-390.png",
+          "sha256": "cdd101e85733ef3a7724ab2342ffcf7d0adfd97d45b5584c640711db7e1f575a"
+        },
+        {
+          "path": "screenshots/v4-01/a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9/validation-event-0018/viewport-1440.png",
+          "sha256": "8f3c78fb9cb8f457e179ee48572aa347c36dfe8800b23893ec5748d5dcc2d7ef"
+        },
+        {
+          "path": "screenshots/v4-01/a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9/validation-event-0018/viewport-390.png",
+          "sha256": "cdd101e85733ef3a7724ab2342ffcf7d0adfd97d45b5584c640711db7e1f575a"
+        }
+      ],
+      "artifactAvailability": "captured"
+    },
+    {
+      "schemaVersion": 1,
+      "protocolRevision": "paired-validation-v4",
+      "mode": "live",
+      "cell": {
+        "task": "A",
+        "provider": "codex",
+        "ensemble": false,
+        "ordinal": 2,
+        "id": "v4-02"
+      },
+      "blindId": "eb599265-4691-4fbe-b914-2958fa039086",
+      "baseSha": "7cd8de808caf046e0bcc3894a27054dca133d987",
+      "rubricHash": "63a743bd20fe9861cf4b7e0e31f52892af8aabfd88f157cf48887948849e8a95",
+      "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+      "model": "gpt-6-astra",
+      "effort": "low",
+      "cacheState": "unknown",
+      "status": "passed",
+      "error": null,
+      "preparationMs": 10,
+      "taskMs": 210964,
+      "totalMs": 210974,
+      "checkpointMs": null,
+      "changeMs": null,
+      "afterChangeMs": null,
+      "checks": [
+        {
+          "id": "checkpoint.selection",
+          "pass": true
+        },
+        {
+          "id": "required-fields.blocked",
+          "pass": true
+        },
+        {
+          "id": "party.one-through-six",
+          "pass": true
+        },
+        {
+          "id": "sold-out",
+          "pass": true
+        },
+        {
+          "id": "service-error",
+          "pass": true
+        },
+        {
+          "id": "confirmation.persistence",
+          "pass": true
+        },
+        {
+          "id": "invalid-party.blocked",
+          "pass": true
+        },
+        {
+          "id": "viewport.390",
+          "pass": true
+        },
+        {
+          "id": "viewport.1440",
+          "pass": true
+        },
+        {
+          "id": "console.clean",
+          "pass": true
+        }
+      ],
+      "calls": [
+        {
+          "role": "worker",
+          "startMs": 1927.9387000000002,
+          "endMs": 1963.4506000000001,
+          "status": "completed"
+        }
+      ],
+      "usage": null,
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "actualModelInvocations": null,
+      "humanInterventions": [],
+      "humanRequests": [],
+      "rawReportSha256": "5769ec7e9e2962b0756870786093ee45e4d6b6b58408bab291257fcb01baa9bb",
+      "rawReportPath": "reports/v4-02.json",
+      "curatedReportPath": "reports/v4-02/5769ec7e9e2962b0756870786093ee45e4d6b6b58408bab291257fcb01baa9bb.json",
+      "ledgerPath": "ledgers/v4-02/5769ec7e9e2962b0756870786093ee45e4d6b6b58408bab291257fcb01baa9bb.json",
+      "topLevelAttempts": 1,
+      "attemptsByRole": {
+        "worker": 1
+      },
+      "browserPassed": 10,
+      "browserTotal": 10,
+      "initialMs": null,
+      "initialImplementationMs": null,
+      "fullWorkerDurations": [
+        {
+          "type": "direct_worker_duration",
+          "status": "completed",
+          "elapsedMs": 200160.90889999998,
+          "usage": null,
+          "underlyingApiCalls": null
+        }
+      ],
+      "partialPmJudgeUsage": [],
+      "cleanupEvents": [],
+      "checkpointEvents": [],
+      "limitations": [],
+      "directReplies": [
+        "I’ll inspect the starter, complete the reservation flow, and preserve the API fixture and test IDs. I’ll check what I can locally and clearly distinguish that from the external build and browser checks.",
+        "The fixture returns HTTP 409 for the sold-out slot and 503 for the service-error slot.\n\nBefore editing: the confirmed outcome is a validated booking form, helpful errors with retry, confirmation after API success, and a saved booking restored on refresh. I’ll interpret “Edit” as reopening the saved details while retaining the previous confirmation until a replacement succeeds. The layout will use two columns on desktop and stack on mobile. Hypothesis review: **SOUND**. I’ll check compilation locally and review the request, persistence, and error paths; browser acceptance remains with the external harness.",
+        "The form now submits to the local fixture, preserves entries after errors, and saves successful bookings for refresh. Editing also includes a way to return to the current confirmation. The responsive styles stack the page on narrow screens. I’m checking compilation next; visual fit still needs the external browser check.",
+        "The compilation attempt was blocked by `spawn EPERM`; I won’t retry or request extra permissions. Source review confirms the test IDs and fixture request shape are retained, but build and browser behavior remain unverified. I’m also retaining the starter’s numeric guest input so existing automation can fill it directly.",
+        "Updated `src/App.jsx` with validation, four dinner times, 1–6 guests, fixture-backed booking, helpful errors, confirmation, editing, refresh persistence, and responsive styling.\n\nPreserved all test IDs and left build/server fixtures unchanged.\n\nVerification limitation: compilation was blocked by `spawn EPERM`. Build success and unclipped 390/1440px browser layouts remain unverified pending the external harness."
+      ],
+      "reportWriteTimeUtc": "2026-10-02T00:29:24.003478+00:00",
+      "finalizationCaveat": "Report may be a teardown-time preliminary write. Collect after the cell completes; preserve all observed versions. File mtime is not a model stop time.",
+      "artifacts": [
+        {
+          "kind": "frozen-final",
+          "path": "artifacts/v4-02/5769ec7e9e2962b0756870786093ee45e4d6b6b58408bab291257fcb01baa9bb/frozen-final",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "cd7d85adccc85bd877b04d723c61ee68fc19ec31298377ce876e77df47a8c139"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "screenshots/v4-02/5769ec7e9e2962b0756870786093ee45e4d6b6b58408bab291257fcb01baa9bb/final/viewport-1440.png",
+          "sha256": "e12cd5ac67cdd6d8e5c70ac91c07c8ba161408d5a480baff7bd4d45a71bd84fb"
+        },
+        {
+          "path": "screenshots/v4-02/5769ec7e9e2962b0756870786093ee45e4d6b6b58408bab291257fcb01baa9bb/final/viewport-390.png",
+          "sha256": "2446e188bd23826e1a68a5fbffa3e912060f7add28d9806a4074ad50379f453b"
+        }
+      ],
+      "artifactAvailability": "captured"
+    },
+    {
+      "schemaVersion": 1,
+      "protocolRevision": "paired-validation-v4",
+      "mode": "live",
+      "cell": {
+        "task": "A",
+        "provider": "claude",
+        "ensemble": false,
+        "ordinal": 3,
+        "id": "v4-03"
+      },
+      "blindId": "eae52a55-742e-43fe-84de-a63487563384",
+      "baseSha": "7cd8de808caf046e0bcc3894a27054dca133d987",
+      "rubricHash": "63a743bd20fe9861cf4b7e0e31f52892af8aabfd88f157cf48887948849e8a95",
+      "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+      "model": "claude-opus-4-8",
+      "effort": "xhigh",
+      "cacheState": "unknown",
+      "status": "passed",
+      "error": null,
+      "preparationMs": 11,
+      "taskMs": 247002,
+      "totalMs": 247013,
+      "checkpointMs": null,
+      "changeMs": null,
+      "afterChangeMs": null,
+      "checks": [
+        {
+          "id": "checkpoint.selection",
+          "pass": true
+        },
+        {
+          "id": "required-fields.blocked",
+          "pass": true
+        },
+        {
+          "id": "party.one-through-six",
+          "pass": true
+        },
+        {
+          "id": "sold-out",
+          "pass": true
+        },
+        {
+          "id": "service-error",
+          "pass": true
+        },
+        {
+          "id": "confirmation.persistence",
+          "pass": true
+        },
+        {
+          "id": "invalid-party.blocked",
+          "pass": true
+        },
+        {
+          "id": "viewport.390",
+          "pass": true
+        },
+        {
+          "id": "viewport.1440",
+          "pass": true
+        },
+        {
+          "id": "console.clean",
+          "pass": true
+        }
+      ],
+      "calls": [
+        {
+          "role": "worker",
+          "startMs": 215.9601,
+          "endMs": 237.47309999999993,
+          "status": "completed"
+        }
+      ],
+      "usage": null,
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "actualModelInvocations": null,
+      "humanInterventions": [],
+      "humanRequests": [],
+      "rawReportSha256": "02261c6640d0a9f3ce3cbb6dc0b0accc97b02f766b612c68567bede83635f618",
+      "rawReportPath": "reports/v4-03.json",
+      "curatedReportPath": "reports/v4-03/02261c6640d0a9f3ce3cbb6dc0b0accc97b02f766b612c68567bede83635f618.json",
+      "ledgerPath": "ledgers/v4-03/02261c6640d0a9f3ce3cbb6dc0b0accc97b02f766b612c68567bede83635f618.json",
+      "topLevelAttempts": 1,
+      "attemptsByRole": {
+        "worker": 1
+      },
+      "browserPassed": 10,
+      "browserTotal": 10,
+      "initialMs": null,
+      "initialImplementationMs": null,
+      "fullWorkerDurations": [
+        {
+          "type": "direct_worker_duration",
+          "status": "completed",
+          "elapsedMs": 238428.8052,
+          "usage": null,
+          "underlyingApiCalls": null
+        }
+      ],
+      "partialPmJudgeUsage": [],
+      "cleanupEvents": [],
+      "checkpointEvents": [],
+      "limitations": [],
+      "directReplies": [
+        "",
+        "I'll start by exploring the workspace structure to understand what's provided.\n\nNote: The task instructions explicitly say \"Do not delegate to other agents\" and to work only in this starter — I'll follow that and do the work directly.",
+        "",
+        "",
+        "Let me read all the key files to understand the contracts.",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "Now I fully understand the contracts. Let me analyze:\n\n- **`server.mjs`** (must not change): `POST /api/reservations` → `409 {error:'This time is sold out.'}` for `2030-06-15T19:00`, `503 {error:'Reservation service unavailable. Please try again.'}` for `2030-06-16T18:00`, else `200 {id:'fixture-reservation', ...data}`.\n- **`build.mjs`** (must not change): bundles `src/App.jsx` with esbuild (automatic JSX), resolving React from the app's `node_modules`.\n- **data-testid contract needed**: `date, time, guests, submit, confirmation, edit, message` (starter is missing `confirmation` and `edit`, and the time `<select>` is `disabled`).\n\nLet me write the complete implementation.",
+        "",
+        "",
+        "Now let me verify the source actually builds. The `build.mjs` needs `BENCH_APP_ROOT` and resolves esbuild/React from the app's `node_modules`. Let me check those dependencies exist, then run a local verification build.",
+        "",
+        "",
+        "",
+        "",
+        "The app root is outside my sandbox for file listing, but let me attempt the actual build — `node build.mjs` writes `dist/` inside my workspace while reading esbuild/React from the app root.",
+        "",
+        "",
+        "That command requires approval, and my task instructions say not to request extra shell permissions or claim an external build was run — so I'll leave the build to the harness and not push on that prompt. Let me instead confirm my change set is clean within the workspace.",
+        "",
+        "",
+        "",
+        "",
+        "Both git and the build command require approval in this sandbox, and my instructions say not to request extra shell permissions or claim an external build was run — so I'll leave build/verification to the harness and report honestly. My only change was to `src/App.jsx` (via the Write tool).\n\n## Summary\n\nI completed the restaurant booking app by rewriting **`src/App.jsx`** only. No other files were touched (`build.mjs`, `server.mjs`, fixtures, `index.html`, `package.json` left intact; no deps installed, no network, no permission/auth changes).\n\n### What it implements\n- **Form inputs** — Date (`type=\"date\"`), Time `<select>` (now **enabled**; starter had `disabled`) offering exactly `17:00, 18:00, 19:00, 20:00`, and Guests (`type=\"number\"`, min 1 / max 6).\n- **POST to the existing fixture** — submits `{ date, time, guests }` to `/api/reservations`.\n- **Visible, helpful errors** in the `message` element (red, `role=\"status\"`):\n  - Client-side validation: missing date, missing time, party size outside 1–6.\n  - **Sold-out** (`2030-06-15` + `19:00`) → surfaces the server's 409 \"This time is sold out.\"\n  - **Server error** (`2030-06-16` + `18:00`) → surfaces the 503 \"Reservation service unavailable. Please try again.\"\n  - Network/unreachable → generic retry message.\n- **Confirmation** view (`data-testid=\"confirmation\"`) showing date/time/guests, with an **Edit** button (`data-testid=\"edit\"`) that returns to the prefilled form.\n- **Persistence across refresh** — a successful booking is written to `localStorage` and re-read on mount, so the confirmation view survives a reload.\n- **Usable 390/1440px layout** — centered max-width card, `box-sizing: border-box`, full-width 44px-min controls, no fixed widths → no horizontal clipping at either width.\n\n### data-testid contract (all 7 preserved)\n`date`, `time`, `guests`, `submit`, `message` (form view) + `confirmation`, `edit` (confirmation view).\n\n### Limitations / not verified\n- **I did not run `node build.mjs` or the browser acceptance checks.** Both the build command and even `git status` triggered permission prompts in this sandbox, and I'm instructed not to request extra shell permissions or claim an external build was run — so I left building/verification to the external harness as intended.\n- Source correctness was confirmed by manual review only (clean ESM imports, automatic-JSX-compatible, single `createRoot` render). The code uses standard React with no new dependencies, so it is compatible with the provided esbuild `build.mjs` pipeline.\n- Design choice: `localStorage` keeps the last confirmed booking until a new successful submit overwrites it; clicking **Edit** returns to the prefilled form but does not erase the saved booking, so a refresh mid-edit intentionally restores the last confirmation."
+      ],
+      "reportWriteTimeUtc": "2026-10-02T00:34:08.869520+00:00",
+      "finalizationCaveat": "Report may be a teardown-time preliminary write. Collect after the cell completes; preserve all observed versions. File mtime is not a model stop time.",
+      "artifacts": [
+        {
+          "kind": "frozen-final",
+          "path": "artifacts/v4-03/02261c6640d0a9f3ce3cbb6dc0b0accc97b02f766b612c68567bede83635f618/frozen-final",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "2edd87fba1271a67ffd00d740622d9230c8cb9b250a85c6ef8fda7a8ebdeb108"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "screenshots/v4-03/02261c6640d0a9f3ce3cbb6dc0b0accc97b02f766b612c68567bede83635f618/final/viewport-1440.png",
+          "sha256": "e3e6364b178d308a21f6579500ffb1368cc93ce4297011950a6c37239a7d9f28"
+        },
+        {
+          "path": "screenshots/v4-03/02261c6640d0a9f3ce3cbb6dc0b0accc97b02f766b612c68567bede83635f618/final/viewport-390.png",
+          "sha256": "ce2fb95fea7946a46bdfd04233ecf81ddeae199fb487b309477ebe85f9ff2939"
+        }
+      ],
+      "artifactAvailability": "captured"
+    },
+    {
+      "schemaVersion": 1,
+      "protocolRevision": "paired-validation-v4",
+      "mode": "live",
+      "cell": {
+        "task": "A",
+        "provider": "claude",
+        "ensemble": true,
+        "ordinal": 4,
+        "id": "v4-04"
+      },
+      "blindId": "6514e6ba-c646-4598-9102-4d8c5c477207",
+      "baseSha": "7cd8de808caf046e0bcc3894a27054dca133d987",
+      "rubricHash": "63a743bd20fe9861cf4b7e0e31f52892af8aabfd88f157cf48887948849e8a95",
+      "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+      "model": "claude-opus-4-8",
+      "effort": "xhigh",
+      "cacheState": "unknown",
+      "status": "passed",
+      "error": null,
+      "preparationMs": 9,
+      "taskMs": 341260,
+      "totalMs": 341269,
+      "checkpointMs": null,
+      "changeMs": null,
+      "afterChangeMs": null,
+      "checks": [
+        {
+          "id": "checkpoint.selection",
+          "pass": true
+        },
+        {
+          "id": "required-fields.blocked",
+          "pass": true
+        },
+        {
+          "id": "party.one-through-six",
+          "pass": true
+        },
+        {
+          "id": "sold-out",
+          "pass": true
+        },
+        {
+          "id": "service-error",
+          "pass": true
+        },
+        {
+          "id": "confirmation.persistence",
+          "pass": true
+        },
+        {
+          "id": "invalid-party.blocked",
+          "pass": true
+        },
+        {
+          "id": "viewport.390",
+          "pass": true
+        },
+        {
+          "id": "viewport.1440",
+          "pass": true
+        },
+        {
+          "id": "console.clean",
+          "pass": true
+        }
+      ],
+      "calls": [
+        {
+          "role": "pm",
+          "startMs": 183.4533,
+          "endMs": 18415.661799999998,
+          "status": "completed"
+        },
+        {
+          "role": "pm",
+          "startMs": 18417.1662,
+          "endMs": 31124.437599999997,
+          "status": "completed"
+        },
+        {
+          "role": "worker",
+          "startMs": 31141.769099999998,
+          "endMs": 31168.5599,
+          "status": "completed"
+        },
+        {
+          "role": "judge",
+          "startMs": 307914.1799,
+          "endMs": 341128.6236,
+          "status": "completed"
+        }
+      ],
+      "usage": null,
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "actualModelInvocations": null,
+      "humanInterventions": [],
+      "humanRequests": [],
+      "rawReportSha256": "6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b",
+      "rawReportPath": "reports/v4-04.json",
+      "curatedReportPath": "reports/v4-04/6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b.json",
+      "ledgerPath": "ledgers/v4-04/6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b.json",
+      "topLevelAttempts": 4,
+      "attemptsByRole": {
+        "pm": 2,
+        "worker": 1,
+        "judge": 1
+      },
+      "browserPassed": 10,
+      "browserTotal": 10,
+      "initialMs": null,
+      "initialImplementationMs": null,
+      "fullWorkerDurations": [
+        {
+          "type": "native_worker_duration",
+          "turnId": "b0ce1205-abb8-487f-aa99-39639685a75e",
+          "elapsedMs": 269434.2527,
+          "status": "completed",
+          "usage": null
+        }
+      ],
+      "partialPmJudgeUsage": [
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "interpret_coordination",
+          "model": "claude-opus-4-8",
+          "usage": {
+            "inputTokens": 14213,
+            "outputTokens": 1124
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "judge_coordination",
+          "model": "claude-opus-4-8",
+          "usage": {
+            "inputTokens": 11897,
+            "outputTokens": 774
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "judge",
+          "tool": "record_handoff_review",
+          "model": "claude-opus-4-8",
+          "usage": {
+            "inputTokens": 6920,
+            "outputTokens": 2462
+          },
+          "underlyingApiCalls": null
+        }
+      ],
+      "cleanupEvents": [],
+      "checkpointEvents": [],
+      "limitations": [
+        {
+          "location": "events[18].event.report.limitations",
+          "value": [
+            "I did not run 'node build.mjs' or the browser acceptance checks myself — that command requires approval and the task specifies the external harness performs the build/browser run. I verified the source by code review against the build config (esbuild jsx:automatic, single src/App.jsx entry, no CSS loader so styles are injected in JS) and the server.mjs fixture contract; I did not execute a build.",
+            "View swap assumes the acceptance harness isolates scenarios (e.g. fresh browser context per check). A persisted booking renders the confirmation view instead of the form on load, which is required for the refresh-persistence behavior; a test that reuses one context across unrelated scenarios without clearing localStorage would start on the confirmation view."
+          ]
+        },
+        {
+          "location": "events[29].events[16].payload.limitations",
+          "value": [
+            "I did not run 'node build.mjs' or the browser acceptance checks myself — that command requires approval and the task specifies the external harness performs the build/browser run. I verified the source by code review against the build config (esbuild jsx:automatic, single src/App.jsx entry, no CSS loader so styles are injected in JS) and the server.mjs fixture contract; I did not execute a build.",
+            "View swap assumes the acceptance harness isolates scenarios (e.g. fresh browser context per check). A persisted booking renders the confirmation view instead of the form on load, which is required for the refresh-persistence behavior; a test that reuses one context across unrelated scenarios without clearing localStorage would start on the confirmation view."
+          ]
+        }
+      ],
+      "directReplies": [],
+      "reportWriteTimeUtc": "2026-10-02T00:40:33.558925+00:00",
+      "finalizationCaveat": "Report may be a teardown-time preliminary write. Collect after the cell completes; preserve all observed versions. File mtime is not a model stop time.",
+      "artifacts": [
+        {
+          "kind": "frozen-final",
+          "path": "artifacts/v4-04/6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b/frozen-final",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "798186985a29447d4bd9c8fd00061fc6babbc3ffaa9560b6d1ee3fffdaed8baa"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        },
+        {
+          "kind": "validation-event-0020",
+          "path": "artifacts/v4-04/6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b/validation-event-0020",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "798186985a29447d4bd9c8fd00061fc6babbc3ffaa9560b6d1ee3fffdaed8baa"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "screenshots/v4-04/6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b/frozen-final/viewport-1440.png",
+          "sha256": "02cf51af3100f010744ef7dd031c0622b591cdd42b16f8276a2373c52b6172e1"
+        },
+        {
+          "path": "screenshots/v4-04/6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b/frozen-final/viewport-390.png",
+          "sha256": "e8e048bfc1bec00d5b17dad3cf56490df97f67decb4e50526f5a1ecf67b476f5"
+        },
+        {
+          "path": "screenshots/v4-04/6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b/validation-event-0020/viewport-1440.png",
+          "sha256": "02cf51af3100f010744ef7dd031c0622b591cdd42b16f8276a2373c52b6172e1"
+        },
+        {
+          "path": "screenshots/v4-04/6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b/validation-event-0020/viewport-390.png",
+          "sha256": "e8e048bfc1bec00d5b17dad3cf56490df97f67decb4e50526f5a1ecf67b476f5"
+        }
+      ],
+      "artifactAvailability": "captured"
+    },
+    {
+      "schemaVersion": 1,
+      "protocolRevision": "paired-validation-v4",
+      "mode": "live",
+      "cell": {
+        "task": "B",
+        "provider": "claude",
+        "ensemble": true,
+        "ordinal": 5,
+        "id": "v4-05"
+      },
+      "blindId": "ffcc0955-4825-4d02-9de2-c874ba7b9136",
+      "baseSha": "7cd8de808caf046e0bcc3894a27054dca133d987",
+      "rubricHash": "63a743bd20fe9861cf4b7e0e31f52892af8aabfd88f157cf48887948849e8a95",
+      "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+      "model": "claude-opus-4-8",
+      "effort": "xhigh",
+      "cacheState": "unknown",
+      "status": "passed",
+      "error": null,
+      "preparationMs": 11,
+      "taskMs": 952180,
+      "totalMs": 952191,
+      "checkpointMs": 267365,
+      "changeMs": 267365,
+      "afterChangeMs": 684826,
+      "checks": [
+        {
+          "id": "checkpoint.selection",
+          "pass": true
+        },
+        {
+          "id": "required-fields.blocked",
+          "pass": true
+        },
+        {
+          "id": "party.one-through-six",
+          "pass": true
+        },
+        {
+          "id": "sold-out",
+          "pass": true
+        },
+        {
+          "id": "service-error",
+          "pass": true
+        },
+        {
+          "id": "confirmation.persistence",
+          "pass": true
+        },
+        {
+          "id": "invalid-party.blocked",
+          "pass": true
+        },
+        {
+          "id": "change.large-party-early-blocked",
+          "pass": true
+        },
+        {
+          "id": "change.six-to-seven-clears-time",
+          "pass": true
+        },
+        {
+          "id": "change.eight-evening-and-edit",
+          "pass": true
+        },
+        {
+          "id": "viewport.390",
+          "pass": true
+        },
+        {
+          "id": "viewport.1440",
+          "pass": true
+        },
+        {
+          "id": "console.clean",
+          "pass": true
+        }
+      ],
+      "calls": [
+        {
+          "role": "pm",
+          "startMs": 190.80750000000012,
+          "endMs": 33940.8725,
+          "status": "completed"
+        },
+        {
+          "role": "pm",
+          "startMs": 33942.1977,
+          "endMs": 53991.9207,
+          "status": "completed"
+        },
+        {
+          "role": "worker",
+          "startMs": 54008.159,
+          "endMs": 54034.9642,
+          "status": "completed"
+        },
+        {
+          "role": "judge",
+          "startMs": 237546.78220000002,
+          "endMs": 267188.729,
+          "status": "completed"
+        },
+        {
+          "role": "pm",
+          "startMs": 267374.13680000004,
+          "endMs": 317773.77410000004,
+          "status": "completed"
+        },
+        {
+          "role": "pm",
+          "startMs": 317775.808,
+          "endMs": 346544.76170000003,
+          "status": "completed"
+        },
+        {
+          "role": "worker",
+          "startMs": 346548.6351,
+          "endMs": 346569.9307,
+          "status": "completed"
+        },
+        {
+          "role": "judge",
+          "startMs": 875332.5615999999,
+          "endMs": 952130.9057,
+          "status": "completed"
+        }
+      ],
+      "usage": null,
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "actualModelInvocations": null,
+      "humanInterventions": [],
+      "humanRequests": [],
+      "rawReportSha256": "47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d",
+      "rawReportPath": "reports/v4-05.json",
+      "curatedReportPath": "reports/v4-05/47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d.json",
+      "ledgerPath": "ledgers/v4-05/47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d.json",
+      "topLevelAttempts": 8,
+      "attemptsByRole": {
+        "pm": 4,
+        "worker": 2,
+        "judge": 2
+      },
+      "browserPassed": 13,
+      "browserTotal": 13,
+      "initialMs": 267365,
+      "initialImplementationMs": 267354,
+      "fullWorkerDurations": [
+        {
+          "type": "native_worker_duration",
+          "turnId": "a563b6b4-22fa-4aa0-9ac0-ff184424832f",
+          "elapsedMs": 181838.09990000003,
+          "status": "completed",
+          "usage": null
+        },
+        {
+          "type": "native_worker_duration",
+          "turnId": "15d1e80b-8dfc-4166-9bd8-20c760cc5d98",
+          "elapsedMs": 518546.799,
+          "status": "completed",
+          "usage": null
+        }
+      ],
+      "partialPmJudgeUsage": [
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "interpret_coordination",
+          "model": "claude-opus-4-8",
+          "usage": {
+            "inputTokens": 13886,
+            "outputTokens": 2230
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "judge_coordination",
+          "model": "claude-opus-4-8",
+          "usage": {
+            "inputTokens": 11379,
+            "outputTokens": 1454
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "judge",
+          "tool": "record_handoff_review",
+          "model": "claude-opus-4-8",
+          "usage": {
+            "inputTokens": 4319,
+            "outputTokens": 2301
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "interpret_coordination",
+          "model": "claude-opus-4-8",
+          "usage": {
+            "inputTokens": 17719,
+            "outputTokens": 3646
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "judge_coordination",
+          "model": "claude-opus-4-8",
+          "usage": {
+            "inputTokens": 16838,
+            "outputTokens": 2011
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "judge",
+          "tool": "record_handoff_review",
+          "model": "claude-opus-4-8",
+          "usage": {
+            "inputTokens": 7514,
+            "outputTokens": 6063
+          },
+          "underlyingApiCalls": null
+        }
+      ],
+      "cleanupEvents": [],
+      "checkpointEvents": [
+        {
+          "type": "checkpoint",
+          "checks": [
+            {
+              "id": "checkpoint.selection",
+              "pass": true
+            },
+            {
+              "id": "console.clean",
+              "pass": true
+            }
+          ],
+          "passed": true
+        }
+      ],
+      "limitations": [
+        {
+          "location": "events[18].event.report.limitations",
+          "value": [
+            "Did not run `node build.mjs` locally: the command required approval and was not granted, so I did not retry or request shell permissions per task constraints. The change is a minimal, syntactically valid JSX edit to an already-buildable starter, so the source remains buildable; the external harness performs the authoritative build and browser checks. I am not claiming a build was run.",
+            "Per the staged instruction, this is the initial checkpoint only. Confirmation, saved-booking persistence across refresh, sold-out (2030-06-15 19:00) and server-error (2030-06-16 18:00) handling with visible messages, POST /api/reservations submission, edit flow, and 390/1440px layout polish are deliberately NOT implemented yet and await the next instruction. The confirmation/edit data-testids are therefore not present yet."
+          ]
+        },
+        {
+          "location": "events[49].event.report.limitations",
+          "value": [
+            "I did not run `node build.mjs` or the browser acceptance checks locally: the build command required shell approval that was not granted, and per the task constraints I did not retry it or request extra permissions. The external harness performs the authoritative build and browser acceptance. The source was statically reviewed and uses only standard React 18 (createRoot/useState) and esbuild-compatible syntax (JSX automatic runtime, optional chaining), so it is expected to build; I am not claiming a build was run.",
+            "Persistence across unrelated scenarios assumes the harness isolates browser storage per scenario (standard Playwright newContext per test). This is required for the 'saved booking survives refresh' behavior to coexist with the fresh-form scenarios; a harness that reused one context with a prior saved booking would open on the confirmation view rather than the form."
+          ]
+        },
+        {
+          "location": "events[60].events[16].payload.limitations",
+          "value": [
+            "Did not run `node build.mjs` locally: the command required approval and was not granted, so I did not retry or request shell permissions per task constraints. The change is a minimal, syntactically valid JSX edit to an already-buildable starter, so the source remains buildable; the external harness performs the authoritative build and browser checks. I am not claiming a build was run.",
+            "Per the staged instruction, this is the initial checkpoint only. Confirmation, saved-booking persistence across refresh, sold-out (2030-06-15 19:00) and server-error (2030-06-16 18:00) handling with visible messages, POST /api/reservations submission, edit flow, and 390/1440px layout polish are deliberately NOT implemented yet and await the next instruction. The confirmation/edit data-testids are therefore not present yet."
+          ]
+        },
+        {
+          "location": "events[60].events[39].payload.limitations",
+          "value": [
+            "I did not run `node build.mjs` or the browser acceptance checks locally: the build command required shell approval that was not granted, and per the task constraints I did not retry it or request extra permissions. The external harness performs the authoritative build and browser acceptance. The source was statically reviewed and uses only standard React 18 (createRoot/useState) and esbuild-compatible syntax (JSX automatic runtime, optional chaining), so it is expected to build; I am not claiming a build was run.",
+            "Persistence across unrelated scenarios assumes the harness isolates browser storage per scenario (standard Playwright newContext per test). This is required for the 'saved booking survives refresh' behavior to coexist with the fresh-form scenarios; a harness that reused one context with a prior saved booking would open on the confirmation view rather than the form."
+          ]
+        }
+      ],
+      "directReplies": [],
+      "reportWriteTimeUtc": "2026-10-02T00:57:28.762219+00:00",
+      "finalizationCaveat": "Report may be a teardown-time preliminary write. Collect after the cell completes; preserve all observed versions. File mtime is not a model stop time.",
+      "artifacts": [
+        {
+          "kind": "frozen-final",
+          "path": "artifacts/v4-05/47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d/frozen-final",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "c7faf98b75d199e59ac66490b95525c9f5b83b016d2f32f21a19eff006a9578d"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        },
+        {
+          "kind": "validation-event-0020",
+          "path": "artifacts/v4-05/47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d/validation-event-0020",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "885e65641f81477fb6f698752ba6b534cbb78674a290697b3a23091c45658378"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        },
+        {
+          "kind": "validation-event-0051",
+          "path": "artifacts/v4-05/47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d/validation-event-0051",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "c7faf98b75d199e59ac66490b95525c9f5b83b016d2f32f21a19eff006a9578d"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "screenshots/v4-05/47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d/frozen-final/viewport-1440.png",
+          "sha256": "450932b98133ca37457c525f7c26331055a2bf6b3f544811c6768e32b3e7a44c"
+        },
+        {
+          "path": "screenshots/v4-05/47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d/frozen-final/viewport-390.png",
+          "sha256": "458e0a9e44f36aac4f088be37b2b27a43de9eabd7f062e3446fde37b86f8e870"
+        },
+        {
+          "path": "screenshots/v4-05/47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d/validation-event-0051/viewport-1440.png",
+          "sha256": "450932b98133ca37457c525f7c26331055a2bf6b3f544811c6768e32b3e7a44c"
+        },
+        {
+          "path": "screenshots/v4-05/47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d/validation-event-0051/viewport-390.png",
+          "sha256": "458e0a9e44f36aac4f088be37b2b27a43de9eabd7f062e3446fde37b86f8e870"
+        }
+      ],
+      "artifactAvailability": "captured"
+    },
+    {
+      "schemaVersion": 1,
+      "protocolRevision": "paired-validation-v4",
+      "mode": "live",
+      "cell": {
+        "task": "B",
+        "provider": "claude",
+        "ensemble": false,
+        "ordinal": 6,
+        "id": "v4-06"
+      },
+      "blindId": "984a762b-952e-4e67-83d1-90b198852fbf",
+      "baseSha": "7cd8de808caf046e0bcc3894a27054dca133d987",
+      "rubricHash": "63a743bd20fe9861cf4b7e0e31f52892af8aabfd88f157cf48887948849e8a95",
+      "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+      "model": "claude-opus-4-8",
+      "effort": "xhigh",
+      "cacheState": "unknown",
+      "status": "passed",
+      "error": null,
+      "preparationMs": 12,
+      "taskMs": 558901,
+      "totalMs": 558913,
+      "checkpointMs": 155630,
+      "changeMs": 155630,
+      "afterChangeMs": 403283,
+      "checks": [
+        {
+          "id": "checkpoint.selection",
+          "pass": true
+        },
+        {
+          "id": "required-fields.blocked",
+          "pass": true
+        },
+        {
+          "id": "party.one-through-six",
+          "pass": true
+        },
+        {
+          "id": "sold-out",
+          "pass": true
+        },
+        {
+          "id": "service-error",
+          "pass": true
+        },
+        {
+          "id": "confirmation.persistence",
+          "pass": true
+        },
+        {
+          "id": "invalid-party.blocked",
+          "pass": true
+        },
+        {
+          "id": "change.large-party-early-blocked",
+          "pass": true
+        },
+        {
+          "id": "change.six-to-seven-clears-time",
+          "pass": true
+        },
+        {
+          "id": "change.eight-evening-and-edit",
+          "pass": true
+        },
+        {
+          "id": "viewport.390",
+          "pass": true
+        },
+        {
+          "id": "viewport.1440",
+          "pass": true
+        },
+        {
+          "id": "console.clean",
+          "pass": true
+        }
+      ],
+      "calls": [
+        {
+          "role": "worker",
+          "startMs": 965.8096,
+          "endMs": 1015.6399000000001,
+          "status": "completed"
+        },
+        {
+          "role": "worker",
+          "startMs": 155629.6461,
+          "endMs": 155652.63160000002,
+          "status": "completed"
+        }
+      ],
+      "usage": null,
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "actualModelInvocations": null,
+      "humanInterventions": [],
+      "humanRequests": [],
+      "rawReportSha256": "2803ab05c67772eb629d3140b04e47d2a2448043557e1f8573586829e34bee12",
+      "rawReportPath": "reports/v4-06.json",
+      "curatedReportPath": "reports/v4-06/2803ab05c67772eb629d3140b04e47d2a2448043557e1f8573586829e34bee12.json",
+      "ledgerPath": "ledgers/v4-06/2803ab05c67772eb629d3140b04e47d2a2448043557e1f8573586829e34bee12.json",
+      "topLevelAttempts": 2,
+      "attemptsByRole": {
+        "worker": 2
+      },
+      "browserPassed": 13,
+      "browserTotal": 13,
+      "initialMs": 155630,
+      "initialImplementationMs": 155618,
+      "fullWorkerDurations": [
+        {
+          "type": "direct_worker_duration",
+          "status": "completed",
+          "elapsedMs": 148073.2383,
+          "usage": null,
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "direct_worker_duration",
+          "status": "completed",
+          "elapsedMs": 392505.6557,
+          "usage": null,
+          "underlyingApiCalls": null
+        }
+      ],
+      "partialPmJudgeUsage": [],
+      "cleanupEvents": [],
+      "checkpointEvents": [
+        {
+          "type": "checkpoint",
+          "checks": [
+            {
+              "id": "checkpoint.selection",
+              "pass": true
+            },
+            {
+              "id": "console.clean",
+              "pass": true
+            }
+          ],
+          "passed": true
+        }
+      ],
+      "limitations": [],
+      "directReplies": [
+        "",
+        "I'll start by exploring the starter workspace to understand its structure and the test contracts I need to preserve.",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "Now I understand the starter. Let me review the key facts:\n\n- **`build.mjs`** / **`server.mjs`** — must not be replaced. Server fixture already returns 409 for `2030-06-15T19:00`, 503 for `2030-06-16T18:00`, 200 otherwise.\n- **`src/App.jsx`** — the only source file. The **time `<select>` is `disabled`** (broken control); date and guests are controlled but basic.\n- **data-testid contract**: `date, time, guests, submit, confirmation, edit, message`.\n\nThis turn's checkpoint is narrow: **implement real working date/time/guest controls in buildable source**, then stop. I must not build the submission/confirmation/persistence/error/layout work yet (\"the rest\").\n\nLet me implement the working controls.",
+        "",
+        "",
+        "Now let me verify the source is buildable with a local sanity build. First, confirm the build toolchain (esbuild) is available at the app root.",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "The local verification build requires an approval I've been instructed not to request (\"Do not request extra shell permissions\"), so I won't run it or retry — the external harness performs the build. The source change is a self-contained, standard JSX edit that esbuild (`jsx: 'automatic'`) will compile normally.\n\n## Checkpoint 1 complete — working date/time/guest controls\n\nI implemented real, functional controls and stopped at the staged checkpoint. I did **not** implement \"the rest\" (submission, confirmation, persistence, error handling, layout polish), per instructions.\n\n### Files changed\n- **`src/App.jsx`** — the single source file. Changes:\n  - **Time**: removed `disabled` from the `<select>` (it was the one broken control) and gave each option an explicit `value`. Options are `17:00, 18:00, 19:00, 20:00` with a `\"Select a time\"` placeholder.\n  - **Date**: controlled `<input type=\"date\">` (functional).\n  - **Guests**: controlled control constrained to **1–6** (converted to a `<select>` of 1–6 so the range is guaranteed valid and selectable; defaults to 2).\n  - All three are controlled React state and genuinely interactive.\n\n### Files left untouched (as required)\n- `build.mjs`, `server.mjs` (fixtures intact: 409 for `2030-06-15T19:00`, 503 for `2030-06-16T18:00`, 200 otherwise), `index.html`, `package.json`.\n\n### data-testid contract status\nPresent and working: `date`, `time`, `guests`, `submit`, `message`. `confirmation` and `edit` belong to the post-submission flow and will be added in the next stage (the starter did not have them either); no testids were removed.\n\n### Limitations / not verified\n- **Build not run locally** — it needs a shell approval I was told not to request, so I relied on source correctness; the external harness will build and exercise the controls. I am **not** claiming any build was run.\n- **\"The rest\" is intentionally unimplemented**: no submit→`POST /api/reservations` call, no sold-out/server-error messaging, no confirmation view, no refresh-surviving persistence, no 390/1440px layout work. I did not invent the later change.\n\nStopping here and awaiting the next instruction.",
+        "",
+        "The staged change has arrived. Now I'll implement the complete feature set under the new rules. Let me first re-read the current source to edit precisely.",
+        "",
+        "",
+        "Now I'll write the complete implementation covering all original requirements plus the staged change.",
+        "",
+        "",
+        "I want to reconsider the `disabled` option: if an automated test calls `selectOption('17:00')` while guests ≥ 7, a disabled option throws in Playwright. Keeping all four times always selectable — and handling invalidity reactively in both directions plus at submit — is more robust and still fully satisfies \"offer 17:00–20:00\". Let me adjust the time rendering.",
+        "",
+        "",
+        "Now `count` in the render body is unused. Let me remove it.",
+        "",
+        "Now let me add the responsive styling to `index.html` so the layout is usable and unclipped at 390px and 1440px.",
+        "",
+        "",
+        "",
+        "Let me review the complete final `App.jsx` to verify correctness end-to-end.",
+        "",
+        "",
+        "The implementation is complete. I traced every required scenario against the code and the server fixture; let me summarize.\n\n## Done — all requirements implemented under the staged change\n\n### Files changed\n- **`src/App.jsx`** — the full booking app (controls + logic + confirmation/edit + persistence).\n- **`index.html`** — added a responsive `<style>` block (root div, script, and viewport meta preserved). Copied to `dist/` by the untouched `build.mjs`.\n\n### Files intentionally untouched\n`build.mjs`, `server.mjs` (fixtures intact: 409 sold-out `2030-06-15T19:00`, 503 error `2030-06-16T18:00`), `package.json`.\n\n### How each requirement is met\n- **Controls**: date (`type=date`), time `<select>` (17:00/18:00/19:00/20:00, now enabled), guests as a numeric input so out-of-range values *can* be entered and then rejected. Form has `noValidate` so my JS validation (not a native browser bubble) always runs and surfaces in the `message` element.\n- **Max 8 / reject 9**: submit validates `1 ≤ integer ≤ 8`; `9` → visible error, no POST, no confirmation.\n- **Large-party rule (7–8 ⇒ ≥18:00)**: `timeAllowedForGuests` blocks only 17:00. Enforced in three places — when guests change (clears the now-invalid time **and shows the reason**, per the requirement), when a time is picked, and defensively at submit. Times use zero-padded `HH:MM` so string compare == chronological.\n- **Fixtures / helpful errors**: real `POST /api/reservations`; non-OK responses show the server's `error` text (sold-out / unavailable); network failure shows a fallback message. Form and inputs persist so the user can retry.\n- **Confirmation**: success shows `data-testid=\"confirmation\"` with date/time/guests and an `data-testid=\"edit\"` button.\n- **Edit + persistence**: booking saved to `localStorage`; Edit returns to the pre-filled form; re-submit overwrites storage. On load, state initializes from storage, so **refresh shows the saved (or edited) values**.\n- **Layout 390/1440px**: centered column, `max-width:30rem`, `box-sizing:border-box`, full-width inputs — fits 390px without clipping and stays usable (not stretched) at 1440px; light/dark aware.\n- **data-testid contract**: `date, time, guests, submit, message` (form view) and `confirmation, edit` (confirmation view) — all present.\n\n### Limitations / not verified\n- **I did not run any build.** The local `node build.mjs` verification needs a shell approval I was instructed not to request, so I did not run it and I am **not** claiming any build (local or external) was executed. The source is plain React/JSX that esbuild (`jsx:'automatic'`) compiles with the React/react-dom already present at the app root. The external harness runs `node build.mjs` and browser acceptance.\n- **Browser acceptance not run by me** — scenarios above were verified by tracing code against the server fixture, not by executing a browser."
+      ],
+      "reportWriteTimeUtc": "2026-10-02T01:11:38.101571+00:00",
+      "finalizationCaveat": "Report may be a teardown-time preliminary write. Collect after the cell completes; preserve all observed versions. File mtime is not a model stop time.",
+      "artifacts": [
+        {
+          "kind": "frozen-final",
+          "path": "artifacts/v4-06/2803ab05c67772eb629d3140b04e47d2a2448043557e1f8573586829e34bee12/frozen-final",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "cefbbd25aa61410f558ae068f692a955c341baa23ffd79a260a2afcc9e7c60a3",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "0dacd7f4bb2ac3d7c96465fabd3648277ba0bf859b8c3ee0dacdad30032af010"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "screenshots/v4-06/2803ab05c67772eb629d3140b04e47d2a2448043557e1f8573586829e34bee12/final/viewport-1440.png",
+          "sha256": "d152f02ef5a6f3a58349e833cd91b48917e9361174761874c982247160e116d9"
+        },
+        {
+          "path": "screenshots/v4-06/2803ab05c67772eb629d3140b04e47d2a2448043557e1f8573586829e34bee12/final/viewport-390.png",
+          "sha256": "4e343aa37808ef3de8fdf27a5fe4349fd88bd74d38529b25560b5cf37a6e6cd2"
+        }
+      ],
+      "artifactAvailability": "captured"
+    },
+    {
+      "schemaVersion": 1,
+      "protocolRevision": "paired-validation-v4",
+      "mode": "live",
+      "cell": {
+        "task": "B",
+        "provider": "codex",
+        "ensemble": false,
+        "ordinal": 7,
+        "id": "v4-07"
+      },
+      "blindId": "2cf34376-39c4-4706-b8a3-2ffad04ae62f",
+      "baseSha": "7cd8de808caf046e0bcc3894a27054dca133d987",
+      "rubricHash": "63a743bd20fe9861cf4b7e0e31f52892af8aabfd88f157cf48887948849e8a95",
+      "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+      "model": "gpt-6-astra",
+      "effort": "low",
+      "cacheState": "unknown",
+      "status": "passed",
+      "error": null,
+      "preparationMs": 11,
+      "taskMs": 256726,
+      "totalMs": 256737,
+      "checkpointMs": 94145,
+      "changeMs": 94145,
+      "afterChangeMs": 162592,
+      "checks": [
+        {
+          "id": "checkpoint.selection",
+          "pass": true
+        },
+        {
+          "id": "required-fields.blocked",
+          "pass": true
+        },
+        {
+          "id": "party.one-through-six",
+          "pass": true
+        },
+        {
+          "id": "sold-out",
+          "pass": true
+        },
+        {
+          "id": "service-error",
+          "pass": true
+        },
+        {
+          "id": "confirmation.persistence",
+          "pass": true
+        },
+        {
+          "id": "invalid-party.blocked",
+          "pass": true
+        },
+        {
+          "id": "change.large-party-early-blocked",
+          "pass": true
+        },
+        {
+          "id": "change.six-to-seven-clears-time",
+          "pass": true
+        },
+        {
+          "id": "change.eight-evening-and-edit",
+          "pass": true
+        },
+        {
+          "id": "viewport.390",
+          "pass": true
+        },
+        {
+          "id": "viewport.1440",
+          "pass": true
+        },
+        {
+          "id": "console.clean",
+          "pass": true
+        }
+      ],
+      "calls": [
+        {
+          "role": "worker",
+          "startMs": 1887.6799999999998,
+          "endMs": 1936.5147000000002,
+          "status": "completed"
+        },
+        {
+          "role": "worker",
+          "startMs": 94144.8351,
+          "endMs": 94165.2374,
+          "status": "completed"
+        }
+      ],
+      "usage": null,
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "actualModelInvocations": null,
+      "humanInterventions": [],
+      "humanRequests": [],
+      "rawReportSha256": "1c5fd991c639b765bb87c9836292c279e37bbeaeed57d0f020058b73da9ca5db",
+      "rawReportPath": "reports/v4-07.json",
+      "curatedReportPath": "reports/v4-07/1c5fd991c639b765bb87c9836292c279e37bbeaeed57d0f020058b73da9ca5db.json",
+      "ledgerPath": "ledgers/v4-07/1c5fd991c639b765bb87c9836292c279e37bbeaeed57d0f020058b73da9ca5db.json",
+      "topLevelAttempts": 2,
+      "attemptsByRole": {
+        "worker": 2
+      },
+      "browserPassed": 13,
+      "browserTotal": 13,
+      "initialMs": 94145,
+      "initialImplementationMs": 94134,
+      "fullWorkerDurations": [
+        {
+          "type": "direct_worker_duration",
+          "status": "completed",
+          "elapsedMs": 89652.654,
+          "usage": null,
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "direct_worker_duration",
+          "status": "completed",
+          "elapsedMs": 152466.187,
+          "usage": null,
+          "underlyingApiCalls": null
+        }
+      ],
+      "partialPmJudgeUsage": [],
+      "cleanupEvents": [],
+      "checkpointEvents": [
+        {
+          "type": "checkpoint",
+          "checks": [
+            {
+              "id": "checkpoint.selection",
+              "pass": true
+            },
+            {
+              "id": "console.clean",
+              "pass": true
+            }
+          ],
+          "passed": true
+        }
+      ],
+      "limitations": [],
+      "directReplies": [
+        "I’ll inspect the starter and implement only the date, time, and 1–6 guest controls, then stop for the harness checkpoint. I’ll preserve the existing test IDs and leave submission, fixtures, and booking persistence for the next instruction.\n\nProposition: the controls must update React state, offer the four specified times, and remain usable at 390px and 1440px. I’ll check the source and available validation commands without claiming a harness build. Hypothesis review: **SOUND**; this is the explicit first-stage scope.",
+        "The starter already has React state for all three controls, but the time selector is disabled. I’ll enable it, retain the numeric guest input with its 1–6 bounds, add required-field validation, and make the form responsive. Submission will remain inactive at this checkpoint, as requested.",
+        "Checkpoint reached. Changed `src/App.jsx`:\n\n- Enabled state-controlled date/time/guest inputs.\n- Added all four requested times and required 1–6 integer guest validation.\n- Preserved existing test IDs and added responsive styling.\n\nSource review: **PASS — COMMITTED CHANGE** (classification only; no Git commit). Build and browser behavior remain unverified pending the external harness.\n\nBooking submission, errors, confirmation, and persistence are intentionally deferred. Awaiting the next instruction.",
+        "I’ll complete booking submission, fixture errors, confirmation, editing, and refresh persistence with the new 1–8 guest rule. For 7–8 guests, selecting that party size will clear a previously selected 17:00 time and explain why.\n\nProposition: only valid bookings reach the local API; successful edits replace the saved booking; failed submissions retain editable values and show helpful errors. Existing test IDs and fixture files remain unchanged. Hypothesis review: **SOUND**. I’ll review these paths in source and run the supplied build.",
+        "The booking flow is implemented, including saved edits and the large-party time restriction. The supplied build command failed because the environment blocked esbuild’s child-process launch (`spawn EPERM`); I won’t retry it or request extra permissions.\n\nI’ll finish with a source-level check of validation and saved-booking recovery. Build and browser acceptance will remain unverified here.",
+        "Updated `src/App.jsx` with:\n\n- 1–8 guests; rejects 9.\n- 7–8 guests restricted to 18:00 onward, clearing invalid times with an explanation.\n- Local API submission, helpful errors, confirmation, editing, and saved edits surviving refresh.\n- Responsive styling and preserved test IDs.\n\nValidation and mocked booking-flow checks passed. Build attempted but blocked by esbuild’s `spawn EPERM`; successful build and browser checks at 390/1440px remain unverified. The external harness must complete those checks. Fixture and build files were unchanged."
+      ],
+      "reportWriteTimeUtc": "2026-10-02T01:16:37.019170+00:00",
+      "finalizationCaveat": "Report may be a teardown-time preliminary write. Collect after the cell completes; preserve all observed versions. File mtime is not a model stop time.",
+      "artifacts": [
+        {
+          "kind": "frozen-final",
+          "path": "artifacts/v4-07/1c5fd991c639b765bb87c9836292c279e37bbeaeed57d0f020058b73da9ca5db/frozen-final",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "30cecec3ceb5e1589fccbb0627fb39a6bb0a77348b61015cec77ee3f7faa4ae1"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "screenshots/v4-07/1c5fd991c639b765bb87c9836292c279e37bbeaeed57d0f020058b73da9ca5db/final/viewport-1440.png",
+          "sha256": "7d6d8c136d6bd33980d01d8fe051d30714bad1cb13620c6b332da67334dbd535"
+        },
+        {
+          "path": "screenshots/v4-07/1c5fd991c639b765bb87c9836292c279e37bbeaeed57d0f020058b73da9ca5db/final/viewport-390.png",
+          "sha256": "b0e1285b485540641c5b15878aecd8881ce6c7d07d37713234f6c607ee2f1fb7"
+        }
+      ],
+      "artifactAvailability": "captured"
+    },
+    {
+      "schemaVersion": 1,
+      "protocolRevision": "paired-validation-v4",
+      "mode": "live",
+      "cell": {
+        "task": "B",
+        "provider": "codex",
+        "ensemble": true,
+        "ordinal": 8,
+        "id": "v4-08"
+      },
+      "blindId": "88849f71-9bae-41b7-b957-91f51d045d82",
+      "baseSha": "7cd8de808caf046e0bcc3894a27054dca133d987",
+      "rubricHash": "63a743bd20fe9861cf4b7e0e31f52892af8aabfd88f157cf48887948849e8a95",
+      "starterHash": "fbe9d2616208136bed2432225edd77b117e64d579fb9114cb9a94205a43e6ef7",
+      "model": "gpt-6-astra",
+      "effort": "low",
+      "cacheState": "unknown",
+      "status": "passed",
+      "error": null,
+      "preparationMs": 11,
+      "taskMs": 322115,
+      "totalMs": 322126,
+      "checkpointMs": 131836,
+      "changeMs": 131836,
+      "afterChangeMs": 190290,
+      "checks": [
+        {
+          "id": "checkpoint.selection",
+          "pass": true
+        },
+        {
+          "id": "required-fields.blocked",
+          "pass": true
+        },
+        {
+          "id": "party.one-through-six",
+          "pass": true
+        },
+        {
+          "id": "sold-out",
+          "pass": true
+        },
+        {
+          "id": "service-error",
+          "pass": true
+        },
+        {
+          "id": "confirmation.persistence",
+          "pass": true
+        },
+        {
+          "id": "invalid-party.blocked",
+          "pass": true
+        },
+        {
+          "id": "change.large-party-early-blocked",
+          "pass": true
+        },
+        {
+          "id": "change.six-to-seven-clears-time",
+          "pass": true
+        },
+        {
+          "id": "change.eight-evening-and-edit",
+          "pass": true
+        },
+        {
+          "id": "viewport.390",
+          "pass": true
+        },
+        {
+          "id": "viewport.1440",
+          "pass": true
+        },
+        {
+          "id": "console.clean",
+          "pass": true
+        }
+      ],
+      "calls": [
+        {
+          "role": "pm",
+          "startMs": 213.3895,
+          "endMs": 18753.9807,
+          "status": "completed"
+        },
+        {
+          "role": "pm",
+          "startMs": 18755.2428,
+          "endMs": 40641.0224,
+          "status": "completed"
+        },
+        {
+          "role": "worker",
+          "startMs": 41882.3352,
+          "endMs": 41909.459,
+          "status": "completed"
+        },
+        {
+          "role": "judge",
+          "startMs": 106742.64760000001,
+          "endMs": 131677.2657,
+          "status": "completed"
+        },
+        {
+          "role": "pm",
+          "startMs": 131846.0806,
+          "endMs": 154287.584,
+          "status": "completed"
+        },
+        {
+          "role": "pm",
+          "startMs": 154289.19749999998,
+          "endMs": 169879.5144,
+          "status": "completed"
+        },
+        {
+          "role": "worker",
+          "startMs": 169883.29809999999,
+          "endMs": 169907.8603,
+          "status": "completed"
+        },
+        {
+          "role": "judge",
+          "startMs": 293874.7406,
+          "endMs": 321837.6904,
+          "status": "completed"
+        }
+      ],
+      "usage": null,
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "actualModelInvocations": null,
+      "humanInterventions": [],
+      "humanRequests": [],
+      "rawReportSha256": "416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016",
+      "rawReportPath": "reports/v4-08.json",
+      "curatedReportPath": "reports/v4-08/416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016.json",
+      "ledgerPath": "ledgers/v4-08/416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016.json",
+      "topLevelAttempts": 8,
+      "attemptsByRole": {
+        "pm": 4,
+        "worker": 2,
+        "judge": 2
+      },
+      "browserPassed": 13,
+      "browserTotal": 13,
+      "initialMs": 131836,
+      "initialImplementationMs": 131825,
+      "fullWorkerDurations": [
+        {
+          "type": "native_worker_duration",
+          "turnId": "01a0fa30-9e39-7bb1-b138-cbd55116ed25",
+          "elapsedMs": 64508.423899999994,
+          "status": "completed",
+          "usage": null
+        },
+        {
+          "type": "native_worker_duration",
+          "turnId": "01a0fa32-923c-7b52-be97-8ba9790a0f61",
+          "elapsedMs": 116366.94900000002,
+          "status": "completed",
+          "usage": null
+        }
+      ],
+      "partialPmJudgeUsage": [
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "interpret_coordination",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 28572,
+            "outputTokens": 192
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "judge_coordination",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 26469,
+            "outputTokens": 119
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "judge",
+          "tool": "record_handoff_review",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 46109,
+            "outputTokens": 269
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "interpret_coordination",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 31309,
+            "outputTokens": 282
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "pm",
+          "tool": "judge_coordination",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 30100,
+            "outputTokens": 137
+          },
+          "underlyingApiCalls": null
+        },
+        {
+          "type": "native_usage",
+          "role": "judge",
+          "tool": "record_handoff_review",
+          "model": "gpt-6-astra",
+          "usage": {
+            "inputTokens": 49965,
+            "outputTokens": 412
+          },
+          "underlyingApiCalls": null
+        }
+      ],
+      "cleanupEvents": [],
+      "checkpointEvents": [
+        {
+          "type": "checkpoint",
+          "checks": [
+            {
+              "id": "checkpoint.selection",
+              "pass": true
+            },
+            {
+              "id": "console.clean",
+              "pass": true
+            }
+          ],
+          "passed": true
+        }
+      ],
+      "limitations": [
+        {
+          "location": "events[14].event.report.limitations",
+          "value": [
+            "소스 검토만 완료했으며 빌드·브라우저 동작은 외부 하네스의 독립 검증이 필요합니다.",
+            "예약 제출, 오류 처리, 확인, 새로고침 후 저장 및 반응형 레이아웃 검증은 다음 단계로 보류했습니다."
+          ]
+        },
+        {
+          "location": "events[41].event.report.limitations",
+          "value": [
+            "node build.mjs 실행이 esbuild 프로세스 생성 단계에서 spawn EPERM으로 차단되어 빌드 성공은 확인하지 못했습니다. 권한 변경이나 우회는 하지 않았습니다.",
+            "브라우저에서 API 오류, 수정 후 새로고침 복원, 390px·1440px 레이아웃은 미검증입니다. 외부 하네스의 빌드 및 브라우저 검증이 필요합니다."
+          ]
+        },
+        {
+          "location": "events[52].events[14].payload.limitations",
+          "value": [
+            "소스 검토만 완료했으며 빌드·브라우저 동작은 외부 하네스의 독립 검증이 필요합니다.",
+            "예약 제출, 오류 처리, 확인, 새로고침 후 저장 및 반응형 레이아웃 검증은 다음 단계로 보류했습니다."
+          ]
+        },
+        {
+          "location": "events[52].events[35].payload.limitations",
+          "value": [
+            "node build.mjs 실행이 esbuild 프로세스 생성 단계에서 spawn EPERM으로 차단되어 빌드 성공은 확인하지 못했습니다. 권한 변경이나 우회는 하지 않았습니다.",
+            "브라우저에서 API 오류, 수정 후 새로고침 복원, 390px·1440px 레이아웃은 미검증입니다. 외부 하네스의 빌드 및 브라우저 검증이 필요합니다."
+          ]
+        }
+      ],
+      "directReplies": [],
+      "reportWriteTimeUtc": "2026-10-02T01:22:45.633584+00:00",
+      "finalizationCaveat": "Report may be a teardown-time preliminary write. Collect after the cell completes; preserve all observed versions. File mtime is not a model stop time.",
+      "artifacts": [
+        {
+          "kind": "frozen-final",
+          "path": "artifacts/v4-08/416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016/frozen-final",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "fda0058b5c8b4c78b56368f6b5b5b2eb05e5df65cad319d0def963d3ba323d9d"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        },
+        {
+          "kind": "validation-event-0016",
+          "path": "artifacts/v4-08/416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016/validation-event-0016",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "d4758acf977f3894f60f14908b548caef5ec13d046769a7830e3abc97e9b0033"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        },
+        {
+          "kind": "validation-event-0043",
+          "path": "artifacts/v4-08/416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016/validation-event-0043",
+          "sourceSha256": {
+            "build.mjs": "0ad898bd0052104b1ca60a961f59d936da5a8ba15738e0ba746e2852335113fa",
+            "index.html": "7d813aab8afc4a9e44dab1cb58863a2202606d16dacba4e10ed99b5d31001839",
+            "package.json": "abcbde73612403f7ab6060d580f10f577373313f494645b4b1fd85427564a90e",
+            "server.mjs": "58e25283b7864f5a8c98544a5bc529a8b26b7f86f39ec204bbf6014c0331815f",
+            "src/App.jsx": "fda0058b5c8b4c78b56368f6b5b5b2eb05e5df65cad319d0def963d3ba323d9d"
+          },
+          "note": "Exact captured source bytes; exceptions/comments are not filtered. Not a claim of successful acceptance."
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "screenshots/v4-08/416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016/frozen-final/viewport-1440.png",
+          "sha256": "13d6114ef0dc92c8c34f53a81cfb725ea5c5a24bd6cf1073fa761f972f18d0ed"
+        },
+        {
+          "path": "screenshots/v4-08/416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016/frozen-final/viewport-390.png",
+          "sha256": "e829ad248a8a28141bad90392a610158b1f1aec3216f17d1e71d28f5670aae52"
+        },
+        {
+          "path": "screenshots/v4-08/416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016/validation-event-0043/viewport-1440.png",
+          "sha256": "13d6114ef0dc92c8c34f53a81cfb725ea5c5a24bd6cf1073fa761f972f18d0ed"
+        },
+        {
+          "path": "screenshots/v4-08/416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016/validation-event-0043/viewport-390.png",
+          "sha256": "e829ad248a8a28141bad90392a610158b1f1aec3216f17d1e71d28f5670aae52"
+        }
+      ],
+      "artifactAvailability": "captured"
+    }
+  ]
+}

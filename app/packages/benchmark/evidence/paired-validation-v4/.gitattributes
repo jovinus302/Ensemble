@@ -1,0 +1,3 @@
+# Preserve evidence bytes and their recorded SHA-256 values across platforms.
+# Captured whitespace (including CRLF) is evidence, not a formatting target.
+* -text -whitespace

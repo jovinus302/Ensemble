@@ -1,0 +1,489 @@
+{
+  "schemaVersion": 1,
+  "protocolRevision": "paired-validation-v4",
+  "measurement": "Independent arithmetic and ledger review of eight completed observations; no additional model or browser execution.",
+  "definitions": {
+    "elapsedMs": "Primary report totalMs: preparation plus measured task execution and bounded cleanup; includes PM/worker/judge and trusted build/browser. Excludes post-run artifact copying, supplemental extraction, and inter-cell human review waits.",
+    "checkpointMs": "Elapsed from cell start through initial build/browser checkpoint, before the fixed requirement change.",
+    "afterChangeMs": "Elapsed from fixed requirement change through cleanup.",
+    "topLevelCalls": "Metered CLI/turn attempts by role, not underlying API requests.",
+    "observedTokens": "Worker scoped-session counters plus successful PM/judge response usage, each counted once; cache input and reasoning output subsets must not be added again. Not billing-complete.",
+    "recordedHumanInterventions": "In-task recorded interventions only; excludes preregistered B change and between-cell supervision.",
+    "browserChecks": "Functional oracle checks; not an exhaustive requirement-fidelity or subjective design-quality score."
+  },
+  "observations": [
+    {
+      "cell": "v4-01",
+      "task": "A",
+      "provider": "codex",
+      "ensemble": true,
+      "requestedModel": "gpt-6-astra",
+      "requestedEffort": "low",
+      "status": "passed",
+      "browserChecks": {
+        "passed": 10,
+        "total": 10
+      },
+      "elapsedMs": 282223,
+      "preparationMs": 12,
+      "taskMs": 282211,
+      "checkpointMs": null,
+      "afterChangeMs": null,
+      "topLevelCalls": {
+        "pm": 2,
+        "worker": 1,
+        "judge": 1
+      },
+      "recordedHumanInterventions": 0,
+      "recordedHumanRequests": 0,
+      "observedTokens": {
+        "worker": 151801,
+        "pmJudge": 109944,
+        "combined": 261745,
+        "pmJudgeRoleBreakdown": {
+          "pm": {
+            "responses": 2,
+            "inputTokens": 55708,
+            "outputTokens": 240
+          },
+          "judge": {
+            "responses": 1,
+            "inputTokens": 53737,
+            "outputTokens": 259
+          }
+        }
+      },
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "source": {
+        "report": "reports/v4-01/a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9.json",
+        "reportSha256": "a378c50d7c722cd17e696fe1b64aa85dc143a49d76bb6bf0af8db5d2e36550d9",
+        "supplementalUsage": "supplemental-usage-v4-01.json"
+      }
+    },
+    {
+      "cell": "v4-02",
+      "task": "A",
+      "provider": "codex",
+      "ensemble": false,
+      "requestedModel": "gpt-6-astra",
+      "requestedEffort": "low",
+      "status": "passed",
+      "browserChecks": {
+        "passed": 10,
+        "total": 10
+      },
+      "elapsedMs": 210974,
+      "preparationMs": 10,
+      "taskMs": 210964,
+      "checkpointMs": null,
+      "afterChangeMs": null,
+      "topLevelCalls": {
+        "pm": 0,
+        "worker": 1,
+        "judge": 0
+      },
+      "recordedHumanInterventions": 0,
+      "recordedHumanRequests": 0,
+      "observedTokens": {
+        "worker": 175627,
+        "pmJudge": 0,
+        "combined": 175627,
+        "pmJudgeRoleBreakdown": {
+          "pm": {
+            "responses": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          "judge": {
+            "responses": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        }
+      },
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "source": {
+        "report": "reports/v4-02/5769ec7e9e2962b0756870786093ee45e4d6b6b58408bab291257fcb01baa9bb.json",
+        "reportSha256": "5769ec7e9e2962b0756870786093ee45e4d6b6b58408bab291257fcb01baa9bb",
+        "supplementalUsage": "supplemental-usage-v4-02.json"
+      }
+    },
+    {
+      "cell": "v4-03",
+      "task": "A",
+      "provider": "claude",
+      "ensemble": false,
+      "requestedModel": "claude-opus-4-8",
+      "requestedEffort": "xhigh",
+      "status": "passed",
+      "browserChecks": {
+        "passed": 10,
+        "total": 10
+      },
+      "elapsedMs": 247013,
+      "preparationMs": 11,
+      "taskMs": 247002,
+      "checkpointMs": null,
+      "afterChangeMs": null,
+      "topLevelCalls": {
+        "pm": 0,
+        "worker": 1,
+        "judge": 0
+      },
+      "recordedHumanInterventions": 0,
+      "recordedHumanRequests": 0,
+      "observedTokens": {
+        "worker": 332866,
+        "pmJudge": 0,
+        "combined": 332866,
+        "pmJudgeRoleBreakdown": {
+          "pm": {
+            "responses": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          "judge": {
+            "responses": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        }
+      },
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "source": {
+        "report": "reports/v4-03/02261c6640d0a9f3ce3cbb6dc0b0accc97b02f766b612c68567bede83635f618.json",
+        "reportSha256": "02261c6640d0a9f3ce3cbb6dc0b0accc97b02f766b612c68567bede83635f618",
+        "supplementalUsage": "supplemental-usage-v4-03.json"
+      }
+    },
+    {
+      "cell": "v4-04",
+      "task": "A",
+      "provider": "claude",
+      "ensemble": true,
+      "requestedModel": "claude-opus-4-8",
+      "requestedEffort": "xhigh",
+      "status": "passed",
+      "browserChecks": {
+        "passed": 10,
+        "total": 10
+      },
+      "elapsedMs": 341269,
+      "preparationMs": 9,
+      "taskMs": 341260,
+      "checkpointMs": null,
+      "afterChangeMs": null,
+      "topLevelCalls": {
+        "pm": 2,
+        "worker": 1,
+        "judge": 1
+      },
+      "recordedHumanInterventions": 0,
+      "recordedHumanRequests": 0,
+      "observedTokens": {
+        "worker": 415349,
+        "pmJudge": 37390,
+        "combined": 452739,
+        "pmJudgeRoleBreakdown": {
+          "pm": {
+            "responses": 2,
+            "inputTokens": 26110,
+            "outputTokens": 1898
+          },
+          "judge": {
+            "responses": 1,
+            "inputTokens": 6920,
+            "outputTokens": 2462
+          }
+        }
+      },
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "source": {
+        "report": "reports/v4-04/6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b.json",
+        "reportSha256": "6d912908d7e65d331243af1bae0f98b528327d04c7c2d48559de0892e8c9ab4b",
+        "supplementalUsage": "supplemental-usage-v4-04.json"
+      }
+    },
+    {
+      "cell": "v4-05",
+      "task": "B",
+      "provider": "claude",
+      "ensemble": true,
+      "requestedModel": "claude-opus-4-8",
+      "requestedEffort": "xhigh",
+      "status": "passed",
+      "browserChecks": {
+        "passed": 13,
+        "total": 13
+      },
+      "elapsedMs": 952191,
+      "preparationMs": 11,
+      "taskMs": 952180,
+      "checkpointMs": 267365,
+      "afterChangeMs": 684826,
+      "topLevelCalls": {
+        "pm": 4,
+        "worker": 2,
+        "judge": 2
+      },
+      "recordedHumanInterventions": 0,
+      "recordedHumanRequests": 0,
+      "observedTokens": {
+        "worker": 682371,
+        "pmJudge": 89360,
+        "combined": 771731,
+        "pmJudgeRoleBreakdown": {
+          "pm": {
+            "responses": 4,
+            "inputTokens": 59822,
+            "outputTokens": 9341
+          },
+          "judge": {
+            "responses": 2,
+            "inputTokens": 11833,
+            "outputTokens": 8364
+          }
+        }
+      },
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "source": {
+        "report": "reports/v4-05/47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d.json",
+        "reportSha256": "47812aa957e671efde4af84fd650d31b440dfaf153f244fb2d161844667afc6d",
+        "supplementalUsage": "supplemental-usage-v4-05.json"
+      }
+    },
+    {
+      "cell": "v4-06",
+      "task": "B",
+      "provider": "claude",
+      "ensemble": false,
+      "requestedModel": "claude-opus-4-8",
+      "requestedEffort": "xhigh",
+      "status": "passed",
+      "browserChecks": {
+        "passed": 13,
+        "total": 13
+      },
+      "elapsedMs": 558913,
+      "preparationMs": 12,
+      "taskMs": 558901,
+      "checkpointMs": 155630,
+      "afterChangeMs": 403283,
+      "topLevelCalls": {
+        "pm": 0,
+        "worker": 2,
+        "judge": 0
+      },
+      "recordedHumanInterventions": 0,
+      "recordedHumanRequests": 0,
+      "observedTokens": {
+        "worker": 763969,
+        "pmJudge": 0,
+        "combined": 763969,
+        "pmJudgeRoleBreakdown": {
+          "pm": {
+            "responses": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          "judge": {
+            "responses": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        }
+      },
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "source": {
+        "report": "reports/v4-06/2803ab05c67772eb629d3140b04e47d2a2448043557e1f8573586829e34bee12.json",
+        "reportSha256": "2803ab05c67772eb629d3140b04e47d2a2448043557e1f8573586829e34bee12",
+        "supplementalUsage": "supplemental-usage-v4-06.json"
+      }
+    },
+    {
+      "cell": "v4-07",
+      "task": "B",
+      "provider": "codex",
+      "ensemble": false,
+      "requestedModel": "gpt-6-astra",
+      "requestedEffort": "low",
+      "status": "passed",
+      "browserChecks": {
+        "passed": 13,
+        "total": 13
+      },
+      "elapsedMs": 256737,
+      "preparationMs": 11,
+      "taskMs": 256726,
+      "checkpointMs": 94145,
+      "afterChangeMs": 162592,
+      "topLevelCalls": {
+        "pm": 0,
+        "worker": 2,
+        "judge": 0
+      },
+      "recordedHumanInterventions": 0,
+      "recordedHumanRequests": 0,
+      "observedTokens": {
+        "worker": 325030,
+        "pmJudge": 0,
+        "combined": 325030,
+        "pmJudgeRoleBreakdown": {
+          "pm": {
+            "responses": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          "judge": {
+            "responses": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        }
+      },
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "source": {
+        "report": "reports/v4-07/1c5fd991c639b765bb87c9836292c279e37bbeaeed57d0f020058b73da9ca5db.json",
+        "reportSha256": "1c5fd991c639b765bb87c9836292c279e37bbeaeed57d0f020058b73da9ca5db",
+        "supplementalUsage": "supplemental-usage-v4-07.json"
+      }
+    },
+    {
+      "cell": "v4-08",
+      "task": "B",
+      "provider": "codex",
+      "ensemble": true,
+      "requestedModel": "gpt-6-astra",
+      "requestedEffort": "low",
+      "status": "passed",
+      "browserChecks": {
+        "passed": 13,
+        "total": 13
+      },
+      "elapsedMs": 322126,
+      "preparationMs": 11,
+      "taskMs": 322115,
+      "checkpointMs": 131836,
+      "afterChangeMs": 190290,
+      "topLevelCalls": {
+        "pm": 4,
+        "worker": 2,
+        "judge": 2
+      },
+      "recordedHumanInterventions": 0,
+      "recordedHumanRequests": 0,
+      "observedTokens": {
+        "worker": 255098,
+        "pmJudge": 213935,
+        "combined": 469033,
+        "pmJudgeRoleBreakdown": {
+          "pm": {
+            "responses": 4,
+            "inputTokens": 116450,
+            "outputTokens": 730
+          },
+          "judge": {
+            "responses": 2,
+            "inputTokens": 96074,
+            "outputTokens": 681
+          }
+        }
+      },
+      "costUsd": null,
+      "underlyingApiCalls": null,
+      "source": {
+        "report": "reports/v4-08/416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016.json",
+        "reportSha256": "416a3d08e04773b8b4f549c3a5deb217010f37f445c091396691c89f10f44016",
+        "supplementalUsage": "supplemental-usage-v4-08.json"
+      }
+    }
+  ],
+  "withinProviderPairs": [
+    {
+      "task": "A",
+      "provider": "codex",
+      "ensembleCell": "v4-01",
+      "directCell": "v4-02",
+      "elapsedDeltaMs": 71249,
+      "elapsedRatioEnsembleOverDirect": 1.3377145999033055,
+      "combinedObservedTokenDelta": 86118,
+      "combinedObservedTokenRatioEnsembleOverDirect": 1.4903460174119014
+    },
+    {
+      "task": "A",
+      "provider": "claude",
+      "ensembleCell": "v4-04",
+      "directCell": "v4-03",
+      "elapsedDeltaMs": 94256,
+      "elapsedRatioEnsembleOverDirect": 1.381583155542421,
+      "combinedObservedTokenDelta": 119873,
+      "combinedObservedTokenRatioEnsembleOverDirect": 1.360123893698966
+    },
+    {
+      "task": "B",
+      "provider": "claude",
+      "ensembleCell": "v4-05",
+      "directCell": "v4-06",
+      "elapsedDeltaMs": 393278,
+      "elapsedRatioEnsembleOverDirect": 1.703647973834926,
+      "combinedObservedTokenDelta": 7762,
+      "combinedObservedTokenRatioEnsembleOverDirect": 1.0101600981191645
+    },
+    {
+      "task": "B",
+      "provider": "codex",
+      "ensembleCell": "v4-08",
+      "directCell": "v4-07",
+      "elapsedDeltaMs": 65389,
+      "elapsedRatioEnsembleOverDirect": 1.2546925452895374,
+      "combinedObservedTokenDelta": 144003,
+      "combinedObservedTokenRatioEnsembleOverDirect": 1.443045257360859
+    }
+  ],
+  "taskBBindingAudits": [
+    {
+      "cell": "v4-05",
+      "checkpointResultId": "result:a563b6b4-22fa-4aa0-9ac0-ff184424832f:0",
+      "finalResultId": "result:15d1e80b-8dfc-4166-9bd8-20c760cc5d98:1",
+      "distinctArtifactDigests": true,
+      "checkpointHostChecks": 3,
+      "finalHostChecks": 14,
+      "finalValidationSeq": 44,
+      "finalJudgeSeq": 45,
+      "finalCheckedSeq": 46,
+      "judgeIncludesChangedRequirements": true,
+      "contextDigestUnchanged": true,
+      "interpretation": "Fresh submitted bytes and full-B measurements verified; equal contextDigest records the narrower hashing limitation, not evidence reuse."
+    },
+    {
+      "cell": "v4-08",
+      "checkpointResultId": "result:01a0fa30-9e39-7bb1-b138-cbd55116ed25:0",
+      "finalResultId": "result:01a0fa32-923c-7b52-be97-8ba9790a0f61:1",
+      "distinctArtifactDigests": true,
+      "checkpointHostChecks": 3,
+      "finalHostChecks": 14,
+      "finalValidationSeq": 40,
+      "finalJudgeSeq": 41,
+      "finalCheckedSeq": 42,
+      "judgeIncludesChangedRequirements": true,
+      "contextDigestUnchanged": true,
+      "interpretation": "Fresh submitted bytes and full-B measurements verified; equal contextDigest records the narrower hashing limitation, not evidence reuse."
+    }
+  ],
+  "limitations": [
+    "One observation per task and condition; no statistical superiority or generalization claim.",
+    "Cache state is unknown and fixed sequential order may affect elapsed time and cache reuse.",
+    "Different provider tokenizers and usage semantics preclude direct cross-provider token-efficiency conclusions.",
+    "Claude requested effort is pinned but independently observed effort is unavailable; models observed in scoped logs match requested models.",
+    "Dollars, billing completeness and underlying API call counts remain unknown.",
+    "contextDigest excludes human reopen criteria and policyFingerprint does not explicitly encode checkpoint/final phase. Both B observations nevertheless use distinct results/artifacts, fresh full-B checks and final judge assessment of the changed requirements.",
+    "The v4-04 supplemental collector initially omitted owned descendant cwd entries; corrected session-bound collection includes all 13 distinct messages. Primary report was unchanged."
+  ]
+}
