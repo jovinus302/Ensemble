@@ -2,7 +2,7 @@
 
 Usage: python collect_evidence.py --run-root RAW_V4 --output CURATED
 For relocated raw snapshots add --recorded-run-root ORIGINAL_RAW_V4_PATH.
-Use --self-test for synthetic checks. Python 3.9+, standard library only.
+Python 3.9+, standard library only.
 Run after each cell. Reports can be preliminary while teardown is still running;
 missing reports mean no_report_yet, not proof that a cell was never started.
 """
@@ -14,7 +14,6 @@ import json
 import os
 import pathlib
 import re
-import tempfile
 
 WORKSPACE = pathlib.Path.cwd()
 OUTPUT_ROOT = None
@@ -250,76 +249,14 @@ def collect(run, out, recorded_run_root=None):
     return payload
 
 
-def self_test():
-    with tempfile.TemporaryDirectory(prefix='.v4-curator-selftest-', dir=WORKSPACE) as folder:
-        base = pathlib.Path(folder)
-        assert base.resolve().parent == WORKSPACE.resolve()
-        run, out = base / 'raw', base / 'curated'
-        assert collect(run, out)['runExists'] is False and not run.exists() and not out.exists()
-        (run / 'reports').mkdir(parents=True)
-        blind_id = '11111111-1111-1111-1111-111111111111'
-        frozen = run / 'blind' / blind_id
-        (frozen / 'src').mkdir(parents=True)
-        source_bytes = b'// limitation: build unverified\nthrow new Error("keep this exception");\n'
-        (frozen / 'src/App.jsx').write_bytes(source_bytes)
-        (frozen / 'REVIEW.json').write_text('{}', encoding='utf-8')
-        screenshot = run / 'evidence/v4-01/final/viewport-390.png'
-        screenshot.parent.mkdir(parents=True)
-        screenshot.write_bytes(b'fixture screenshot bytes')
-        report = {'schemaVersion': 1, 'protocolRevision': 'paired-validation-v4', 'mode': 'live', 'cell': {'id': 'v4-01', 'task': 'B'},
-                  'blindId': blind_id,
-                  'status': 'failed', 'error': 'provider failed', 'preparationMs': 3, 'checkpointMs': 11, 'calls': [{'role': 'worker'}],
-                  'checks': [{'id': 'test', 'pass': False}], 'events': [{'type': 'native_ledger', 'events': [{'type': 'result', 'payload': {'limitations': ['unverified'], 'content': 'private source'}}]}]}
-        file = run / 'reports/v4-01.json'
-        file.write_text(json.dumps(report), encoding='utf-8')
-        before = file.read_bytes()
-        result = collect(run, out)
-        assert result['availableReportCount'] == 1 and result['remainingWithoutReport'] == 7 and result['partial']
-        assert result['reports'][0]['initialMs'] == 11 and result['reports'][0]['initialImplementationMs'] == 8
-        assert result['reports'][0]['status'] == 'failed' and file.read_bytes() == before
-        artifact = result['reports'][0]['artifacts'][0]
-        assert (out / artifact['path'] / 'src/App.jsx').read_bytes() == source_bytes
-        assert artifact['sourceSha256']['src/App.jsx'] == sha(source_bytes)
-        assert result['reports'][0]['screenshots'][0]['sha256'] == sha(screenshot.read_bytes())
-        report['error'] = 'final failure with cleanup details'
-        file.write_text(json.dumps(report), encoding='utf-8')
-        collect(run, out)
-        assert len(list((out / 'reports/v4-01').glob('*.json'))) == 2
-        assert clean({'apiKey': 'secret'})['apiKey'] == '[REDACTED]'
-        snapshot_name = '1-' + 'a' * 64
-        snapshot = run / 'validation/v4-01' / snapshot_name
-        (snapshot / 'src').mkdir(parents=True)
-        (snapshot / 'src/App.jsx').write_bytes(source_bytes)
-        original = 'D:/old-machine/only-this-v4'
-        recorded = original + '/validation/v4-01/' + snapshot_name
-        assert map_snapshot(recorded, run, 'v4-01') is None
-        assert map_snapshot(recorded, run, 'v4-01', original) == snapshot
-        assert map_snapshot(recorded, run, 'v4-02', original) is None
-        assert map_snapshot(original + '/validation/v4-01/../../secrets', run, 'v4-01', original) is None
-        assert map_snapshot('D:/unapproved/validation/v4-01/' + snapshot_name, run, 'v4-01', original) is None
-        report['events'].append({'type': 'trusted-validation-start', 'snapshot': recorded})
-        file.write_text(json.dumps(report), encoding='utf-8')
-        relocated = collect(run, out, original)
-        assert len(relocated['reports'][0]['artifacts']) == 2
-        assert not relocated['warnings']
-        try:
-            collect(run, run / 'must-not-be-created')
-            raise AssertionError('Nested output must be rejected')
-        except ValueError:
-            pass
-        assert not (run / 'must-not-be-created').exists()
-    return {'selfTest': 'passed', 'collectorModelCalls': 0, 'realLiveRootTouched': False}
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--self-test', action='store_true')
     parser.add_argument('--run-root', type=pathlib.Path, help='Only the raw paired-validation-v4 directory')
     parser.add_argument('--output', type=pathlib.Path, help='Separate curated evidence directory, disjoint from raw input')
     parser.add_argument('--recorded-run-root', help='Exact original raw run-root prefix when relocating recorded absolute snapshot paths')
     args = parser.parse_args()
-    if not args.self_test and (args.run_root is None or args.output is None):
+    if args.run_root is None or args.output is None:
         parser.error('--run-root and --output are required; no default live path is created')
-    result = self_test() if args.self_test else collect(args.run_root, args.output, args.recorded_run_root)
-    print(json.dumps(result if args.self_test else {key: result.get(key) for key in
+    result = collect(args.run_root, args.output, args.recorded_run_root)
+    print(json.dumps({key: result.get(key) for key in
         ('kind', 'collectorModelCalls', 'availableReportCount', 'remainingWithoutReport', 'noReportYet', 'allEightReportsAvailable', 'warnings')}, ensure_ascii=False, indent=2))

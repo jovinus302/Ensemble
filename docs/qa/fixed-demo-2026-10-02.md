@@ -32,7 +32,7 @@ $env:ENSEMBLE_DATA_DIR='<isolated absolute data directory>'
 npm run start -w @ensemble/web -- --hostname 127.0.0.1 --port 3489
 ```
 
-Browser harness: `node scripts/fixed-demo-browser.cjs` from `app/`. It requires an installed Playwright Chromium; set `ENSEMBLE_PLAYWRIGHT_PATH` to an existing Playwright module directory if outside this workspace. Optional `ENSEMBLE_DEMO_ORIGIN` changes the default `http://127.0.0.1:3489`. Screenshots and `result.json` go into `demo-evidence/` relative to the invocation directory. The harness only creates its own browser, never attaches to another task's browser/profile.
+Historical browser harness: `scripts/fixed-demo-browser.cjs` was used for the checks below and has since been removed with the automated test tools. Its source remains available at the [pre-removal snapshot](https://github.com/jovinus302/Ensemble/tree/64373b8f9dbf2cbc27c77c220ed46f809822b3e2/app/scripts/fixed-demo-browser.cjs). The recorded checks and screenshots are historical evidence, not claims of a fresh run after removal.
 
 ## Verification
 

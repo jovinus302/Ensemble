@@ -6,4 +6,4 @@ Historical generated evidence is retained at fixed commit `cb84ecc2849f8194e0d5d
 - [Revision-bound validation v3](revision-bound-validation-v3/README.md).
 - [Paired validation v4](paired-validation-v4/README.md).
 
-Normal offline tests use code, fixtures and starters outside this evidence archive. Historical artifact replay requires restoring its fixed snapshot. The optional legacy retest script still requires the explicit `BENCH_LEGACY_ROOT`; no archived artifact is silently substituted.
+Automated tests, benchmark runners, fixtures, starters, and the legacy retest script have been removed from the current checkout. Historical artifact replay requires restoring its fixed Git snapshot. Retained reports and tool manifests describe their original revisions, including historical checksums and self-test results; they do not certify the current checkout. The evidence curation utility remains available, with its embedded automated self-test removed.

@@ -1,4 +1,4 @@
-// Live observation with real Codex and the real PM model; not part of the test suite (vitest only runs *.test.ts).
+// Live observational walkthrough with real Codex and the real PM model.
 // Usage, from app/:
 //   npx tsx scripts/live-codex-reopen.ts [output dir] [reopen|accept|both]
 // Keys come from ENSEMBLE_ENV_FILE (or a .env above the working directory). The output dir defaults to ~/ensemble-agent-workspaces/live-codex-reopen/<timestamp>.

@@ -53,11 +53,11 @@ PR #52는 [validation.ts](../app/packages/orchestrator/src/validation.ts)의 `Tr
 - proxy에서 쓸 수 있는 Claude 모델: `claude-sonnet-5`, `claude-fable-5`, `claude-sonnet-4-6`. GPT·Gemini 계열도 목록에 있다.
 - tool use: 동작한다(`tool_choice` 강제 포함).
 - **웹 검색 서버 도구: 쓸 수 없다.** Vertex AI 조직 정책 `allowedPartnerModelFeatures`가 막는다. 경쟁사 조사 Agent는 모델 지식으로 작성하고, 산출물에 "웹 검색 없음"을 표시한다.
-- Windows curl은 인증서 폐기 확인에 실패한다(`--ssl-no-revoke` 필요). Node 클라이언트에서의 동작은 `npm run smoke:llm`으로 확인한다.
-- Node SDK(`@anthropic-ai/sdk`)는 추가 TLS 설정 없이 proxy에 연결된다. `npm run smoke:llm`이 한국어 텍스트와 강제 tool 호출을 확인한다.
+- Windows curl은 인증서 폐기 확인에 실패한다(`--ssl-no-revoke` 필요). Node 클라이언트 동작은 당시 LLM smoke 실행으로 확인했다. 해당 자동 검사 실행기는 현재 제거되었다.
+- Node SDK(`@anthropic-ai/sdk`)는 추가 TLS 설정 없이 proxy에 연결된다. 당시 LLM smoke 실행은 한국어 텍스트와 강제 tool 호출을 확인했다. 현재 실행 명령은 제공하지 않는다.
 - **proxy가 응답을 캐시한다.** 같은 요청을 다시 보내면 같은 응답 ID가 돌아온다. 요청은 Vertex(`msg_vrtx_…`)와 Bedrock(`msg_bdrk_…`)으로 나뉘어 간다. 첫 스모크에서 텍스트가 한 번 빈 문자열로 왔고 재현되지 않았다. 재시도는 같은 요청을 다시 보내는 방식으로는 의미가 없을 수 있으므로, 빈 응답·재시도 처리는 M2에서 정한다.
 - 기본 모델은 `claude-sonnet-5`. 역할별로 `ENSEMBLE_MODEL_PM`, `ENSEMBLE_MODEL_AGENT`로 바꾼다.
-- PM 백엔드는 `ENSEMBLE_PM_RUNTIME`으로 고른다: `api`(기본, 위 proxy의 Messages API), `codex`(`codex exec` 읽기 전용·`--output-schema`), `claude`(`claude -p --output-format json`·도구/설정 없음·`--json-schema`). CLI 런타임은 `ENSEMBLE_MODEL_PM`이 있을 때만 모델을 지정하고, `ENSEMBLE_PM_EFFORT`(기본 medium)와 `ENSEMBLE_PM_TIMEOUT_MINUTES`(기본 5)를 따른다. 실제 호출 확인은 `npm run smoke:pm`.
+- PM 백엔드는 `ENSEMBLE_PM_RUNTIME`으로 고른다: `api`(기본, 위 proxy의 Messages API), `codex`(`codex exec` 읽기 전용·`--output-schema`), `claude`(`claude -p --output-format json`·도구/설정 없음·`--json-schema`). CLI 런타임은 `ENSEMBLE_MODEL_PM`이 있을 때만 모델을 지정하고, `ENSEMBLE_PM_EFFORT`(기본 medium)와 `ENSEMBLE_PM_TIMEOUT_MINUTES`(기본 5)를 따른다. 당시 실제 호출은 PM smoke 실행으로 확인했으며, 해당 전용 실행기는 현재 제거되었다.
 
 ## 3. 디렉토리 구조
 
@@ -136,7 +136,7 @@ orchestrator  ←  scenarios  ←  apps/web
 
 | 단계 | 내용 | 완료 기준 |
 |---|---|---|
-| M0 | 이 문서 + 스캐폴드 + LLM 연결 스모크 | `npm test` 통과, `npm run smoke:llm` 통과 |
+| M0 | 이 문서 + 스캐폴드 + LLM 연결 스모크 | 당시 unit/integration 및 LLM smoke 통과 (실행기는 현재 제거됨) |
 | M1 | core: 원장·투영·computeGap·상태 머신 | product-state-model §7.1 1–9단계를 재현하는 단위 테스트 |
 | M2 | orchestrator: dispatch·멱등·상한·prompt-slice·역할 템플릿·인계 판정 | 중복 시작 없음, 상한 알림, 판정 사유 기록 테스트 |
 | M3 | 채널 웹앱 + intake + Agent 도구 | 브라우저에서 카드·패널이 원장과 일치 |
