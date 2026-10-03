@@ -39,6 +39,8 @@ export interface Actor {
   kind: ActorKind;
   /** Short initials or glyph for avatars. */
   initials: string;
+  /** Optional illustrated avatar under /s27/ (public), e.g. '/s27/avatar-harin.webp'. Agents use initials. */
+  avatar?: string;
 }
 
 /** Kinds of things the hub stores and links. */
@@ -60,12 +62,16 @@ export interface ArtifactSection {
   body: string;
   /** Node ids this section is grounded on (decisions/sources/feedback). */
   grounds: string[];
+  /** Optional visual under /s27/ (public); copy is overlaid in HTML, never baked into the image. */
+  image?: string;
 }
 
 export interface ContextNode {
   id: string;
   kind: NodeKind;
   title: string;
+  /** Compact label for map cards and chips (<= 10 Korean chars). */
+  short: string;
   summary: string;
   /** Surface where it originated (sources pre-existing in the hub use 'hub'). */
   origin: Surface;
@@ -133,6 +139,8 @@ export interface Beat {
   stage: StageNo;
   /** Short stage title shown in the stepper. */
   title: string;
+  /** The one big on-screen message for this beat (<= 15 Korean chars). */
+  headline: string;
   /** What the presenter says/points at for this beat (1–2 sentences). */
   caption: string;
   /** Surface the UI should bring forward. */
