@@ -84,6 +84,7 @@ npm run start -w @ensemble/web
 | 6. 비교 측정 | [벤치마크 안내](app/packages/benchmark/README.md), [v4 결과](app/packages/benchmark/evidence/paired-validation-v4/README.md) | 고정 기준의 실험·재현 자료 |
 | 7. 검증 실행과 과거 증거 | [QA 실행 안내·증거 보관 위치](docs/qa/README.md) | 현재 타입 검사·빌드 안내와 고정 커밋의 역사적 실패·수정 기록 |
 | 8. 화면·영상·외부 조사 | [DESIGN](DESIGN.md), [MOTION](MOTION.md), [Remotion](motion-remotion/README.md), [Argo 비교](docs/argo/ensemble-comparison.md) | 디자인/영상 제안과 조사; 앱 구현과 구분 |
+| 9. 10/7 소장님 보고 데모 ([#62](https://github.com/jovinus302/Ensemble/issues/62)) | [S27 마케팅 데모 발표 문서](docs/demo/s27-marketing-demo.md), [스토리 브리프](docs/demo/s27-brief.md) | `/s27` 로컬 스크립트형 시연; Slack·녹스 연동은 시뮬레이션 |
 
 ## 비교 결과의 범위
 
