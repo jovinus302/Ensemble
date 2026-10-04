@@ -1,11 +1,10 @@
 'use client';
 
-import { EDGE_RELATION_LABEL, NODE_KIND_LABEL, type ContextNode, type S27View, type Surface, type Trace } from '../../lib/s27';
+import { useEffect, useState } from 'react';
+import { NODE_KIND_LABEL, type ContextNode, type NodeKind, type S27View, type Trace } from '../../lib/s27';
 import { ArtifactViewer } from './ArtifactViewer';
 import { ContextMap } from './ContextMap';
-import { actorById, nodeTitle, useS27 } from './shared';
-
-const SURFACE_LABEL: Record<Surface, string> = { meeting: '화상 미팅', slack: '팀 메신저', hub: 'Ensemble 허브' };
+import { KIND_ORDER, KIND_SHORT, NodeChip, actorById, nodeShort } from './shared';
 
 export function HubPane({ view, artifactVersionId }: { view: S27View; artifactVersionId: string | null }) {
   const fresh = new Set(view.freshNodeIds);
@@ -16,79 +15,77 @@ export function HubPane({ view, artifactVersionId }: { view: S27View; artifactVe
     : selected?.node.kind === 'artifact' ? selected.node : view.artifact;
 
   return (
-    <section className="s27-hub" aria-label="Ensemble 허브">
-      <header className="s27-pane-head s27-hub-head">
-        <span className="s27-hub-mark" aria-hidden="true">E</span>
-        <div>
-          <div className="s27-pane-title">Ensemble 허브 · 컨텍스트 맵</div>
-          <div className="s27-pane-sub">항목 {view.nodes.length}개 · 연결 {view.edges.length}개 · 카드를 누르면 근거를 거슬러 올라갑니다</div>
+    <section className={`s27-hub${artifact ? ' has-artifact' : ''}`} aria-label="앙상블 허브">
+      <div className="s27-hub-top">
+        <div className="s27-hub-map">
+          {view.nodes.length === 0 ? (
+            <p className="s27-empty">아직 허브에 연결된 항목이 없습니다.</p>
+          ) : (
+            <ContextMap nodes={view.nodes} edges={view.edges} fresh={fresh} trace={selected} />
+          )}
         </div>
-      </header>
-      {view.nodes.length === 0 ? (
-        <p className="s27-empty s27-hub-empty">아직 허브에 연결된 항목이 없습니다.</p>
-      ) : (
-        <ContextMap nodes={view.nodes} edges={view.edges} fresh={fresh} trace={selected} />
-      )}
-      <div className="s27-hub-details">
         <Inspector trace={selected} />
-        {artifact && <ArtifactViewer artifact={artifact} versions={view.artifactVersions} />}
       </div>
+      {artifact && <ArtifactViewer artifact={artifact} versions={view.artifactVersions} />}
     </section>
   );
 }
 
 function Inspector({ trace }: { trace: Trace | null }) {
-  const { dispatch } = useS27();
-  if (!trace) {
-    return (
-      <div className="s27-card s27-inspector">
-        <div className="s27-card-label">항목 상세</div>
-        <p className="s27-muted">맵이나 채널의 칩을 선택하면 출처와 근거 연결을 보여줍니다.</p>
-      </div>
-    );
-  }
+  const [openKind, setOpenKind] = useState<NodeKind | null>(null);
+  const nodeId = trace?.node.id;
+  useEffect(() => { setOpenKind(null); }, [nodeId]);
+
+  if (!trace) return <p className="s27-inspector is-empty">맵에서 항목을 고르면 근거 연결을 보여줍니다.</p>;
+
   const { node, upstream, downstream } = trace;
   const actor = actorById.get(node.actorId);
-  const depths = Array.from(new Set(upstream.map((u) => u.depth))).sort((a, b) => a - b);
-  const item = (n: ContextNode, relation: keyof typeof EDGE_RELATION_LABEL) => (
-    <li key={n.id}>
-      <button type="button" className={`s27-trace-item s27-kind-${n.kind}`} onClick={() => dispatch({ type: 'select_node', id: n.id })}>
-        <span className="s27-rel">{EDGE_RELATION_LABEL[relation]}</span>
-        <span className="s27-chip-kind">{NODE_KIND_LABEL[n.kind]}</span>
-        <span className="s27-trace-title">{nodeTitle(n)}</span>
-      </button>
-    </li>
-  );
+  const groups = KIND_ORDER
+    .map((kind) => ({ kind, nodes: upstream.filter((u) => u.node.kind === kind).map((u) => u.node) }))
+    .filter((g) => g.nodes.length > 0);
+  const open = groups.find((g) => g.kind === openKind);
+
   return (
-    <div className="s27-card s27-inspector" aria-live="polite">
-      <div className="s27-card-label">항목 상세</div>
-      <div className={`s27-kind-tag s27-kind-${node.kind}`}>{NODE_KIND_LABEL[node.kind]}{node.version ? ` · ${node.version}` : ''}</div>
-      <h3 className="s27-inspector-title">{node.title}</h3>
-      <p className="s27-inspector-summary">{node.summary}</p>
-      <dl className="s27-meta">
-        <dt>위치</dt><dd>{node.place}</dd>
-        <dt>출처</dt><dd>{SURFACE_LABEL[node.origin]}</dd>
-        <dt>작성</dt><dd>{actor ? `${actor.name} · ${actor.role}` : node.actorId}</dd>
-        <dt>시각</dt><dd>{node.at}</dd>
-      </dl>
-      <div className="s27-trace-block">
-        <div className="s27-trace-head">상류 근거 {upstream.length}건</div>
-        {upstream.length === 0 && <p className="s27-muted s27-small">이 항목은 다른 항목에 기대지 않는 출발점입니다.</p>}
-        {depths.map((d) => (
-          <div key={d} className="s27-depth">
-            <div className="s27-depth-label">{d}단계 위</div>
-            <ul className="s27-trace-list">
-              {upstream.filter((u) => u.depth === d).map((u) => item(u.node, u.relation))}
-            </ul>
-          </div>
-        ))}
+    <div className="s27-inspector" aria-live="polite">
+      <div className="s27-insp-head">
+        <span className={`s27-kind-tag s27-kind-${node.kind}`}>{NODE_KIND_LABEL[node.kind]}</span>
+        <h3 className="s27-insp-title" title={node.summary}>{nodeShort(node)}</h3>
+        <span className="s27-insp-meta">{actor?.name ?? node.actorId} · {node.at}</span>
       </div>
-      <div className="s27-trace-block">
-        <div className="s27-trace-head">이 항목을 쓰는 곳 {downstream.length}건</div>
-        {downstream.length === 0
-          ? <p className="s27-muted s27-small">아직 이 항목을 이어받은 항목이 없습니다.</p>
-          : <ul className="s27-trace-list">{downstream.map((d) => item(d.node, d.relation))}</ul>}
-      </div>
+      {groups.length === 0 ? (
+        <p className="s27-insp-none">출발점 — 다른 항목에 기대지 않는 자료입니다.</p>
+      ) : (
+        <ol className="s27-chain" aria-label="근거 연결">
+          {groups.map((g) => (
+            <li key={g.kind} className="s27-chain-step">
+              <button
+                type="button"
+                className={`s27-chain-group s27-kind-${g.kind}${openKind === g.kind ? ' is-open' : ''}`}
+                aria-expanded={openKind === g.kind}
+                onClick={() => setOpenKind(openKind === g.kind ? null : g.kind)}
+              >
+                {KIND_SHORT[g.kind]} <strong className="num">{g.nodes.length}</strong>
+              </button>
+              <span className="s27-chain-arrow" aria-hidden="true">→</span>
+            </li>
+          ))}
+          <li className="s27-chain-step">
+            <span className={`s27-chain-self s27-kind-${node.kind}`}>{nodeShort(node)}</span>
+          </li>
+        </ol>
+      )}
+      {open && (
+        <div className="s27-chips s27-chain-detail" role="group" aria-label={`${NODE_KIND_LABEL[open.kind]} ${open.nodes.length}건`}>
+          {open.nodes.map((n) => <NodeChip key={n.id} id={n.id} />)}
+        </div>
+      )}
+      {downstream.length > 0 && (
+        <div className="s27-insp-down">
+          <span className="s27-insp-down-label">이어받은 곳</span>
+          {downstream.slice(0, 3).map((d) => <NodeChip key={d.node.id} id={d.node.id} />)}
+          {downstream.length > 3 && <span className="s27-insp-down-label">외 {downstream.length - 3}건</span>}
+        </div>
+      )}
     </div>
   );
 }

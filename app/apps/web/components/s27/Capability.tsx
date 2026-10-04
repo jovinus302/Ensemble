@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { AVAILABILITY_LABEL, S27, type Availability, type Capability } from '../../lib/s27';
 
 const AVAILABILITY_ORDER: Availability[] = ['implemented', 'demoable', 'planned'];
@@ -28,51 +28,7 @@ function CapabilityDetail({ cap }: { cap: Capability }) {
   );
 }
 
-/** The current beat's capabilities. Hover, focus or tap a badge to read what is real vs simulated. */
-export function CapabilityStrip({ capabilities }: { capabilities: Capability[] }) {
-  const [pinned, setPinned] = useState<string | null>(null);
-  const [hover, setHover] = useState<string | null>(null);
-  const activeId = hover ?? pinned;
-  const active = capabilities.find((c) => c.id === activeId) ?? null;
-  const key = capabilities.map((c) => c.id).join(',');
-  useEffect(() => { setPinned(null); setHover(null); }, [key]);
-
-  if (capabilities.length === 0) return null;
-  return (
-    <div className="s27-capstrip">
-      <div className="s27-capstrip-row">
-        <span className="s27-capstrip-label">이 장면의 기능</span>
-        {capabilities.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            className={`s27-cap s27-avail-${c.availability}${c.id === activeId ? ' is-active' : ''}`}
-            aria-expanded={c.id === activeId}
-            aria-controls="s27-cap-detail"
-            onClick={() => setPinned(pinned === c.id ? null : c.id)}
-            onMouseEnter={() => setHover(c.id)}
-            onMouseLeave={() => setHover(null)}
-            onFocus={() => setHover(c.id)}
-            onBlur={() => setHover(null)}
-          >
-            <span className="s27-cap-status"><span aria-hidden="true">{AVAILABILITY_MARK[c.availability]}</span> {AVAILABILITY_LABEL[c.availability]}</span>
-            <span className="s27-cap-label">{c.label}</span>
-          </button>
-        ))}
-      </div>
-      <div id="s27-cap-detail" className={`s27-cap-detail${active ? ` is-open s27-avail-border-${active.availability}` : ''}`} aria-live="polite">
-        {active && (
-          <>
-            <strong>{active.label}</strong> · {AVAILABILITY_LABEL[active.availability]}
-            <CapabilityDetail cap={active} />
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export function StatusDrawer({ onClose }: { onClose: () => void }) {
+export function StatusDrawer({ onClose, current = [] }: { onClose: () => void; current?: string[] }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { closeRef.current?.focus(); }, []);
   return (
@@ -95,6 +51,7 @@ export function StatusDrawer({ onClose }: { onClose: () => void }) {
                 {caps.map((c) => (
                   <li key={c.id} className={`s27-drawer-item s27-avail-border-${a}`}>
                     <strong>{c.label}</strong>
+                    {current.includes(c.id) && <span className="s27-here">이 장면</span>}
                     <CapabilityDetail cap={c} />
                   </li>
                 ))}

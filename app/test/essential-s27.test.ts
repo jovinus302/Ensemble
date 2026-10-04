@@ -79,6 +79,66 @@ test('S27 follows all five stages and preserves the revision story', () => {
   for (const text of [...S27.lines.map(l => l.text), ...S27.nodes.flatMap(n => n.sections?.map(s => s.body) ?? [])]) assert.doesNotMatch(text, /\d[\d,]*\s*원/);
 });
 
+test('S27 copy stays at presentation density', () => {
+  const len = (s: string) => [...s].length;
+  const fits = (s: string, max: number, what: string) => assert.ok(s.length > 0 && len(s) <= max, `${what} (${len(s)}/${max}): ${s}`);
+  const image = /^\/s27\/[a-z0-9-]+\.jpg$/;
+  for (const beat of S27.beats) {
+    fits(beat.headline, 15, `${beat.id} headline`);
+    fits(beat.caption, 60, `${beat.id} caption`);
+  }
+  unique(S27.beats.map(b => b.headline));
+  for (const beat of S27.beats.filter(b => b.stage === 1)) assert.equal(beat.capabilities[0], 'cap-meeting', beat.id);
+  for (const beat of S27.beats.filter(b => (b.stage === 2 || b.stage === 5) && b.focus === 'slack')) assert.equal(beat.capabilities[0], 'cap-slack', beat.id);
+  assert.ok(S27.beats.find(b => b.id === 'beat-03')!.capabilities.includes('cap-meeting'));
+  for (const node of S27.nodes) {
+    fits(node.short, 10, `${node.id} short`);
+    fits(node.summary, 45, `${node.id} summary`);
+  }
+  for (const line of S27.lines) {
+    fits(line.text, 45, `${line.id} text`);
+    assert.ok((line.refs?.length ?? 0) <= 4, `${line.id} refs`);
+  }
+  for (const c of S27.capabilities) {
+    fits(c.label, 14, `${c.id} label`);
+    fits(c.note, 50, `${c.id} note`);
+  }
+  for (const m of S27.metrics) {
+    fits(m.legacy, 14, `${m.id} legacy`);
+    fits(m.ensemble, 14, `${m.id} ensemble`);
+  }
+  for (const art of S27.nodes.filter(n => n.kind === 'artifact')) {
+    assert.deepEqual(art.sections!.map(s => s.label), ['메타 피드 A', '메타 피드 B', '메타 피드 C', '숏폼 15초 스크립트']);
+    for (const section of art.sections!) {
+      assert.match(section.image ?? '', image, `${art.id} ${section.label} image`);
+      const [head, body, ...rest] = section.body.split('\n');
+      if (section.label.startsWith('메타 피드')) {
+        fits(head!, 14, `${art.id} ${section.label} headline`);
+        fits(body!, 30, `${art.id} ${section.label} body`);
+        const footnote = art.id === 'art-v11' && section.label === '메타 피드 B';
+        assert.equal(rest.length, footnote ? 1 : 0, `${art.id} ${section.label} lines`);
+        if (footnote) { assert.match(rest[0]!, /^\* 측정 조건: /); fits(rest[0]!, 40, 'footnote'); }
+      } else {
+        const cuts = section.body.split('\n');
+        assert.equal(cuts.length, 4);
+        cuts.forEach(cut => fits(cut, 22, `${art.id} cut`));
+      }
+    }
+  }
+  assert.deepEqual(S27.nodes.filter(n => n.kind === 'artifact').map(n => n.sections!.map(s => s.image)), [
+    ['/s27/ad-a.jpg', '/s27/ad-b.jpg', '/s27/ad-c.jpg', '/s27/short-v10.jpg'],
+    ['/s27/ad-a.jpg', '/s27/ad-b.jpg', '/s27/ad-c.jpg', '/s27/short-v11.jpg'],
+  ]);
+  const changes = S27.nodes.find(n => n.id === 'art-v11')!.changes!;
+  assert.ok(changes.length >= 4 && changes.length <= 5);
+  changes.forEach(c => fits(c, 16, 'change'));
+  for (const actor of S27.actors) {
+    if (actor.kind === 'agent') assert.equal(actor.avatar, undefined, actor.id);
+    else assert.equal(actor.avatar, `/s27/avatar-${actor.id}.jpg`);
+    if (actor.avatar) assert.match(actor.avatar, image);
+  }
+});
+
 test('S27 reveals are cumulative with fresh IDs, resolved focus and bounded navigation', () => {
   assert.deepEqual(initialS27(), { beat: -1, surface: null, selectedNodeId: null, artifactVersionId: null });
   const intro = viewS27(initialS27());

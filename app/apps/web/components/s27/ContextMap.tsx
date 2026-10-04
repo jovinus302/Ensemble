@@ -1,12 +1,10 @@
 'use client';
 
 import { useLayoutEffect, useRef, useState } from 'react';
-import { EDGE_RELATION_LABEL, NODE_KIND_LABEL, type ContextEdge, type ContextNode, type NodeKind, type Trace } from '../../lib/s27';
-import { useS27 } from './shared';
+import { EDGE_RELATION_LABEL, NODE_KIND_LABEL, type ContextEdge, type ContextNode, type Trace } from '../../lib/s27';
+import { KIND_ORDER, nodeShort, useS27 } from './shared';
 
-const COL_GAP = 34;
-
-export const KIND_ORDER: NodeKind[] = ['source', 'decision', 'request', 'tool_run', 'artifact', 'feedback'];
+const COL_GAP = 28;
 
 interface Box { x: number; y: number; w: number; h: number }
 interface Geometry { width: number; height: number; boxes: Record<string, Box> }
@@ -72,6 +70,7 @@ export function ContextMap({ nodes, edges, fresh, trace }: {
     return () => ro.disconnect();
   }, [nodeKey]);
 
+  const kinds = KIND_ORDER.filter((kind) => nodes.some((n) => n.kind === kind));
   const selectedId = trace?.node.id ?? null;
   const upstreamIds = new Set(trace?.upstream.map((u) => u.node.id) ?? []);
   const downstreamIds = new Set(trace?.downstream.map((d) => d.node.id) ?? []);
@@ -90,7 +89,7 @@ export function ContextMap({ nodes, edges, fresh, trace }: {
 
   return (
     <div className="s27-map-scroll">
-      <div className={`s27-map${selectedId ? ' has-selection' : ''}`} ref={canvasRef} style={{ columnGap: COL_GAP }}>
+      <div className={`s27-map${selectedId ? ' has-selection' : ''}`} ref={canvasRef} style={{ columnGap: COL_GAP, gridTemplateColumns: `repeat(${kinds.length}, minmax(84px, 1fr))`, minWidth: kinds.length * 84 + (kinds.length - 1) * COL_GAP }}>
         <svg className="s27-edges" width={geo.width} height={geo.height} aria-hidden="true">
           <defs>
             {['normal', 'trace', 'down', 'dim'].map((s) => (
@@ -118,13 +117,12 @@ export function ContextMap({ nodes, edges, fresh, trace }: {
           const a = geo.boxes[e.from];
           const b = geo.boxes[e.to];
           if (!a || !b) return null;
-          // Label the end away from the focused node: incident edges of the selection, the hovered node, or a hovered edge.
-          const focus = hoverNode ?? selectedId;
+          // Relation labels only on hover, so the resting map stays quiet.
           let at: 'from' | 'to' | null = null;
-          if (focus !== null && e.to === focus) at = 'from';
-          else if (focus !== null && e.from === focus) at = 'to';
+          if (hoverNode !== null && e.to === hoverNode) at = 'from';
+          else if (hoverNode !== null && e.from === hoverNode) at = 'to';
           else if (hoverEdge === i) at = 'from';
-          if (at === null || (hoverNode === null && hoverEdge !== i && edgeState(e) === 'dim')) return null;
+          if (at === null) return null;
           const pos = labelPos(a, b, colOf(e.from), colOf(e.to), at, COL_GAP);
           return (
             <span key={`l-${e.from}-${e.to}-${e.relation}`} className={`s27-edge-label s27-edge-label-${edgeState(e)}`} style={{ left: pos.x, top: pos.y }}>
@@ -132,12 +130,11 @@ export function ContextMap({ nodes, edges, fresh, trace }: {
             </span>
           );
         })}
-        {KIND_ORDER.map((kind) => {
+        {kinds.map((kind) => {
           const col = nodes.filter((n) => n.kind === kind);
           return (
             <div key={kind} className={`s27-map-col s27-kind-${kind}`}>
-              <div className="s27-map-col-head">{NODE_KIND_LABEL[kind]}</div>
-              {col.length === 0 && <div className="s27-map-empty" aria-hidden="true">—</div>}
+              <div className="s27-map-col-head">{NODE_KIND_LABEL[kind]}{col.length > 0 && <span className="s27-map-count">{col.length}</span>}</div>
               {col.map((n) => {
                 const role = n.id === selectedId ? 'selected' : upstreamIds.has(n.id) ? 'upstream' : downstreamIds.has(n.id) ? 'downstream' : selectedId ? 'dim' : 'normal';
                 return (
@@ -147,14 +144,15 @@ export function ContextMap({ nodes, edges, fresh, trace }: {
                     data-node={n.id}
                     className={`s27-node s27-kind-${n.kind} is-${role}${fresh.has(n.id) ? ' is-fresh' : ''}`}
                     aria-pressed={n.id === selectedId}
+                    aria-label={`${NODE_KIND_LABEL[n.kind]}: ${n.title}`}
+                    title={n.title}
                     onClick={() => dispatch({ type: 'select_node', id: n.id === selectedId ? null : n.id })}
                     onMouseEnter={() => setHoverNode(n.id)}
                     onMouseLeave={() => setHoverNode(null)}
                     onFocus={() => setHoverNode(n.id)}
                     onBlur={() => setHoverNode(null)}
                   >
-                    <span className="s27-node-kind">{NODE_KIND_LABEL[n.kind]}{n.version ? ` · ${n.version}` : ''}</span>
-                    <span className="s27-node-title">{n.title}</span>
+                    <span className="s27-node-title">{nodeShort(n)}</span>
                     {role === 'upstream' && <span className="s27-sr">선택 항목의 근거</span>}
                   </button>
                 );

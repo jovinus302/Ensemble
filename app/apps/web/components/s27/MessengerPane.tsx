@@ -5,31 +5,36 @@ import { S27, type ChatLine } from '../../lib/s27';
 import { ChatLineView } from './ChatLine';
 
 const channels = Array.from(new Set(S27.lines.filter((l) => l.surface === 'slack').map((l) => l.place)));
+const VISIBLE = 4;
 
 export function MessengerPane({ lines, fresh }: { lines: ChatLine[]; fresh: Set<string> }) {
-  const [channel, setChannel] = useState(channels[0] ?? '');
-  const listRef = useRef<HTMLOListElement>(null);
+  // The beat's first new line names the channel it is about; later lines elsewhere show as unread.
+  const firstFresh = lines.find((l) => fresh.has(l.id));
+  const [channel, setChannel] = useState(() => firstFresh?.place ?? lines.at(-1)?.place ?? channels[0] ?? '');
   const freshKey = lines.filter((l) => fresh.has(l.id)).map((l) => l.id).join(',');
 
-  // Follow the channel where the newest lines landed.
   useEffect(() => {
-    const latest = [...lines].reverse().find((l) => fresh.has(l.id));
-    if (latest) setChannel(latest.place);
+    if (firstFresh) setChannel(firstFresh.place);
   }, [freshKey]);
 
-  const shown = lines.filter((l) => l.place === channel);
+  const inChannel = lines.filter((l) => l.place === channel);
+  // A full artifact attachment takes the room of a couple of messages.
+  const shown = inChannel.slice(inChannel.at(-1)?.kind === 'artifact' ? -2 : -VISIBLE);
+  const hidden = inChannel.length - shown.length;
+  const lastArtifact = [...shown].reverse().find((l) => l.kind === 'artifact')?.id;
+  const listRef = useRef<HTMLOListElement>(null);
+  const shownKey = shown.map((l) => l.id).join(',');
+  // Keep the newest message in view when the feed is height-bound.
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [channel, shown.length]);
+  }, [shownKey]);
 
   return (
     <section className="s27-messenger" aria-label="팀 메신저 (시뮬레이션)">
       <nav className="s27-channels" aria-label="채널">
-        <div className="s27-channels-head">S27 런칭</div>
         {channels.map((c) => {
           const unread = c !== channel && lines.some((l) => l.place === c && fresh.has(l.id));
-          const count = lines.filter((l) => l.place === c).length;
           return (
             <button
               key={c}
@@ -39,24 +44,17 @@ export function MessengerPane({ lines, fresh }: { lines: ChatLine[]; fresh: Set<
               onClick={() => setChannel(c)}
             >
               <span className="s27-channel-name">{c}</span>
-              {unread ? <span className="s27-unread">새 글</span> : count > 0 ? <span className="s27-count">{count}</span> : null}
+              {unread && <span className="s27-unread">새 글</span>}
             </button>
           );
         })}
+        <span className="s27-sim-note">메신저 · 시뮬레이션 화면</span>
       </nav>
-      <div className="s27-channel-body">
-        <header className="s27-pane-head">
-          <div>
-            <div className="s27-pane-title">{channel}</div>
-            <div className="s27-pane-sub">팀 메신저 · 시뮬레이션 화면</div>
-          </div>
-        </header>
-        <ol className="s27-lines s27-feed" ref={listRef} aria-live="polite">
-          {shown.length === 0 && <li className="s27-empty">이 채널에는 아직 메시지가 없습니다.</li>}
-          {shown.map((l) => <ChatLineView key={l.id} line={l} fresh={fresh.has(l.id)} />)}
-        </ol>
-        <div className="s27-composer" aria-hidden="true">{channel}에 메시지 보내기 · 시연용 화면이라 입력은 비활성</div>
-      </div>
+      <ol className="s27-lines" aria-live="polite" ref={listRef}>
+        {hidden > 0 && <li className="s27-earlier">이전 메시지 {hidden}개</li>}
+        {shown.length === 0 && <li className="s27-empty">이 채널에는 아직 메시지가 없습니다.</li>}
+        {shown.map((l) => <ChatLineView key={l.id} line={l} fresh={fresh.has(l.id)} fullArtifact={l.id === lastArtifact} />)}
+      </ol>
     </section>
   );
 }
