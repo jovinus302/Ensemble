@@ -9,6 +9,7 @@ import { DecisionRequestError, ProjectManager, TaskResolutionError, type FreeSta
 import { DEFAULT_DIGEST_SETTINGS, DEFAULT_PM_MAY_APPLY, project, taskThreadId, type AnyEvent, type DecisionAnswer, type EventPayloads, type LedgerEvent, type ProjectState } from '@ensemble/core';
 import { continuousScenario, advanceScript, createRevisionGenerator, sceneEvents, SCENE_NOW, type ScriptProgress, type Condition, type RevisionGenerator } from '@ensemble/scenarios';
 import { FakeConnector, FakePmLlm } from './fake-connector';
+import { TEAM_MEMBERS, TEAM_PROPOSAL_ID, TEAM_SCENARIO, teamOrchestrationSeed, teamScenarioStatus } from './team-orchestration';
 import { buildTaskDetail, buildViewModel, projectTitle } from './build-view-model';
 import { taskResolutions, type ResolutionAction } from './task-resolution';
 import { stallGuidance } from '../components/work-view';
@@ -30,7 +31,8 @@ export function shortTitle(text: string, max = 40) {
   return (space > 0 ? title.slice(0, space) : title.slice(0, max - 1)) + '…';
 }
 
-interface Metadata { projectId: string; mode: 'free' | 'scenario'; scene: 1 | 2 | 3; step: number; script?: ScriptProgress; archivedProjectIds?: string[]; archives?: { id: string; archivedAt: string; mode: 'free' | 'scenario' }[] }
+/** `scenarioKey` names a non-scripted scenario (the team-orchestration demo); absent means the continuous script. */
+interface Metadata { projectId: string; mode: 'free' | 'scenario'; scene: 1 | 2 | 3; step: number; script?: ScriptProgress; scenarioKey?: typeof TEAM_SCENARIO; archivedProjectIds?: string[]; archives?: { id: string; archivedAt: string; mode: 'free' | 'scenario' }[] }
 export interface Upload { name: string; mimeType: string; contentBase64: string }
 export class RuntimeError extends Error {
   constructor(readonly code: string, message: string, readonly status = 409) { super(message); }
@@ -206,6 +208,7 @@ export class WebRuntime {
   }
   private async seed(decider: string, scenario: boolean) {
     const ctx = this.context();
+    if (scenario && this.meta.scenarioKey === TEAM_SCENARIO) { await this.store.append(teamOrchestrationSeed(ctx)); return; }
     if (scenario) {
       const events = sceneEvents(1, ctx).filter(e => !['plan_committed', 'estimate_updated', 'availability_updated'].includes(e.type) && !(e.type === 'member_joined' && (e.payload as { memberId: string }).memberId === 'reviewer'));
       for (const e of events) if (e.type === 'member_joined') {
@@ -237,8 +240,9 @@ export class WebRuntime {
     if (activity.stalled) activity.stalled = { ...activity.stalled, tasks: resolutions };
     // 멈춤 안내는 화면에 실제로 보이는 버튼(다시 시도·건너뛰기·작업별 처리)만 말한다.
     const stoppedText = activity.stalled ? stallGuidance(activity.stalled, true) : '대본 진행이 멈췄습니다. 상태를 확인해 주세요.';
-    const view = buildViewModel(events, { me, mode: this.meta.mode, busy: this.busy || !!this.scenarioFlight || this.pendingMessages > 0, now: this.meta.mode === 'scenario' ? SCENE_NOW : new Date(),
-      ...(this.meta.mode === 'scenario' ? { scenario: { name: `${continuousScenario.key} · 장면 ${next?.scene ?? 3}`, done: !stopped && !next,
+    const team = this.meta.mode === 'scenario' && this.meta.scenarioKey === TEAM_SCENARIO;
+    const view = buildViewModel(events, { me, mode: this.meta.mode, busy: this.busy || !!this.scenarioFlight || this.pendingMessages > 0, now: this.meta.mode === 'scenario' && !team ? SCENE_NOW : new Date(),
+      ...(team ? { scenario: teamScenarioStatus(state) } : this.meta.mode === 'scenario' ? { scenario: { name: `${continuousScenario.key} · 장면 ${next?.scene ?? 3}`, done: !stopped && !next,
         ...(stopped ? { nextLine: { authorName: '시나리오 중단', text: stoppedText, hasAttachment: false } } : next ? { nextLine: { authorName: state.members.get(next.as)?.displayName ?? next.as, text: next.text, hasAttachment: !!next.attachments?.length } } : {}) } } : {}),
     });
     const goal = state.goal?.text?.replace(/^시연용 가상 자료입니다\.?\s*/, '') ?? '새 프로젝트';
@@ -303,7 +307,7 @@ export class WebRuntime {
       else if (!task) reason = `대본에 필요한 ${who} 담당 작업이 현재 계획에 없습니다.`;
     }
     return { kind, label, since: since ?? new Date(now).toISOString(), ...(agentStalled || blocked || this.waiting?.stalled || this.meta.script?.stopped ? { stalled: {
-      reason: `${agentStalled ? `${state.tasks.get(agentStalled.taskId)?.spec.title ?? agentStalled.taskId}: ${Math.round(limit / 60000)}분 동안 진행 보고 없음` : blocked ? `${blocked.spec.title}: ${blocked.blocked!.reason.replace(/\s+/g, ' ')}` : this.meta.script?.stopped ? this.meta.script.stopped.replace(/^Step \d+:\s*/, '').split('\n')[0] : reason} · 작업과 첨부를 직접 확인하세요.`, canRetry: this.meta.mode === 'scenario', canSkip: this.meta.mode === 'scenario',
+      reason: `${agentStalled ? `${state.tasks.get(agentStalled.taskId)?.spec.title ?? agentStalled.taskId}: ${Math.round(limit / 60000)}분 동안 진행 보고 없음` : blocked ? `${blocked.spec.title}: ${blocked.blocked!.reason.replace(/\s+/g, ' ')}` : this.meta.script?.stopped ? this.meta.script.stopped.replace(/^Step \d+:\s*/, '').split('\n')[0] : reason} · 작업과 첨부를 직접 확인하세요.`, canRetry: this.meta.mode === 'scenario' && !this.meta.scenarioKey, canSkip: this.meta.mode === 'scenario' && !this.meta.scenarioKey,
     } } : {}) };
   }
 
@@ -342,20 +346,33 @@ export class WebRuntime {
     } finally { this.replacing = false; }
   }
   async startScenario(name: string, confirmReplace = false) {
-    if (name !== continuousScenario.key && name !== 'scene-1-3') throw new Error('Unknown scenario');
+    if (name !== continuousScenario.key && name !== 'scene-1-3' && name !== TEAM_SCENARIO) throw new Error('Unknown scenario');
     this.replacing = true;
     try {
       const archivedProjectIds = await this.replace(confirmReplace);
-      this.meta = { projectId: randomUUID(), mode: 'scenario', scene: 1, step: 0, script: { step: 0, anchors: {} }, archivedProjectIds, archives: this.meta.archives };
+      this.meta = name === TEAM_SCENARIO
+        ? { projectId: randomUUID(), mode: 'scenario', scene: 1, step: 0, scenarioKey: TEAM_SCENARIO, archivedProjectIds, archives: this.meta.archives }
+        : { projectId: randomUUID(), mode: 'scenario', scene: 1, step: 0, script: { step: 0, anchors: {} }, archivedProjectIds, archives: this.meta.archives };
       await this.seed('owner', true); this.createPm(); await this.save();
     } finally { this.replacing = false; }
   }
   async launchScenario() {
     await this.ready;
     if (this.replacing) throw new RuntimeError('project_switching', '프로젝트를 전환 중입니다. 잠시 후 다시 시도해 주세요.');
+    if (this.meta.mode === 'scenario' && this.meta.scenarioKey === TEAM_SCENARIO) return this.teamNext();
     if (this.meta.mode !== 'scenario' || !this.meta.script) throw new RuntimeError('scenario_missing', '먼저 시나리오를 시작해 주세요.');
     if (this.meta.script.stopped) throw new RuntimeError('scenario_stopped', '대본이 멈췄습니다. 채널 아래 멈춤 안내를 확인해 주세요.');
     void this.scenarioNext().catch(() => console.info('[ensemble] 대본 진행 중단: 상태에서 이유를 확인하세요.'));
+    return { accepted: true as const };
+  }
+  /**
+   * Team demo "다음": the decider approves the PM's plan through the real plan path (start notices included). The next step is
+   * outside Ensemble on purpose — 김상성's own coding agent sends the result (`scripts/personal-agent-submit.mjs`).
+   */
+  private async teamNext() {
+    const state = project(await this.store.read({ projectId: this.meta.projectId }));
+    if (!state.pendingPlans.has(TEAM_PROPOSAL_ID)) throw new RuntimeError('scenario_external', '다음 단계는 Ensemble 밖에서 일어나요. 김상성의 Coding Agent가 scripts/personal-agent-submit.mjs로 결과를 보내면 PM이 이어받습니다.');
+    void this.run(() => this.pm.decidePlan(TEAM_PROPOSAL_ID, TEAM_MEMBERS.decider.memberId, true)).catch(error => console.error('[ensemble] 팀 시연 계획 승인 실패', error));
     return { accepted: true as const };
   }
   async scenarioNext() {

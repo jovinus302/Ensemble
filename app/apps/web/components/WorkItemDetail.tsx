@@ -6,6 +6,7 @@ import { formatDate, formatTime } from "./format";
 import { Avatar } from "./Message";
 import { ScopeLists, TaskResolution, type ResolveTask } from "./TaskResolution";
 import type { ActionResult, LoadTaskResult } from "./use-view-model";
+import { AssigneeKindBadge, AutoStartNote, ResultSourceLine } from "./TeamBadges";
 import { WorkStatusChip } from "./WorkPanel";
 import { briefPreview, taskDetailRevision, waitingLabel } from "./work-view";
 
@@ -101,7 +102,7 @@ export function WorkItemDetail({ taskId, items, members, me, messages, refreshKe
             <section className="detail-owner" aria-label="담당">
               <Avatar member={members.find(m => m.id === item.ownerId) ?? { id: item.ownerId, kind: item.ownerKind, displayName: "?" }} size={32} />
               <div>
-                <div className="member-name">{nameOf(item.ownerId)} {item.ownerKind === "agent" && <span className="badge badge-ai">AI</span>}</div>
+                <div className="member-name">{nameOf(item.ownerId)} <AssigneeKindBadge kind={item.ownerKind} /></div>
                 {item.routingNote && <div className="small muted">{item.routingNote}</div>}
               </div>
               <span className="detail-status">
@@ -110,6 +111,15 @@ export function WorkItemDetail({ taskId, items, members, me, messages, refreshKe
             </section>
 
             {item.resolution && onResolve && <TaskResolution task={item.resolution} onResolve={onResolve} />}
+
+            {item.autoStartedBy && <AutoStartNote auto={item.autoStartedBy} />}
+            {item.latestResult && (
+              <section aria-label="최근 결과">
+                <h3 className="section-label">최근 결과</h3>
+                <p className="small">{item.latestResult.summary}</p>
+                <ResultSourceLine source={item.latestResult} />
+              </section>
+            )}
 
             {item.childIds.length > 0 && (
               <section aria-label="하위 작업">

@@ -5,6 +5,7 @@ import type { VmMember, VmRoadmap, VmRoadmapTask } from "../lib/view-model";
 import { availabilityLabel, formatDate, formatDays, formatHourRange, formatHours, spanLabel, statusInfo } from "./format";
 import type { ActionResult } from "./use-view-model";
 import { ScopeLists, TaskResolution, type ResolveTask } from './TaskResolution';
+import { AssigneeKindBadge, ResultSourceLine } from './TeamBadges';
 
 const TONE_ICON = { done: "✓", working: "◐", needs: "✋", failed: "!", queued: "◷" } as const;
 
@@ -99,10 +100,11 @@ function TaskRow({ task, onResolve }: { task: VmRoadmapTask; onResolve?: Resolve
     <li>
       <div className="task-row">
         <span className="task-title">{task.title}</span>
-        <span className="muted small">{task.assigneeName}</span>
+        <span className="muted small">{task.assigneeName} <AssigneeKindBadge kind={task.assigneeKind} /></span>
         <StatusChip status={task.status} />
         {task.stopped && <span className="chip chip-failed">멈춤</span>}
       </div>
+      {task.latestResult && <ResultSourceLine source={task.latestResult} />}
       {task.resolution && onResolve && <TaskResolution task={task.resolution} onResolve={onResolve} />}
       {(task.hours || conditions.length > 0 || task.exclusions?.length || task.limits?.length) && (
         <details className="task-details small">

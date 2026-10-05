@@ -7,6 +7,7 @@ import type { DecideRequest } from "./DecisionRequestCard";
 import { formatDate } from "./format";
 import { Avatar } from "./Message";
 import { RoadmapCard } from "./Roadmap";
+import { AssigneeKindBadge, ResultSourceLine } from "./TeamBadges";
 import type { ResolveTask } from "./TaskResolution";
 import type { ActionResult } from "./use-view-model";
 import { WORK_STATUS_LABEL, decisionTotal, WORK_STATUS_TONE, groupWorkItems, teamLines, waitingLabel, type WorkGroup, type WorkRow } from "./work-view";
@@ -36,9 +37,11 @@ function WorkLine({ item, members, me, parentTitle, childCount, onOpen, nested }
           {item.priority === "high" && <span className="priority-high" title="우선순위 높음">높음</span>}
         </span>
         <span className="work-line-meta small muted">
-          {owner?.displayName ?? (item.ownerKind === "agent" ? "Agent" : "담당자")}
+          {owner?.displayName ?? (item.ownerKind === "agent" ? "Agent" : "담당자")} <AssigneeKindBadge kind={item.ownerKind} />
           {childCount ? ` · 하위 작업 ${childCount}개` : ""}
+          {item.autoStartedBy && <span className="chip chip-done chip-tiny" title={`“${item.autoStartedBy.fromTitle}” 확인 뒤 PM이 자동으로 맡겼어요`}>자동 인계</span>}
         </span>
+        {item.latestResult?.via && <ResultSourceLine source={item.latestResult} compact />}
       </span>
       {waiting ? <span className="chip chip-needs">{waiting}</span> : <WorkStatusChip status={item.status} />}
     </button>

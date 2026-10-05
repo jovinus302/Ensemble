@@ -95,6 +95,43 @@ get('reset').onclick=()=>{get('signup').reset();get('slot').value='';get('summar
 </script></body></html>`;
 }
 
+/**
+ * Team-orchestration demo (no model): the PM's fixed plan. A person (김상성) builds the login API with their own coding
+ * agent outside Ensemble; the UX Agent reviews the screen once that result is checked; the decider makes the release call.
+ * Each handoff condition is something the submitted result file can show, so the real handoff review can quote it.
+ */
+export const TEAM_ORCHESTRATION_PLAN = {
+  members: {
+    builder: { memberId: 'kim-sangsung', kind: 'human', displayName: '김상성', role: '백엔드 개발' },
+    decider: { memberId: 'owner', kind: 'human', displayName: '박OO', role: '제품 책임자' },
+    ux: { memberId: 'ux-agent', kind: 'agent', displayName: 'UX Agent', role: '로그인 화면 UX 검토' },
+  },
+  goal: '로그인 기능을 이번 주 안에 출시한다. 사람과 Agent가 함께 일하고, 김상성은 자기 Coding Agent로 API를 만든다.',
+  reason: '김상성이 API를 만들면 UX Agent가 화면을 검토하고, 박OO이 출시를 결정하는 순서로 나눴어요.',
+  tasks: [
+    { id: 'T-1', title: '로그인 API 구현', assignee: 'kim-sangsung', dependsOn: [] as string[], handoffConditions: ['로그인 API PR 링크와 변경 요약', '로그인 API 테스트 결과'], hours: { min: 3, max: 6 } },
+    { id: 'T-2', title: '로그인 화면 UX 검토', assignee: 'ux-agent', dependsOn: ['T-1'], handoffConditions: ['로그인 화면 UX 점검 결과', '고칠 점과 우선순위'], hours: { min: 1, max: 2 } },
+    { id: 'T-3', title: '최종 출시 결정', assignee: 'owner', dependsOn: ['T-2'], handoffConditions: ['출시 여부와 그 이유'], hours: { min: 0.5, max: 1 } },
+  ],
+} as const;
+
+/** The UX Agent's demo review: one section per handoff condition so the PM's review can quote each one. */
+export function uxReviewMarkdown(input: TaskInstructionsInput): string {
+  return [
+    `# ${input.taskTitle.text}`,
+    '시연용 가상 자료입니다. 실제 사용자 테스트를 하지 않았고, 선행 작업 결과(PR 요약)만 읽고 점검했습니다.',
+    '',
+    '## 인계 조건 확인',
+    ...input.handoffConditions.map((c, i) => `### ${i + 1}. ${c.text}`),
+    '',
+    '## 점검 메모',
+    '- 오류 메시지가 입력란 바로 아래에 보이는지 확인이 필요합니다.',
+    '- 비밀번호 보기 토글과 자동 완성 속성을 권장합니다.',
+    '- 우선순위: 오류 안내(높음) → 자동 완성(보통) → 문구 다듬기(낮음).',
+    '',
+  ].join('\n');
+}
+
 /** Explicit demo transport: real files and normal reports, never PM verdicts or ledger writes. */
 /** Free-project demo: work about a login screen first asks the person how people sign in (the agent-question flow). */
 export const FAKE_QUESTION = { trigger: /로그인/, question: '로그인 방식은 이메일만 둘까요, 소셜 로그인도 넣을까요?', options: ['이메일만', '이메일과 소셜 로그인'] } as const;
@@ -168,6 +205,13 @@ export class FakeConnector implements SessionConnector {
       run.excludePayment = !!scopeExcludesPayment(current) || run.excludePayment;
     }
     const prototype = agentId === 'prototype-agent';
+    if (agentId === TEAM_ORCHESTRATION_PLAN.members.ux.memberId) {
+      const file = this.fileName(run.input, 'md');
+      writeFileSync(path.join(this.sessions.get(agentId)!.workspace, file), uxReviewMarkdown(run.input));
+      this.emit(agentId, { type: 'result_report', taskId: run.input.taskId, planVersion: run.input.planVersion, summary: `시연용 가상 자료: ${run.input.taskTitle.text}`, files: [{ path: file, description: '인계 조건별 UX 점검 메모' }], limitations: ['실제 사용자 테스트 없이 선행 결과 요약만 읽고 점검'] });
+      this.complete(agentId);
+      return;
+    }
     let content = prototype ? prototypeHtml(run.input, run.excludePayment) : `${research}\n## 인계 조건 확인\n${conditionSections(run.input, false, run.excludePayment)}`;
     if (!prototype && this.generate) content += '\n## 인계 조건별 시연 보완\n' + await this.generate({ title: run.input.taskTitle.text, handoffConditions: run.input.handoffConditions.map(c => c.text), request: '시연용 조사 보고서의 조건별 근거를 구체화하세요. 실제 조사라고 주장하지 말고 출처 후보와 미확인 사항을 구분하세요.', previous: [{ name: 'research.md', mimeType: 'text/markdown', content }] });
     if (this.runs.get(agentId) !== run || generation !== run.generation) return;

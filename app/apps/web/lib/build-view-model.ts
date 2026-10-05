@@ -1,7 +1,8 @@
 import { project, forecast, forecastFromState, availabilityWeek, bundleDecisions, isParentTask, openDecisions, taskActivity, waitingOn, workStatus,
   type AnyEvent, type DecisionEffect, type EventPayloads, type LedgerEvent, type PlanOp, type Priority, type ProjectState, type RoutingReason, type TaskActivity, type TaskState, type TaskStatus } from '@ensemble/core';
-import type { ViewModel, VmActivity, VmActivityItem, VmMessage, VmCard, VmDecisionCard, VmPmJudgement, VmPlanTask, VmTaskDetail, VmWork, VmWorkItem, VmWorkStatus, VmWorkTeamRow } from './view-model';
+import type { ViewModel, VmActivity, VmActivityItem, VmAutoStart, VmMessage, VmResultSource, VmCard, VmDecisionCard, VmPmJudgement, VmPlanTask, VmTaskDetail, VmWork, VmWorkItem, VmWorkStatus, VmWorkTeamRow } from './view-model';
 import { taskResolutions } from './task-resolution';
+import { readVia, viaLabel } from './team-orchestration';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -182,6 +183,59 @@ function knownTaskIds(typed: readonly AnyEvent[], state: ProjectState): string[]
 const isTaskThread = (threadId: string | undefined) => !!threadId?.startsWith('task:');
 
 /** 채널·작업 댓글에 보이는 모든 발언(작업 스레드 포함). 채널은 스레드 발언을 빼고, 작업 상세는 그 작업의 스레드만 고른다. */
+type ResultEvent = Extract<AnyEvent, { type: 'result_submitted' }>;
+const isUrl = (value: unknown): value is string => typeof value === 'string' && /^https?:\/\//i.test(value);
+/**
+ * 작업마다 가장 최근 결과의 요약·출처(via)·링크. via는 W1 계약의 선택 필드라 제출 기록과 투영된 결과 양쪽에서 읽는다.
+ * 링크는 결과에 붙은 첨부 중 http(s) 주소인 것, 그리고 제출 기록에 url 산출물이 그대로 남아 있으면 그것이다.
+ */
+function resultSources(typed: readonly AnyEvent[], state: ProjectState): { byTask: Map<string, VmResultSource>; byResult: Map<string, VmResultSource>; bySeq: Map<number, VmResultSource> } {
+  const attachments = new Map(typed.flatMap(e => e.type === 'attachment_recorded' ? [[e.payload.attachmentId, e.payload] as const] : []));
+  const byTask = new Map<string, VmResultSource>(), byResult = new Map<string, VmResultSource>(), bySeq = new Map<number, VmResultSource>();
+  // 링크 첨부는 결과 파일(artifactIds)에서 빠질 수 있다(PM이 읽을 수 없는 주소라서): 같은 작업에 붙어 이번 제출 직전에 기록된 주소도 결과의 링크다.
+  const pendingLinks = new Map<string, { name: string; url: string }[]>();
+  for (const e of typed) {
+    if (e.type === 'attachment_recorded' && e.payload.taskId && isUrl(e.payload.uri)) {
+      pendingLinks.set(e.payload.taskId, [...(pendingLinks.get(e.payload.taskId) ?? []), { name: e.payload.name, url: e.payload.uri }]);
+      continue;
+    }
+    if (e.type !== 'result_submitted') continue;
+    const projected = state.tasks.get(e.payload.taskId)?.results.find(r => r.resultId === e.payload.resultId);
+    const via = readVia(e.payload) ?? readVia(projected);
+    const fromAttachments = [...e.payload.artifactIds.flatMap(id => { const a = attachments.get(id); return a && isUrl(a.uri) ? [{ name: a.name, url: a.uri }] : []; }), ...(pendingLinks.get(e.payload.taskId) ?? [])];
+    pendingLinks.delete(e.payload.taskId);
+    const raw = (e.payload as { artifacts?: unknown }).artifacts;
+    const fromPayload = Array.isArray(raw) ? raw.flatMap((a: unknown) => {
+      const art = a && typeof a === 'object' ? a as { kind?: unknown; name?: unknown; uri?: unknown } : {};
+      return art.kind === 'url' && isUrl(art.uri) ? [{ name: typeof art.name === 'string' && art.name.trim() ? art.name : art.uri, url: art.uri }] : [];
+    }) : [];
+    const links = [...new Map([...fromAttachments, ...fromPayload].map(l => [l.url, l])).values()];
+    const source: VmResultSource = { summary: clip(sanitizeMachineText(e.payload.summary) || '결과를 냈어요', 200), links, ...(via ? { via: { ...via, label: viaLabel(via) } } : {}) };
+    byTask.set(e.payload.taskId, source); byResult.set(e.payload.resultId, source); bySeq.set(e.seq, source);
+  }
+  return { byTask, byResult, bySeq };
+}
+/**
+ * 선행 작업이 확인되어 PM이 다음 작업을 자동으로 시작한 기록: 시작 예약(task_start_reserved)의 계기가 다른 작업의 결과 id이고,
+ * 그 작업을 Agent가 시작했을 때. 키는 task_started 이벤트 id와 작업 id 둘 다.
+ */
+function autoStarts(typed: readonly AnyEvent[], state: ProjectState, name: (id: string) => string, sources: Map<string, VmResultSource>): { byEvent: Map<string, VmAutoStart>; byTask: Map<string, VmAutoStart> } {
+  const results = new Map(typed.flatMap(e => e.type === 'result_submitted' ? [[e.payload.resultId, e as ResultEvent] as const] : []));
+  const trigger = new Map<string, string>();
+  const byEvent = new Map<string, VmAutoStart>(), byTask = new Map<string, VmAutoStart>();
+  const title = (id: string) => state.tasks.get(id)?.spec.title ?? '작업';
+  for (const e of typed) {
+    if (e.type === 'task_start_reserved') { trigger.set(e.payload.taskId, e.payload.trigger); continue; }
+    if (e.type !== 'task_started' || e.actor.kind !== 'agent') continue;
+    const from = results.get(trigger.get(e.payload.taskId) ?? '');
+    if (!from || from.payload.taskId === e.payload.taskId) continue;
+    const via = sources.get(from.payload.resultId)?.via;
+    const auto: VmAutoStart = { fromTaskId: from.payload.taskId, fromTitle: title(from.payload.taskId), toTaskId: e.payload.taskId, toTitle: title(e.payload.taskId), agentName: name(e.actor.id), ...(via ? { viaLabel: via.label } : {}) };
+    byEvent.set(e.id, auto); byTask.set(e.payload.taskId, auto);
+  }
+  return { byEvent, byTask };
+}
+
 function buildMessages(typed: readonly AnyEvent[], state: ProjectState, name: (id: string) => string, labels: ReturnType<typeof labeler>, taskIds: readonly string[]): VmMessage[] {
   const { version } = labels;
   const { visible, evidence, plainIds } = readers(typed, state, labels, taskIds);
@@ -193,7 +247,25 @@ function buildMessages(typed: readonly AnyEvent[], state: ProjectState, name: (i
 
   // 계획 제안 안내 발언(considerationId = proposalId)은 그 카드와 같은 내용이다.
   const proposalIds = new Set(typed.flatMap(e => e.type === 'plan_proposed' ? [e.payload.proposalId] : []));
+  // 밖에서 들어온 결과(via 있음)와 그 결과로 자동 시작된 작업은 채널에도 한 줄씩 남긴다. via 없는 기존 흐름은 그대로다.
+  const sources = resultSources(typed, state);
+  const autos = autoStarts(typed, state, name, sources.byResult);
   return typed.flatMap((e): VmMessage[] => {
+    if (e.type === 'result_submitted') {
+      const source = sources.byResult.get(e.payload.resultId);
+      const member = state.members.get(e.actor.id);
+      if (!source?.via || !member) return [];
+      const taskTitle = state.tasks.get(e.payload.taskId)?.spec.title ?? '작업';
+      return [{ id: `result:${e.payload.resultId}`, authorId: e.actor.id, kind: member.kind, at: e.at, attachments: [], taskIds: [e.payload.taskId],
+        text: `${taskTitle} 결과를 ${source.via.label}(으)로 보냈어요: ${source.summary}`, result: { ...source, taskId: e.payload.taskId, taskTitle } }];
+    }
+    if (e.type === 'task_started') {
+      const auto = autos.byEvent.get(e.id);
+      if (!auto?.viaLabel) return [];
+      return [{ id: `auto-start:${e.id}`, authorId: 'pm', kind: 'pm', at: e.at, attachments: [], taskIds: [auto.fromTaskId, auto.toTaskId], autoStart: auto,
+        text: `${auto.fromTitle} 결과(${auto.viaLabel})를 확인했어요. 인계 조건을 채워 ${auto.toTitle} 작업을 ${auto.agentName}에게 자동으로 맡겨 시작했습니다.`,
+        pm: { kind: 'fact', reason: '선행 작업이 인계 조건을 채워 다음 작업을 자동으로 시작했다', evidence: [] } }];
+    }
     if (e.type === 'plan_decided') {
       const v = version(e.payload.proposalId);
       if (v === undefined) return [];
@@ -226,6 +298,8 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
   const state = project(events), typed = events as readonly AnyEvent[];
   const now = options.now ?? new Date();
   const name = (id: string) => id === 'pm' ? 'PM' : state.members.get(id)?.displayName ?? id;
+  const kindOf = (id: string): { assigneeKind?: 'human' | 'agent' } => { const kind = state.members.get(id)?.kind; return kind ? { assigneeKind: kind } : {}; };
+  const latest = resultSources(typed, state).byTask;
   const forecastNow = state.plan ? forecastFromState(state, now) : null;
   const uncertainty = forecastNow?.uncertainty;
   const labels = labeler(typed, state, name);
@@ -249,7 +323,7 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
           finish = { min: result.end.min.toISOString(), max: result.end.max.toISOString() };
         }
       } catch { /* 예측할 수 없는 초안이면 날짜 없이 보여 준다. */ }
-      const tasks: VmPlanTask[] = p.tasks.map(t => { const h = hours.get(t.id), end = spans?.get(t.id); return { id: t.id, title: t.title, assigneeName: name(t.assignee), dependsOn: t.dependsOn, ...(t.parentId ? { parentId: t.parentId } : {}),
+      const tasks: VmPlanTask[] = p.tasks.map(t => { const h = hours.get(t.id), end = spans?.get(t.id); return { id: t.id, title: t.title, assigneeName: name(t.assignee), ...kindOf(t.assignee), dependsOn: t.dependsOn, ...(t.parentId ? { parentId: t.parentId } : {}),
         exclusions: [...(t.exclusions ?? [])], limits: [...(t.limits ?? [])],
         ...(h ? { hours: h } : {}), ...(end ? { expectedEnd: end } : {}), ...(t.handoffConditions.length ? { handoffConditions: t.handoffConditions } : {}) }; });
       return { kind: 'plan_approval' as const, id: p.proposalId, planVersion: p.version, forMemberId: p.forMemberId, reason: p.reason, tasks, ...(finish ? { finish } : {}) };
@@ -283,7 +357,8 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
     ...(state.plan ? { work: work.view(options.me) } : {}), busy: options.busy, ...(options.scenario ? { scenario: options.scenario } : {}), ...(options.activity ? { activity: options.activity } : {}),
     roadmap: { planVersion: state.plan?.version ?? null, ...(options.mode === 'scenario' ? { clockLabel: '시연 시계' } : {}),
       tasks: (state.plan?.tasks ?? []).map(t => { const span = forecastNow?.ok ? forecastNow.tasks.find(f => f.taskId === t.id) : undefined; const h = state.estimates.get(t.id);
-        return { id: t.id, title: t.title, assigneeName: name(t.assignee), status: state.tasks.get(t.id)?.status ?? 'waiting',
+        const result = latest.get(t.id);
+        return { id: t.id, title: t.title, assigneeName: name(t.assignee), ...kindOf(t.assignee), ...(result ? { latestResult: result } : {}), status: state.tasks.get(t.id)?.status ?? 'waiting',
           exclusions: [...(t.exclusions ?? [])], limits: [...(t.limits ?? [])],
           resolution: taskResolutions(events, options.me).find(r => r.taskId === t.id),
           ...(uncertainty?.stoppedTaskIds.includes(t.id) ? { stopped: true } : {}),
@@ -368,6 +443,8 @@ function workBuilder(events: readonly LedgerEvent[], typed: readonly AnyEvent[],
   }
   const attachments = new Map(typed.flatMap(e => e.type === 'attachment_recorded' ? [[e.payload.attachmentId, e.payload] as const] : []));
   const opens = openDecisions(state);
+  const sources = resultSources(typed, state);
+  const autos = autoStarts(typed, state, name, sources.byResult);
 
   const live = (task: TaskState | undefined): task is TaskState => !!task && task.status !== 'cancelled';
   /** 상위 작업은 실행하지 않으므로 "진행 중"은 하위 작업에서 계산한다(§2.1). */
@@ -412,6 +489,8 @@ function workBuilder(events: readonly LedgerEvent[], typed: readonly AnyEvent[],
       ...(spec.handoffConditions.length ? { handoffConditions: [...spec.handoffConditions] } : {}),
       ...(spec.exclusions?.length ? { exclusions: [...spec.exclusions] } : {}), ...(spec.limits?.length ? { limits: [...spec.limits] } : {}),
       ...(resolution ? { resolution: { taskId: resolution.taskId, actions: resolution.actions } } : {}),
+      ...(sources.byTask.has(spec.id) ? { latestResult: sources.byTask.get(spec.id)! } : {}),
+      ...(autos.byTask.has(spec.id) ? { autoStartedBy: autos.byTask.get(spec.id)! } : {}),
     };
   };
   const items = (me: string) => { const resolutions = taskResolutions(events, me); return ordered.map(task => item(task, resolutions)); };
@@ -475,7 +554,7 @@ function workBuilder(events: readonly LedgerEvent[], typed: readonly AnyEvent[],
 
   /** 활동 한 줄 뒤에 붙는 설명. 정리하고 남는 말이 없으면 붙이지 않는다. */
   const detail = (text: string | undefined) => { const t = text ? visible(text) : ''; return t ? `: ${t}` : ''; };
-  const activityText = (a: TaskActivity): string => {
+  const activityText = (a: TaskActivity, taskId: string): string => {
     switch (a.kind) {
       case 'created': {
         const by = a.source?.createdBy;
@@ -483,8 +562,15 @@ function workBuilder(events: readonly LedgerEvent[], typed: readonly AnyEvent[],
         return a.source?.decisionRequestId ? `${base}(결정 요청 승인)` : base;
       }
       case 'assigned': return `담당이 ${name(a.assignee ?? '')}(으)로 바뀌었어요`;
-      case 'started': return '작업을 시작했어요';
-      case 'submitted': { const text = visible(a.text ?? ''); return text ? `결과를 냈어요: ${clip(text, 80)}` : '결과를 냈어요'; }
+      case 'started': {
+        const auto = autos.byTask.get(taskId);
+        return auto && a.actorId === state.tasks.get(taskId)?.spec.assignee ? `"${auto.fromTitle}" 확인 뒤 PM이 자동으로 맡겨 작업을 시작했어요` : '작업을 시작했어요';
+      }
+      case 'submitted': {
+        const via = sources.bySeq.get(a.seq)?.via;
+        const text = visible(a.text ?? '');
+        return `결과를 냈어요${via ? `(${via.label})` : ''}${text ? `: ${clip(text, 80)}` : ''}`;
+      }
       case 'reviewed': return a.event === 'task_checked' ? 'PM이 인계 조건을 확인했어요' : a.text === 'sufficient' ? 'PM이 결과를 검토했어요: 조건 충족' : 'PM이 결과를 검토했어요: 보완 필요';
       case 'revision': return `보완을 요청했어요${detail(a.text)}`;
       case 'blocked': return `멈췄어요${detail(a.text)}`;
@@ -502,7 +588,7 @@ function workBuilder(events: readonly LedgerEvent[], typed: readonly AnyEvent[],
     const messageId = a.messageId ?? a.source?.sourceMessageIds.find(id => messageText.has(id));
     // The PM creates, assigns, delivers changes, reviews and asks; starts, results, answers and comments are the member's own.
     const own = ['started', 'submitted', 'comment', 'decision_resolved', 'blocked', 'resumed'].includes(a.kind);
-    return { at: a.at, kind: a.kind, actorId: own && state.members.has(a.actorId) ? a.actorId : 'pm', text: activityText(a), ...(messageId ? { messageId } : {}) };
+    return { at: a.at, kind: a.kind, actorId: own && state.members.has(a.actorId) ? a.actorId : 'pm', text: activityText(a, taskId), ...(messageId ? { messageId } : {}) };
   });
 
   return {

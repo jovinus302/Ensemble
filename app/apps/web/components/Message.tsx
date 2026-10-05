@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { VmMember, VmMessage } from "../lib/view-model";
 import { attachmentAction, formatTime, initial } from "./format";
+import { AutoStartNote, ResultSourceLine } from "./TeamBadges";
 
 // Agent voice는 1~8 중 id 해시로 고른다(그린은 PM 전용).
 function voiceOf(id: string): number {
@@ -80,6 +81,8 @@ export function MessageItem({ message, author, grouped, workTitles, onOpenTask }
           {message.pm && <span className="pm-kind">{PM_KIND[message.pm.kind] ?? message.pm.kind}</span>}
           {message.text}
         </div>
+        {message.result && <ResultSourceLine source={message.result} />}
+        {message.autoStart && <AutoStartNote auto={message.autoStart} />}
         <WorkChips taskIds={message.taskIds} workTitles={workTitles} onOpenTask={onOpenTask} />
         {message.attachments.length > 0 && (
           <ul className="attachments">
