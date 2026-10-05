@@ -128,3 +128,8 @@ export function sceneLabel(name: string): string {
   return /장면\s*\d+/.exec(name)?.[0] ?? (name.trim() || "시나리오");
 }
 export const attachmentAction = (name: string): string => /\.html?$/i.test(name) ? '다운로드' : '열기';
+
+/** 자동 인계 한 줄. 다음 작업 제목 끝 글자와 상관없이 읽히도록 "작업을"로 받는다. */
+export function autoStartLine(auto: { fromTitle: string; toTitle: string; agentName: string; viaLabel?: string }): string {
+  return `“${auto.fromTitle}” 확인${auto.viaLabel ? ` (${auto.viaLabel})` : ""} → “${auto.toTitle}” 작업을 ${auto.agentName}에게 자동으로 맡김`;
+}

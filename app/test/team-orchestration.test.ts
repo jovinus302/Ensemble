@@ -8,7 +8,9 @@ import { judgeHandoff } from '@ensemble/orchestrator';
 import { MemoryLedgerStore } from '@ensemble/store';
 import { FakePmLlm, TEAM_ORCHESTRATION_PLAN } from '../apps/web/lib/fake-connector.ts';
 import { buildTaskDetail, buildViewModel } from '../apps/web/lib/build-view-model.ts';
+import { autoStartLine } from '../apps/web/components/format.ts';
 import { WebRuntime } from '../apps/web/lib/runtime.ts';
+import { POST } from '../apps/web/app/api/[...path]/route.ts';
 import { TEAM_PROPOSAL_ID, TEAM_SCENARIO, readVia, teamOrchestrationSeed, viaLabel } from '../apps/web/lib/team-orchestration.ts';
 // @ts-expect-error -- plain ESM script without type declarations
 import { buildRequest, parseArgs, resultReport, DEFAULT_CONDITIONS } from '../scripts/personal-agent-submit.mjs';
@@ -80,6 +82,15 @@ test('view model: human/agent badges, via source and the PR link; old results wi
   assert.deepEqual(card?.kind === 'plan_approval' && card.tasks.map(t => t.assigneeKind), ['human', 'agent', 'human']);
 });
 
+// Regression (W3 browser QA): the auto-handoff line hard-coded "을", so "“로그인 화면 UX 검토”을" read wrong.
+test('auto-handoff line reads naturally whatever the next title ends with', () => {
+  for (const toTitle of ['로그인 화면 UX 검토', '최종 출시 결정']) {
+    const line = autoStartLine({ fromTitle: '로그인 API 구현', toTitle, agentName: 'UX Agent', viaLabel: 'IDE · 김상성의 Coding Agent' });
+    assert.equal(line, `“로그인 API 구현” 확인 (IDE · 김상성의 Coding Agent) → “${toTitle}” 작업을 UX Agent에게 자동으로 맡김`);
+    assert.doesNotMatch(line, /”[을를]/);
+  }
+});
+
 test('via helpers: label and malformed values', () => {
   assert.equal(viaLabel({ channel: 'ide', agent: '김상성의 Coding Agent' }), 'IDE · 김상성의 Coding Agent');
   assert.equal(viaLabel({ channel: 'slack' }), 'Slack');
@@ -126,15 +137,22 @@ test('runtime: approve the plan → @김상성 notice → personal agent result 
   assert.equal(vm.scenario?.nextLine?.external, true);
   await assert.rejects(runtime.launchScenario(), { code: 'scenario_external' });
 
-  // Stand-in for W1's endpoint: record the result as the contract describes, then let the PM review it.
-  const person = { kind: 'human' as const, id: kim };
-  await runtime.store.append([
-    { ...context, projectId: runtime.meta.projectId, actor: person, type: 'attachment_recorded', payload: { attachmentId: 'pr-link', name: 'Pull Request', mimeType: 'text/uri-list', uri: PR, taskId: 'T-1' } },
-    { ...context, projectId: runtime.meta.projectId, actor: person, type: 'attachment_recorded', payload: { attachmentId: 'report', name: 'T-1 결과 보고.md', mimeType: 'text/markdown', uri: `data:text/markdown;base64,${Buffer.from(report()).toString('base64')}`, taskId: 'T-1' } },
-    { ...context, projectId: runtime.meta.projectId, actor: person, type: 'result_submitted', payload: { taskId: 'T-1', resultId: 'r-1', planVersion: 1, summary: '로그인 API 구현', artifactIds: ['report'], via } as never },
-  ]);
-  const outcome = await runtime.pm.retryValidation('T-1', 'r-1');
-  assert.equal(outcome.kind, 'checked');
+  // 김상성's personal agent sends T-1 through the real W1 endpoint, with the body the submit script builds.
+  // (Regression: T-1 is `reserved` here — the state plan approval leaves a person's work in — and must be accepted.)
+  const host = globalThis as typeof globalThis & { ensembleRuntime?: WebRuntime };
+  const previous = host.ensembleRuntime;
+  host.ensembleRuntime = runtime;
+  t.after(() => { if (previous === undefined) delete host.ensembleRuntime; else host.ensembleRuntime = previous; });
+  const request = buildRequest(parseArgs(['--task', 'T-1', '--member', kim, '--pr', PR, '--summary', '로그인 API 구현', '--base', 'http://localhost']));
+  const response = await POST(new Request(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify(request.body) }),
+    { params: Promise.resolve({ path: ['tasks', 'T-1', 'result'] }) });
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.deepEqual(await response.json(), { ok: true, taskId: 'T-1', resultIndex: 0 });
+  const t1 = (await state()).tasks.get('T-1')!;
+  assert.equal(t1.status, 'checked', 'the PR link (URL artifact) next to the report file does not trip the handoff review');
+  assert.deepEqual(t1.results[0]?.via, via);
+  assert.deepEqual(t1.results[0]?.artifacts?.map(a => [a.name, a.mimeType, a.uri.startsWith('data:') ? 'data:' : a.uri]),
+    [['Pull Request', 'text/uri-list', PR], ['T-1 결과 보고.md', 'text/markdown', 'data:']]);
   await until(async () => (await state()).tasks.get('T-2')?.status === 'running', 'T-2 started by the UX Agent');
 
   vm = await runtime.state('owner');

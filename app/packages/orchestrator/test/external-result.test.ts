@@ -132,10 +132,9 @@ test('concurrent result submissions produce one result and one dependent start',
   assert.equal(f.connector.starts.length, 1);
 });
 
-test('blocked, revising, submitted, reserved, checked, and cancelled tasks reject intake', async t => {
+test('blocked, revising, submitted, checked, and cancelled tasks reject intake', async t => {
   const f = await fixture(t);
   const transitions: NewLedgerEvent[] = [
-    { ...f.context, actor: f.actor, type: 'task_start_reserved', payload: { taskId: 'T-1', specVersion: 1, trigger: 'test' } },
     { ...f.context, actor: f.actor, type: 'result_submitted', payload: { taskId: 'T-1', resultId: 'prior', planVersion: 1, summary: 'prior', artifactIds: [] } },
     { ...f.context, actor: f.actor, type: 'task_checked', payload: { taskId: 'T-1', resultId: 'prior', reason: 'Accepted' } },
     { ...f.context, actor: f.actor, type: 'revision_requested', payload: { taskId: 'T-1', resultId: 'prior', missing: ['report'] } },
@@ -148,6 +147,34 @@ test('blocked, revising, submitted, reserved, checked, and cancelled tasks rejec
     assert.equal((await f.post()).status, 409);
     assert.deepEqual(await f.events(), before);
   }
+});
+
+// Regression (W3 e2e): plan approval reserves a person's start and sends "곧 시작합니다"; nothing moves it to running,
+// so rejecting reserved work made every real submission after plan approval fail with 409.
+test('reserved human work (the state after plan approval) accepts intake and is started before the result', async t => {
+  const f = await fixture(t);
+  await f.store.append([{ ...f.context, actor: { kind: 'system', id: 'pm' }, type: 'task_start_reserved', payload: { taskId: 'T-1', specVersion: 1, trigger: 'plan' } }]);
+  assert.equal((await f.state()).tasks.get('T-1')?.status, 'reserved');
+  assert.equal((await f.post()).status, 200);
+  const events = await f.events(), state = await f.state();
+  assert.equal(state.tasks.get('T-1')?.status, 'checked');
+  assert.equal(state.tasks.get('T-2')?.status, 'running');
+  const started = events.findIndex(e => e.type === 'task_started' && e.payload.taskId === 'T-1');
+  assert.ok(started >= 0 && started < events.findIndex(e => e.type === 'result_submitted'));
+});
+
+test('reserved agent work stays with the dispatcher and rejects intake', async t => {
+  const f = await fixture(t);
+  await f.store.append([
+    { ...f.context, actor: f.actor, type: 'plan_committed', payload: { version: 2, basedOn: 1, reason: 'Agent first', approvedBy: 'human', sourceMessageIds: [], tasks: [
+      { id: 'T-2', title: 'Use report', assignee: 'agent', dependsOn: [], handoffConditions: [] },
+    ] } },
+    { ...f.context, actor: { kind: 'system', id: 'pm' }, type: 'task_start_reserved', payload: { taskId: 'T-2', specVersion: 2, trigger: 'plan' } },
+  ]);
+  assert.equal((await f.state()).tasks.get('T-2')?.status, 'reserved');
+  const before = await f.events();
+  assert.equal((await f.post({ ...body, memberId: 'agent' }, 'T-2')).status, 409);
+  assert.deepEqual(await f.events(), before);
 });
 
 test('invalid input is rejected before result or attachment writes', async t => {

@@ -120,8 +120,11 @@ export class ProjectManager {
       const task = state.tasks.get(taskId);
       if (!task) throw new TaskResolutionError('not_found', 'Task not found.');
       if (task.spec.assignee !== input.memberId) throw new TaskResolutionError('forbidden', 'Only the task assignee can submit a result.');
-      if (task.status !== 'ready' && task.status !== 'running') throw new TaskResolutionError('invalid_state', 'Task must be ready or running.');
       const actor = { kind: state.members.get(input.memberId)?.kind ?? 'human', id: input.memberId };
+      // Plan approval reserves a person's start ("곧 시작합니다") and nothing moves it on, so reserved human work is open too.
+      // A reserved agent task is left to the dispatcher, which is about to start its session.
+      const open = task.status === 'ready' || task.status === 'running' || (task.status === 'reserved' && actor.kind === 'human');
+      if (!open) throw new TaskResolutionError('invalid_state', 'Task must be ready or running.');
       const resultId = `result:${randomUUID()}`, resultIndex = task.results.length;
       const artifacts = input.artifacts ?? [], artifactIds = artifacts.map(() => randomUUID());
       const events: NewLedgerEvent[] = artifacts.map((artifact, i) => ({
@@ -131,7 +134,7 @@ export class ProjectManager {
           uri: artifact.kind === 'url' ? artifact.uri : `data:${artifact.mimeType};base64,${artifact.contentBase64}`,
         },
       }));
-      if (task.status === 'ready') events.push({ ...this.context, actor, type: 'task_started', payload: { taskId } });
+      if (task.status !== 'running') events.push({ ...this.context, actor, type: 'task_started', payload: { taskId } });
       events.push({ ...this.context, actor, type: 'result_submitted', idempotencyKey: resultId,
         payload: { taskId, resultId, planVersion: state.plan!.version, summary: input.summary, artifactIds, ...(input.via ? { via: input.via } : {}) } });
       await this.options.store.append(events);

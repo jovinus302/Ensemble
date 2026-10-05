@@ -1,4 +1,4 @@
-import { DEFAULT_PM_MAY_APPLY, type EventContext, type NewLedgerEvent, type ProjectState } from '@ensemble/core';
+import { DEFAULT_PM_MAY_APPLY, type EventContext, type NewLedgerEvent, type ProjectState, type ResultVia } from '@ensemble/core';
 import { TEAM_ORCHESTRATION_PLAN as PLAN } from './fake-connector';
 
 /**
@@ -12,8 +12,8 @@ export const TEAM_PROPOSAL_ID = 'team-orchestration-plan-v1';
 export const TEAM_MEMBERS = PLAN.members;
 
 /** Where a result came from (W1 contract): `via` on the submission and on the projected result. */
-export type ResultChannel = 'ide' | 'slack' | 'knox' | 'cli' | 'ensemble';
-export interface ResultVia { channel: ResultChannel; agent?: string }
+export type { ResultVia };
+export type ResultChannel = ResultVia['channel'];
 const CHANNEL_LABEL: Record<ResultChannel, string> = { ide: 'IDE', slack: 'Slack', knox: 'Knox', cli: 'CLI', ensemble: 'Ensemble' };
 
 /** Reads an optional `via` from a value whose type may not carry it yet; anything malformed is treated as absent. */

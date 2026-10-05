@@ -1,6 +1,7 @@
 "use client";
 
 import type { VmAutoStart, VmResultSource } from "../lib/view-model";
+import { autoStartLine } from "./format";
 
 /** 담당이 사람인지 Agent인지 한눈에: 작업 카드·일정·계획 카드가 같은 배지를 쓴다. */
 export function AssigneeKindBadge({ kind }: { kind?: "human" | "agent" }) {
@@ -28,7 +29,7 @@ export function AutoStartNote({ auto }: { auto: VmAutoStart }) {
   return (
     <div className="autostart-note small" role="note">
       <span className="chip chip-done">자동 인계</span>
-      <span>“{auto.fromTitle}” 확인{auto.viaLabel ? ` (${auto.viaLabel})` : ""} → “{auto.toTitle}”을 {auto.agentName}에게 자동으로 맡김</span>
+      <span>{autoStartLine(auto)}</span>
     </div>
   );
 }
