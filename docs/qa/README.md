@@ -12,14 +12,14 @@ npm run build
 
 ## 브라우저 확인
 
-[인계 데모 브라우저 검사](../../app/demo/scripted/handoff/qa/browser.cjs)는 `npm test`와 별개다. 기존 Playwright 설치와 실행 중인 로컬 서버를 사용한다.
+[디자인→개발 협업 브라우저 검사](../../app/demo/scripted/design-to-code/qa/browser.cjs)는 `npm test`와 별개다. 기존 Playwright 설치와 실행 중인 로컬 서버를 사용한다.
 
 `app/` 기준 PowerShell 예시:
 
 ```powershell
 $env:ENSEMBLE_PLAYWRIGHT_PATH = '<기존 Playwright 모듈 경로>'
 $env:ENSEMBLE_DEMO_URL = 'http://127.0.0.1:3000'
-node demo/scripted/handoff/qa/browser.cjs
+node demo/scripted/design-to-code/qa/browser.cjs
 ```
 
 두 사람의 동의, 초안 공유, QA 보완, 사람 검토, 중복·오래된 입력, 중단·기록 이동, 좁은 화면과 이미지 실패 대체 표시를 확인한다. 출력은 저장소의 무시된 `.local/qa/handoff/`에 쓴다. 실제 provider나 제품 인증을 검증하지 않는다.

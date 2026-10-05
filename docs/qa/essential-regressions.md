@@ -7,9 +7,9 @@ Inventory checked on **2026-10-05, main `605521b`**: **18 scenarios in four file
 | File | Cases | Scope |
 |---|---|---|
 | [essential-runtime.test.ts](../../app/test/essential-runtime.test.ts) | 6 | Real runtime entrypoints and in-memory ledger; fake external connector |
-| [essential-demo.test.ts](../../app/test/essential-demo.test.ts) | 2 | Fixed demo discussion, scope/schedule gates and limited revisions |
-| [essential-s27.test.ts](../../app/test/essential-s27.test.ts) | 6 | Scenario references, five-stage story, copy density, navigation, selection and upstream trace |
-| [essential-handoff.test.ts](../../app/test/essential-handoff.test.ts) | 4 | Two-person consent, sharing, QA repair, human review, stale results and interrupted callbacks |
+| [essential-pm-coordination.test.ts](../../app/test/essential-pm-coordination.test.ts) | 2 | Fixed demo discussion, scope/schedule gates and limited revisions |
+| [essential-marketing-campaign.test.ts](../../app/test/essential-marketing-campaign.test.ts) | 6 | Scenario references, five-stage story, copy density, navigation, selection and upstream trace |
+| [essential-design-to-code.test.ts](../../app/test/essential-design-to-code.test.ts) | 4 | Two-person consent, sharing, QA repair, human review, stale results and interrupted callbacks |
 
 | Scenario | Why it is essential |
 |---|---|
@@ -24,6 +24,6 @@ Inventory checked on **2026-10-05, main `605521b`**: **18 scenarios in four file
 
 `app/test/essential-runtime.test.ts` exercises real `ProjectManager` decision/recovery entrypoints and `SessionRunner`, backed by the real in-memory ledger/projection. Only the external connector is a tiny in-process fake; the model provider throws if called. Requests and the initial plan are seeded, so this does not validate model reasoning or question generation. Shutdown coverage concerns late transport events after stopping, not cancellation of an already-running validator.
 
-`app/test/essential-demo.test.ts` exercises the scripted reducer only. The S27 tests check data references, bounded/cumulative reveals, version selection and provenance traversal. The handoff tests check that both humans agree, private drafts stay private until shared, shared outputs unlock dependent work, failed QA requests scoped repair, and human approval gates handoff. They also cover duplicate/stale actions and cancel/reset/history invalidation.
+`app/test/essential-pm-coordination.test.ts` exercises the scripted reducer only. The S27 tests check data references, bounded/cumulative reveals, version selection and provenance traversal. The handoff tests check that both humans agree, private drafts stay private until shared, shared outputs unlock dependent work, failed QA requests scoped repair, and human approval gates handoff. They also cover duplicate/stale actions and cancel/reset/history invalidation.
 
 These tests do not prove real model reasoning, generated artifacts, rendered browser layout, external integrations or measured product quality. The previous broad suites and standalone benchmark runner remain removed. See the [QA guide](README.md) for the current optional browser check and local output location.

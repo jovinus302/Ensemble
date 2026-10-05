@@ -18,7 +18,7 @@
 
 자유 시연은 `/` → **자유형식** → **새 프로젝트 시작**이다. 좁은 화면에서는 **메뉴**를 연다. 같은 앱의 **시나리오**는 사람 입력만 재생하며 실제 서버·원장과 설정한 PM/Agent를 사용한다.
 
-`/demo`(PM 조율), `/s27`(마케팅 발표), `/handoff`(합의·공유·인계)는 별도 스크립트 시연이다. 세 경로 모두 실제 모델·프로젝트 API·Slack·미팅·메일 서비스를 실행하지 않는다.
+`/demo/pm-coordination`(PM 조율), `/demo/marketing-campaign`(마케팅 캠페인), `/demo/design-to-code`(디자인→개발 협업)는 별도 스크립트 시연이다. 세 경로 모두 실제 모델·프로젝트 API·Slack·미팅·메일 서비스를 실행하지 않는다.
 
 데모 소스·이미지·설명은 `app/demo/scripted/`, 실제 앱을 사용하는 관찰 도구와 안내는 `app/demo/runtime/`에 둔다. 제품 UI·API와 PM·원장·저장소는 `app/apps/web` 및 `app/packages`에 유지한다.
 

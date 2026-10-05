@@ -4,7 +4,7 @@ Ensemble은 **PM Agent 중심의 팀 협업 도구**입니다. 사람은 자신�
 
 현재 저장소에는 이벤트 기록 기반의 로컬 웹 앱과 협업 경험을 보여 주는 시연 화면이 있습니다. 제품 방향은 [intent](intent.md), 앱의 작업·결정 흐름은 [작업 모델](docs/work-model.md)에서 설명합니다. 개인 Agent 연동과 지속적 공유 상태인 **Team Work State**는 제품 개념이며, 시연 화면이 이 전체를 실제 서비스로 구현했다는 뜻은 아닙니다.
 
-**문서 확인 기준:** 2026-10-05, `main@f9e8c82` ([PR #71 병합](https://github.com/jovinus302/Ensemble/pull/71)). 제품 방향은 PR #69, 협업 인계 시연은 PR #68, 데모·문서 구조는 PR #71을 반영했습니다.
+**문서 확인 기준:** 2026-10-05, `main@079d632` ([PR #72 병합](https://github.com/jovinus302/Ensemble/pull/72)). 제품 방향은 PR #69, 협업 인계 시연은 PR #68, 데모·문서 분리는 PR #71, 시나리오별 이름·주소는 PR #72를 반영했습니다.
 
 ## 먼저 볼 화면
 
@@ -12,12 +12,14 @@ Ensemble은 **PM Agent 중심의 팀 협업 도구**입니다. 사람은 자신�
 
 | 경로 | 확인할 내용 | 실행 방식 |
 |---|---|---|
-| [`/handoff`](http://localhost:3000/handoff) | 사람 간 논의·합의 → 개인 UX 초안 공유 → 구현 → QA 보완 → 사람의 검토 → 다음 담당자 인계 | 선택에 따라 산출물이 달라지는 로컬 시연. 실제 모델·외부 Agent 연결·영속 저장 없음 |
-| [`/demo`](http://localhost:3000/demo) | Pages 앱의 이야기 방향 비교, 사람의 합의, 화면 제작과 범위를 제한한 수정 | 고정 시나리오와 규칙 기반 입력 처리. 실제 모델 호출 없음 |
-| [`/s27`](http://localhost:3000/s27) | S27 마케팅 팀의 미팅·메신저·허브를 오가며 결정·근거·산출물 버전 연결 | 발표용 스크립트 시연. 미팅·Slack·녹스 연동은 시뮬레이션 |
+| [`/demo/design-to-code`](http://localhost:3000/demo/design-to-code) | 사람 간 논의·합의 → 개인 UX 초안 공유 → 구현 → QA 보완 → 사람의 검토 → 다음 담당자 인계 | 선택에 따라 산출물이 달라지는 로컬 시연. 실제 모델·외부 Agent 연결·영속 저장 없음 |
+| [`/demo/pm-coordination`](http://localhost:3000/demo/pm-coordination) | Pages 앱의 이야기 방향 비교, 사람의 합의, 화면 제작과 범위를 제한한 수정 | 고정 시나리오와 규칙 기반 입력 처리. 실제 모델 호출 없음 |
+| [`/demo/marketing-campaign`](http://localhost:3000/demo/marketing-campaign) | S27 마케팅 팀의 미팅·메신저·허브를 오가며 결정·근거·산출물 버전 연결 | 발표용 스크립트 시연. 미팅·Slack·녹스 연동은 시뮬레이션 |
 | [`/`](http://localhost:3000/) | 자유 목표 입력과 준비된 시나리오, 채널 대화, 작업·결정 요청·첨부·로드맵 | SQLite와 서버 런타임을 사용하는 앱. 환경 설정에 따라 실제 PM·worker 또는 `fake` 실행 |
 
-`/handoff`에서는 로그인 복구 방식과 이메일 가리기를 선택하고, 두 사람의 합의 뒤 각자의 Agent 작업을 시작합니다. 초안은 **팀에 공유**해야 다음 작업의 입력이 됩니다. 포커스 복귀를 빠뜨린 구현은 QA 보완 요청으로 돌아오며, 최종 검토자가 승인해야 다음 담당자에게 이어집니다. 이 화면의 QA는 선택한 시연 상태를 대조하는 예시이고, 실제 코드나 브라우저를 실행하는 검증기가 아닙니다. 새로고침하면 시연 상태가 초기화됩니다.
+기존 주소는 `/demo` → `/demo/pm-coordination`, `/s27` → `/demo/marketing-campaign`, `/handoff` → `/demo/design-to-code`로 리다이렉트됩니다.
+
+`/demo/design-to-code`에서는 로그인 복구 방식과 이메일 가리기를 선택하고, 두 사람의 합의 뒤 각자의 Agent 작업을 시작합니다. 초안은 **팀에 공유**해야 다음 작업의 입력이 됩니다. 포커스 복귀를 빠뜨린 구현은 QA 보완 요청으로 돌아오며, 최종 검토자가 승인해야 다음 담당자에게 이어집니다. 이 화면의 QA는 선택한 시연 상태를 대조하는 예시이고, 실제 코드나 브라우저를 실행하는 검증기가 아닙니다. 새로고침하면 시연 상태가 초기화됩니다.
 
 ## 현재 구현
 
@@ -39,7 +41,7 @@ cd app
 npm ci
 ```
 
-모델 호출 없이 `/` 앱을 둘러보려면 PM과 worker를 **둘 다** `fake`로 설정합니다. 기본 worker는 `fake`이지만 기본 PM은 `api`이므로 worker 설정만으로는 모델 호출을 막을 수 없습니다. `/handoff`, `/demo`, `/s27`은 이 서버 런타임을 사용하지 않는 별도 로컬 시연입니다.
+모델 호출 없이 `/` 앱을 둘러보려면 PM과 worker를 **둘 다** `fake`로 설정합니다. 기본 worker는 `fake`이지만 기본 PM은 `api`이므로 worker 설정만으로는 모델 호출을 막을 수 없습니다. `/demo/design-to-code`, `/demo/pm-coordination`, `/demo/marketing-campaign`은 이 서버 런타임을 사용하지 않는 별도 로컬 시연입니다.
 
 PowerShell:
 
@@ -97,14 +99,14 @@ npm run start -w @ensemble/web
 
 이어지는 명령은 타입 검사와 웹 빌드이며, 마지막 명령은 빌드 후 서버를 실행합니다. 위 런타임 환경 설정을 동일하게 적용해야 합니다. 과거 테스트·벤치마크 증거는 현재 트리에서 제거했으며, 과거 테스트 수치는 현재 검증 결과가 아닙니다. `live:pm`과 `demo:full`은 실제 provider를 호출할 수 있는 관찰 스크립트입니다. `demo:full`의 실행기는 [app/demo/runtime/run.ts](app/demo/runtime/run.ts)로 이동했습니다. 특정 로컬 환경 파일 경로가 들어 있으므로 일반 설치 확인 명령으로 사용하지 않습니다. 실행 조건은 [런타임 시연 안내](app/demo/runtime/README.md)를 참고하세요.
 
-현재 검사 실행과 로컬 결과 관리 방법은 [QA 안내](docs/qa/README.md), `/handoff`의 동작 범위와 브라우저 검사 위치는 [인계 시연 안내](app/demo/scripted/handoff/README.md)를 참고하세요.
+현재 검사 실행과 로컬 결과 관리 방법은 [QA 안내](docs/qa/README.md), `/demo/design-to-code`의 동작 범위와 브라우저 검사 위치는 [인계 시연 안내](app/demo/scripted/design-to-code/README.md)를 참고하세요.
 
 ## 저장소 구조
 
 | 경로 | 역할 |
 |---|---|
 | `app/apps/web` | 제품 Next.js UI·API와 기존 URL의 라우트 연결부 |
-| `app/demo/scripted` | `coordination`, `s27`, `handoff` 시연의 화면·상태·이미지·설명 |
+| `app/demo/scripted` | `pm-coordination`, `marketing-campaign`, `design-to-code` 시연의 화면·상태·이미지·설명 |
 | `app/demo/runtime` | 실제 앱을 사용하는 시연 안내와 관찰 실행기 |
 | `app/packages/core`, `store` | 이벤트·작업·결정 모델과 상태 계산, 메모리·SQLite 저장 |
 | `app/packages/orchestrator` | PM의 계획·조율·배정·인계·검증 흐름 |
@@ -126,8 +128,8 @@ npm run start -w @ensemble/web
 | PM 행동과 결정 이유 | [PM 원칙](docs/pm-principles.md), [결정 기록](docs/pm-agent-decisions.md) |
 | 검사 실행과 범위 | [QA 안내](docs/qa/README.md), [필수 회귀 검사](docs/qa/essential-regressions.md) |
 | 실제 앱의 자유형식·시나리오 실행 | [런타임 시연](app/demo/runtime/README.md) |
-| PM 조율 시연 | [Pages 조율 데모](app/demo/scripted/coordination/README.md) |
-| S27 마케팅 발표 시연 | [발표 문서](app/demo/scripted/s27/README.md), [스토리 브리프](app/demo/scripted/s27/brief.md) |
-| 사람·개인 Agent·PM 협업 시연 | [인계 데모](app/demo/scripted/handoff/README.md) |
+| PM 조율 시연 | [Pages 조율 데모](app/demo/scripted/pm-coordination/README.md) |
+| S27 마케팅 발표 시연 | [발표 문서](app/demo/scripted/marketing-campaign/README.md), [스토리 브리프](app/demo/scripted/marketing-campaign/brief.md) |
+| 사람·개인 Agent·PM 협업 시연 | [인계 데모](app/demo/scripted/design-to-code/README.md) |
 | 제품 발표와 참고 조사 | [PM·Agent 팀 발표](docs/presentations/ensemble-pm-agent-team.pptx), [Argo 구조 조사](docs/argo/structure.md) |
 | 디자인·영상 자료 | [DESIGN](DESIGN.md), [MOTION](MOTION.md), [Remotion](motion-remotion/README.md) |

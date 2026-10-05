@@ -1,2 +1,5 @@
-import { FixedDemo } from '../../../../demo/scripted/coordination/FixedDemo';
-export default function DemoPage() { return <FixedDemo />; }
+import { permanentRedirect } from 'next/navigation';
+
+export default function Page() {
+  permanentRedirect('/demo/pm-coordination');
+}
