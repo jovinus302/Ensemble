@@ -9,6 +9,10 @@ export interface TaskSpec {
   parentId?: Id;
 }
 export type Priority = "high" | "normal" | "low";
+export interface ResultVia { channel: "ide" | "slack" | "knox" | "cli" | "ensemble"; agent?: string }
+export type ExternalResultArtifact =
+  | { kind: "url"; name: string; uri: string }
+  | { kind: "file"; name: string; mimeType: string; contentBase64: string };
 export type RoutingReason = "agent_capable" | "needs_decision" | "needs_human_access" | "needs_human_judgement" | "no_capable_agent";
 export interface TaskRouting { executor: "agent" | "human"; reason: RoutingReason; note: string }
 /** Context the PM gathered from the conversation. People never write it. */
@@ -69,7 +73,7 @@ export interface EventPayloads {
   estimate_updated: { taskId: Id; hours: { min: number; max: number }; source: "human" | "pm" | "measured" };
   task_start_reserved: { taskId: Id; specVersion: number; trigger: Id };
   task_started: { taskId: Id; turnId?: Id };
-  result_submitted: { taskId: Id; resultId: Id; planVersion: number; summary: string; artifactIds: Id[]; artifactPaths?: Record<Id, string>; limitations?: string[] };
+  result_submitted: { taskId: Id; resultId: Id; planVersion: number; summary: string; artifactIds: Id[]; artifactPaths?: Record<Id, string>; limitations?: string[]; via?: ResultVia };
   validation_started: ValidationBinding & { attemptId: Id };
   validation_finished: ValidationEvidence;
   validation_cancelled: { taskId: Id; attemptId: Id };

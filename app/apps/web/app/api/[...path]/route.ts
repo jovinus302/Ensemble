@@ -1,10 +1,55 @@
 import { getRuntime, RuntimeError, type Upload } from '../../../lib/runtime';
+import { TaskResolutionError } from '@ensemble/orchestrator';
+import type { ExternalResultArtifact, ResultVia } from '@ensemble/core';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 type Context = { params: Promise<{ path: string[] }> };
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 class InputError extends Error {}
+function memberAuthorized(request: Request, memberId: string): boolean {
+  const token = /^Bearer (\S+)$/i.exec(request.headers.get('authorization') ?? '')?.[1];
+  if (!token) return false;
+  const configured = process.env.ENSEMBLE_MEMBER_TOKENS;
+  if (configured === undefined) return token === 'dev-token';
+  try {
+    const tokens: unknown = JSON.parse(configured);
+    return !!tokens && typeof tokens === 'object' && !Array.isArray(tokens)
+      && Object.hasOwn(tokens, memberId) && (tokens as Record<string, unknown>)[memberId] === token;
+  } catch { return false; }
+}
+function resultArtifacts(value: unknown): ExternalResultArtifact[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new InputError('Invalid artifacts.');
+  return value.map(a => {
+    if (!a || typeof a !== 'object') throw new InputError('Invalid artifact.');
+    if (a.kind === 'url') return { kind: 'url', name: text(a.name, 'name'), uri: text(a.uri, 'uri') };
+    if (a.kind === 'file') return { kind: 'file', ...uploads([a])[0]! };
+    throw new InputError('Invalid artifact kind.');
+  });
+}
+function resultVia(value: unknown): ResultVia | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InputError('Invalid result source.');
+  const via = value as Record<string, unknown>;
+  if (!['ide', 'slack', 'knox', 'cli', 'ensemble'].includes(via.channel as string) || (via.agent !== undefined && typeof via.agent !== 'string')) throw new InputError('Invalid result source.');
+  return { channel: via.channel as ResultVia['channel'], ...(typeof via.agent === 'string' ? { agent: via.agent } : {}) };
+}
+
+async function submitResult(request: Request, taskId: string) {
+  let parsed: unknown;
+  try { parsed = await request.json(); } catch { throw new InputError('Invalid JSON body.'); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new InputError('Invalid result.');
+  const body = parsed as Record<string, unknown>, memberId = text(body.memberId, 'memberId');
+  if (!memberAuthorized(request, memberId)) return json({ error: { code: 'unauthorized', message: 'Invalid member token.' } }, 401);
+  const input = { memberId, summary: text(body.summary, 'summary'), artifacts: resultArtifacts(body.artifacts), via: resultVia(body.via) };
+  const app = getRuntime();
+  try { return json(await app.run(() => app.pm.submitExternalResult(taskId, input))); }
+  catch (error) {
+    if (error instanceof TaskResolutionError) return json({ error: { code: error.code, message: error.message } }, error.status);
+    throw error;
+  }
+}
 function text(value: unknown, _field: string): string { if (typeof value !== 'string' || !value.trim()) throw new InputError('필수 입력 항목이 비어 있습니다.'); return value; }
 function uploads(value: unknown): Upload[] {
   if (value === undefined) return [];
@@ -56,6 +101,7 @@ export async function GET(request: Request, context: Context) {
 export async function POST(request: Request, context: Context) {
   try {
     const parts = (await context.params).path, route = parts.join('/');
+    if (parts[0] === 'tasks' && parts.length === 3 && parts[2] === 'result') return await submitResult(request, parts[1]!);
     const resolving = parts[0] === 'tasks' && parts.length === 3 && parts[2] === 'resolve';
     const commenting = parts[0] === 'tasks' && parts.length === 3 && parts[2] === 'comments';
     const deciding = parts[0] === 'decisions' && parts.length === 2;

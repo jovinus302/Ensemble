@@ -16,6 +16,9 @@ import { decideRequest, type DecideExtra, type DecisionFlowOptions } from './dec
 import { runSweep } from './sweep.ts';
 import { runDigest } from './digest.ts';
 import type { ValidationOptions } from './validation.ts';
+import type { ExternalResultArtifact, ResultVia } from '@ensemble/core';
+
+export interface ExternalResultInput { memberId: string; summary: string; artifacts?: ExternalResultArtifact[]; via?: ResultVia }
 
 export interface MessageAttachment { name: string; mimeType: string; content: string; contentBase64?: string; taskId?: string }
 export interface ProjectManagerOptions extends EventContext, ValidationOptions {
@@ -110,6 +113,32 @@ export class ProjectManager {
     return next;
   }
   private read() { return this.options.store.read({ projectId: this.context.projectId }); }
+  /** Deterministic intake; authorization/state checks share the PM queue with review and plan changes. */
+  submitExternalResult(taskId: string, input: ExternalResultInput): Promise<{ ok: true; taskId: string; resultIndex: number }> {
+    return this.enqueue(async () => {
+      const state = project(await this.read());
+      const task = state.tasks.get(taskId);
+      if (!task) throw new TaskResolutionError('not_found', 'Task not found.');
+      if (task.spec.assignee !== input.memberId) throw new TaskResolutionError('forbidden', 'Only the task assignee can submit a result.');
+      if (task.status !== 'ready' && task.status !== 'running') throw new TaskResolutionError('invalid_state', 'Task must be ready or running.');
+      const actor = { kind: state.members.get(input.memberId)?.kind ?? 'human', id: input.memberId };
+      const resultId = `result:${randomUUID()}`, resultIndex = task.results.length;
+      const artifacts = input.artifacts ?? [], artifactIds = artifacts.map(() => randomUUID());
+      const events: NewLedgerEvent[] = artifacts.map((artifact, i) => ({
+        ...this.context, actor, type: 'attachment_recorded', payload: {
+          attachmentId: artifactIds[i]!, taskId, name: artifact.name,
+          mimeType: artifact.kind === 'url' ? 'text/uri-list' : artifact.mimeType,
+          uri: artifact.kind === 'url' ? artifact.uri : `data:${artifact.mimeType};base64,${artifact.contentBase64}`,
+        },
+      }));
+      if (task.status === 'ready') events.push({ ...this.context, actor, type: 'task_started', payload: { taskId } });
+      events.push({ ...this.context, actor, type: 'result_submitted', idempotencyKey: resultId,
+        payload: { taskId, resultId, planVersion: state.plan!.version, summary: input.summary, artifactIds, ...(input.via ? { via: input.via } : {}) } });
+      await this.options.store.append(events);
+      await this.review(taskId, resultId);
+      return { ok: true, taskId, resultIndex };
+    });
+  }
   startFreeProject(goal: string, deadline?: string) {
     return this.enqueue(() => startFreeProject({ ...this.options, context: this.context }, goal, deadline));
   }
@@ -289,6 +318,7 @@ export class ProjectManager {
       if (event.type !== 'attachment_recorded' || !result.artifactIds.includes(event.payload.attachmentId)) continue;
       const match = /^data:[^,]*;base64,(.*)$/s.exec(event.payload.uri);
       if (match) contents[event.payload.attachmentId] = Buffer.from(match[1]!, 'base64').toString('utf8');
+      else if (event.payload.mimeType === 'text/uri-list') contents[event.payload.attachmentId] = event.payload.uri;
     }
     return contents;
   }
