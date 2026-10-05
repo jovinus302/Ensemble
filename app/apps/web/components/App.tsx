@@ -17,8 +17,10 @@ import { WorkItemDetail } from "./WorkItemDetail";
 import { WorkPanel, type PanelTab } from "./WorkPanel";
 import { decisionTotal, stallGuidance } from "./work-view";
 
+/** 팀 오케스트레이션 시연의 시나리오 이름(서버 teamScenarioStatus와 같다). */
+const TEAM_SCENARIO_NAME = "팀 오케스트레이션";
 const REPLACE_WARNING = "진행 중인 프로젝트는 보관되고 화면에서 사라집니다.";
-type Pending = { kind: "scenario" } | { kind: "free"; goal: string; deadline?: string };
+type Pending = { kind: "scenario"; name?: "team-orchestration" } | { kind: "free"; goal: string; deadline?: string };
 /** 좁은 화면의 탭. 넓은 화면은 채널과 작업 패널을 함께 보이므로 이 값은 CSS가 좁은 화면에서만 쓴다. */
 type MobileView = "channel" | "work" | "decisions";
 
@@ -71,7 +73,7 @@ export function App() {
   /** 전환을 실행한다. 서버가 진행 중 프로젝트를 알려 오면 확인 대화상자를 연다. */
   const run = async (action: Pending, confirmReplace: boolean) => {
     const result = action.kind === "scenario"
-      ? await actions.startScenario("scene-1-3", confirmReplace)
+      ? await actions.startScenario(action.name ?? "scene-1-3", confirmReplace)
       : await actions.startFree(action.goal, action.deadline, confirmReplace);
     if (!result.ok && result.code === "project_exists" && !confirmReplace) { setConfirm({ action, message: result.message }); return; }
     if (result.ok && action.kind === "free") setFreeForm(false);
@@ -84,6 +86,7 @@ export function App() {
   const activity = vm.activity;
   const stepBlocked: { label: string; reason: string } | null =
     stepping ? { label: "진행 중…", reason: "요청을 보내는 중이에요." }
+    : vm.scenario?.nextLine?.external ? { label: "Ensemble 밖에서 진행", reason: "다음 단계는 팀원의 개인 Agent가 Ensemble 밖에서 진행해요. 결과가 들어오면 PM이 이어받아요." }
     : activity?.stalled ? { label: "멈춤", reason: stallGuidance(activity.stalled, true) }
     : activity && (activity.kind === "pm_thinking" || activity.kind === "scenario_waiting") ? { label: "진행 중…", reason: `${activity.label} — 끝나면 다음 발언을 보낼 수 있어요.` }
     : !activity && vm.busy ? { label: "진행 중…", reason: "PM·Agent가 처리 중이에요." }
@@ -127,7 +130,8 @@ export function App() {
         <div id="topbar-controls" className={`topbar-controls${controlsOpen ? ' expanded' : ''}`}>
           <button type="button" className="btn-tonal" onClick={() => setArchiveOpen(true)}>보관함</button>
           <div className="segmented" role="group" aria-label="모드">
-            <button type="button" aria-pressed={vm.mode === "scenario" && !freeForm} disabled={pending} title={pending ? "요청을 처리하는 중이에요" : undefined} onClick={() => { setFreeForm(false); void request({ kind: "scenario" }); }}>시나리오</button>
+            <button type="button" aria-pressed={vm.mode === "scenario" && !freeForm && vm.scenario?.name !== TEAM_SCENARIO_NAME} disabled={pending} title={pending ? "요청을 처리하는 중이에요" : undefined} onClick={() => { setFreeForm(false); void request({ kind: "scenario" }); }}>시나리오</button>
+            <button type="button" aria-pressed={vm.mode === "scenario" && !freeForm && vm.scenario?.name === TEAM_SCENARIO_NAME} disabled={pending} title={pending ? "요청을 처리하는 중이에요" : "사람과 Agent가 섞인 팀 시연: 개인 Agent의 결과가 PM을 거쳐 다음 Agent에게 이어져요"} onClick={() => { setFreeForm(false); void request({ kind: "scenario", name: "team-orchestration" }); }}>팀 시연</button>
             <button type="button" aria-pressed={vm.mode === "free" || freeForm} disabled={pending} title={pending ? "요청을 처리하는 중이에요" : undefined} onClick={() => setFreeForm(true)}>자유형식</button>
           </div>
           <label className="me-select">
@@ -191,12 +195,12 @@ export function App() {
                 ) : (
                   <>
                     <div className="next-line">
-                      <span className="muted small">{sceneLabel(vm.scenario.name)} · 다음 발언 · {vm.scenario.nextLine?.authorName ?? "—"}{vm.scenario.nextLine?.hasAttachment ? " · 📎 첨부" : ""}</span>
+                      <span className="muted small">{sceneLabel(vm.scenario.name)} · {vm.scenario.nextLine?.external ? "다음 단계" : "다음 발언"} · {vm.scenario.nextLine?.authorName ?? "—"}{vm.scenario.nextLine?.hasAttachment ? " · 📎 첨부" : ""}</span>
                       <span className="next-text" title={vm.scenario.nextLine?.text}>{vm.scenario.nextLine?.text ?? "남은 발언이 없어요"}</span>
                     </div>
                     <div className="next-action">
                       <button type="button" className="btn-tonal" disabled={!!stepBlocked || !vm.scenario.nextLine} aria-describedby={stepBlocked ? "next-reason" : undefined} onClick={event => { if (event.detail < 2) void stepNext(); }}>
-                        {stepBlocked?.label ?? "다음 발언"}
+                        {stepBlocked?.label ?? (vm.scenario.name === TEAM_SCENARIO_NAME ? "다음 단계" : "다음 발언")}
                       </button>
                       {stepBlocked && <span id="next-reason" className="next-reason">{stepBlocked.reason}</span>}
                     </div>

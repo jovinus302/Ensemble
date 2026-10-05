@@ -155,6 +155,16 @@ button:disabled { opacity: .45; cursor: default; }
 .badge-ai { background: var(--ens-tertiary-container); color: var(--ens-on-tertiary-container); }
 .badge-pm { background: var(--ens-primary-container); color: var(--ens-on-primary-container); }
 .badge-demo { flex: none; background: var(--ens-warning-container); color: var(--ens-on-surface); }
+/* 팀 오케스트레이션: 담당 종류 배지, 결과 출처(via)·링크, 자동 인계 */
+.badge-kind { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+.badge-kind-agent { background: var(--ens-tertiary-container); color: var(--ens-on-tertiary-container); }
+.badge-kind-human { background: var(--ens-secondary-container); color: var(--ens-on-secondary-container); }
+.chip-tiny { margin-left: 6px; padding: 0 6px; font: var(--ens-type-label-sm); }
+.result-source { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.result-source-compact { margin-top: 2px; }
+.via-chip { display: inline-flex; align-items: center; gap: 4px; font: var(--ens-type-label-sm); padding: 1px 8px; border-radius: var(--ens-radius-full); background: var(--ens-primary-container); color: var(--ens-on-primary-container); }
+.result-link { font: var(--ens-type-label-sm); color: var(--ens-primary); text-decoration: underline; word-break: break-all; }
+.autostart-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 
 .card {
   background: var(--ens-surface); border-radius: var(--ens-radius-xl); box-shadow: var(--ens-elev-1);

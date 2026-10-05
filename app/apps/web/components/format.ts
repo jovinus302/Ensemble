@@ -125,6 +125,6 @@ export function koreanOr(message: unknown, fallback: string): string {
 
 /** 시나리오 이름에서 내부 키를 떼고 "장면 N"만 남긴다. */
 export function sceneLabel(name: string): string {
-  return /장면\s*\d+/.exec(name)?.[0] ?? "시나리오";
+  return /장면\s*\d+/.exec(name)?.[0] ?? (name.trim() || "시나리오");
 }
 export const attachmentAction = (name: string): string => /\.html?$/i.test(name) ? '다운로드' : '열기';

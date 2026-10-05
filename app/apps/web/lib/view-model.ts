@@ -15,14 +15,31 @@ export interface VmMessage {
   record?: VmRecord;
   /** 이 발언이 안내하는 결정 카드. 카드가 보이는 사람에게는 발언 대신 카드를 그 자리에 보여 준다. cards와 decisionCards 양쪽에서 찾는다. */
   cardId?: string;
+  /** PM이 선행 작업 확인 뒤 다음 작업을 자동으로 맡긴 기록(원장에서 파생한 줄). */
+  autoStart?: VmAutoStart;
+  /** 사람이 Ensemble 밖(자기 Agent·IDE 등)에서 낸 결과가 들어온 기록. via가 있는 결과에만 붙는다. */
+  result?: VmResultSource & { taskId: string; taskTitle: string };
   /** 이 발언이 언급한 작업(작업 이름 칩). threadId가 "task:<id>"면 그 작업의 댓글이다. */
   taskIds?: string[];
   /** 화면 전용: 서버 기록 전(보내는 중) 내 메시지. 서버는 채우지 않는다. */
   local?: "sending";
 }
+/**
+ * 결과가 들어온 경로(W1 계약의 `via`)와 결과에 붙은 링크. via가 없으면 화면은 출처 줄을 그리지 않는다.
+ * label: "IDE · 김상성의 Coding Agent"처럼 사람이 읽는 출처.
+ */
+export interface VmResultSource {
+  summary: string;
+  via?: { channel: "ide" | "slack" | "knox" | "cli" | "ensemble"; agent?: string; label: string };
+  links: { name: string; url: string }[];
+}
+/** 선행 작업 확인으로 다음 작업이 자동으로 시작된 사실(채널·활동 기록에 한 줄로 보인다). */
+export interface VmAutoStart { fromTaskId: string; fromTitle: string; toTaskId: string; toTitle: string; agentName: string; viaLabel?: string }
 export interface VmPlanTask {
   exclusions?: string[]; limits?: string[];
   id: string; title: string; assigneeName: string; dependsOn: string[];
+  /** 담당이 사람인지 Agent인지(배지). 없으면 배지를 그리지 않는다. */
+  assigneeKind?: "human" | "agent";
   /** 하위 작업이면 상위 작업 id(같은 계획 안). 계획 승인 카드는 이 값으로 트리를 그린다. */
   parentId?: string;
   /** 추정 작업 시간(최소~최대). */
@@ -93,6 +110,10 @@ export interface VmWorkItem {
   origin?: { createdByName: string; messageIds: string[] };
   handoffConditions?: string[]; exclusions?: string[]; limits?: string[];
   resolution?: VmRoadmapTask['resolution'];
+  /** 가장 최근 결과의 요약·출처·링크. */
+  latestResult?: VmResultSource;
+  /** 선행 작업 확인으로 자동 시작됐으면 그 사실. */
+  autoStartedBy?: VmAutoStart;
 }
 /** 작업 활동 기록 한 줄(원장에서 파생). */
 export interface VmActivityItem {
@@ -109,6 +130,8 @@ export interface VmRoadmapTask {
   exclusions?: string[]; limits?: string[];
   resolution?: { taskId: string; actions: ('accept' | 'retry' | 'recheck')[] };
   stopped?: boolean;
+  assigneeKind?: "human" | "agent";
+  latestResult?: VmResultSource;
   id: string; title: string; assigneeName: string; status: string; startDay?: number; endDayMin?: number; endDayMax?: number;
   hours?: { min: number; max: number }; handoffConditions?: string[];
 }
@@ -155,7 +178,8 @@ export interface ViewModel {
   work?: VmWork;
   roadmap: VmRoadmap;
   pmLog: VmPmJudgement[];           // PM의 말하기/침묵 판단 기록(토글로 보기)
-  scenario?: { name: string; nextLine?: { authorName: string; text: string; hasAttachment: boolean }; done: boolean };
+  /** nextLine.external: 다음 단계가 Ensemble 밖에서 일어난다(예: 개인 Coding Agent의 결과 전송). "다음" 버튼은 막고 안내만 보인다. */
+  scenario?: { name: string; nextLine?: { authorName: string; text: string; hasAttachment: boolean; external?: boolean }; done: boolean };
   busy: boolean;                    // PM/Agent 처리 중 표시(activity가 없을 때의 대체)
   activity?: VmActivity;
 }

@@ -5,6 +5,7 @@ import type { VmCard, VmDecisionCard, VmMember, VmPlanTask } from "../lib/view-m
 import { DecisionRequestCard, type DecideRequest } from "./DecisionRequestCard";
 import { formatDateRange, formatHourRange } from "./format";
 import { ScopeLists } from './TaskResolution';
+import { AssigneeKindBadge } from "./TeamBadges";
 import { planTaskTree, type PlanTaskNode } from "./work-view";
 
 const CHANGE_KIND: Record<string, string> = {
@@ -31,7 +32,7 @@ function PlanTaskList({ nodes, all, nested }: { nodes: PlanTaskNode[]; all: VmPl
         <li key={t.id} className={`plan-task${nested ? " plan-task-child" : ""}`}>
           <div className="plan-task-head">
             <span className="task-title">{t.title}</span>
-            <span className="muted small">{t.assigneeName}{children.length > 0 ? ` · 하위 작업 ${children.length}개` : ""}</span>
+            <span className="muted small">{t.assigneeName} <AssigneeKindBadge kind={t.assigneeKind} />{children.length > 0 ? ` · 하위 작업 ${children.length}개` : ""}</span>
           </div>
           <div className="plan-task-meta small">
             <span>추정 <span className="num">{t.hours ? formatHourRange(t.hours.min, t.hours.max) : "—"}</span></span>
