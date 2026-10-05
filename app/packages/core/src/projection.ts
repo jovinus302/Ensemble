@@ -11,7 +11,7 @@ export interface TaskState {
   spec: TaskSpec;
   specVersion: number;
   status: TaskStatus;
-  results: { resultId: Id; planVersion: number }[];
+  results: { resultId: Id; planVersion: number; via?: EventPayloads['result_submitted']['via']; artifacts?: EventPayloads['attachment_recorded'][] }[];
   checkedResultId?: Id;
   reviewFailedResultId?: Id;
   /** Host verification of the current submitted snapshot; never a worker self-check. */
@@ -70,6 +70,7 @@ export function wasNotified(state: ProjectState, changeId: Id, recipientId: Id):
 }
 /** Replay ledger order without retaining mutable references to input payloads. */
 export function project(events: readonly LedgerEvent[]): ProjectState {
+  const attachments = new Map<Id, EventPayloads['attachment_recorded']>();
   const state: ProjectState = {
     lastSeq: 0, members: new Map(), tasks: new Map(), availability: new Map(), availabilityOverrides: new Map(),
     estimates: new Map(), activeTurn: new Map(), sessions: new Map(), reservedStartKeys: new Set(),
@@ -96,6 +97,7 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
     }
     if (isAutomationAction(event)) state.automation.actionsSinceResume++;
     switch (event.type) {
+      case 'attachment_recorded': attachments.set(event.payload.attachmentId, event.payload); break;
       case "member_joined": state.members.set(event.payload.memberId, event.payload); break;
       case "goal_set":
         for (const task of state.tasks.values()) if (task.validation) task.validation.status = 'expired';
@@ -214,7 +216,10 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
           case "result_submitted":
             delete task.reviewFailedResultId;
             delete task.validation;
-            task.results.push({ resultId: event.payload.resultId, planVersion: event.payload.planVersion });
+            task.results.push({ resultId: event.payload.resultId, planVersion: event.payload.planVersion,
+              ...(event.payload.via ? { via: event.payload.via } : {}),
+              ...(event.payload.artifactIds.length ? { artifacts: event.payload.artifactIds.flatMap(id => attachments.has(id) ? [attachments.get(id)!] : []) } : {}),
+            });
             task.status = "submitted"; break;
           case "task_checked":
             if (task.status === "submitted" && task.results.some((r) => r.resultId === event.payload.resultId) && !isStaleResult(task, event.payload.resultId)) {
