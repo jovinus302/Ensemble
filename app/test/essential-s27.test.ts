@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import test from 'node:test';
-import { S27, initialS27, reduceS27, traceNode, viewS27, type S27Scenario } from '../apps/web/lib/s27/index.ts';
+import { S27, initialS27, reduceS27, traceNode, viewS27, type S27Scenario } from '../demo/scripted/s27/index.ts';
 
 const at = (beat: number) => reduceS27(initialS27(), { type: 'goto', beat });
 const unique = (ids: string[]) => assert.equal(new Set(ids).size, ids.length);

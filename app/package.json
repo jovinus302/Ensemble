@@ -12,7 +12,7 @@
     "test": "node --import tsx --test --test-timeout=10000 test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json && npm run typecheck -w @ensemble/web",
     "live:pm": "tsx packages/orchestrator/scripts/live-coordination.ts",
-    "demo:full": "tsx scripts/demo-full.ts"
+    "demo:full": "tsx demo/runtime/run.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

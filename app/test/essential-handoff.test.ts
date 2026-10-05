@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { handoffReducer as reduce, initialHandoff, type State, type Action, type Choice } from '../apps/web/lib/team-handoff.ts';
+import { handoffReducer as reduce, initialHandoff, type State, type Action, type Choice } from '../demo/scripted/handoff/team-handoff.ts';
 const event = (s: State, type: Action['type'], extra: Partial<Action> = {}): Action => ({ type, phase: s.phase, run: s.run, version: s.version, ...extra });
 const act = (s: State, type: Action['type'], extra: Partial<Action> = {}) => reduce(s, event(s, type, extra));
 const ready = (choice: Choice = 'resend') => act(act(act(initialHandoff(), 'propose', { choice }), 'agree-ux'), 'agree-dev');

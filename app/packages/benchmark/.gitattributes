@@ -1,2 +1,0 @@
-# Preserve byte-level hashes of observed source snapshots on Windows and Linux.
-evidence/approved-pilot/artifacts/** -text -whitespace
