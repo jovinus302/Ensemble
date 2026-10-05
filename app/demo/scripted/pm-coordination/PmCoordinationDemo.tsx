@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { AGREE, CHANGE, DISCUSS, demoReducer, initialDemo, type Speaker, type Phase, type PendingCoordination, type PendingChoice } from './fixed-demo';
-import './fixed-demo.css';
+import { AGREE, CHANGE, DISCUSS, demoReducer, initialDemo, type Speaker, type Phase, type PendingCoordination, type PendingChoice } from './pm-coordination';
+import './pm-coordination.css';
 
 const people: { id: Speaker; name: string; role: string; initials: string; kind: string }[] = [
   { id: '서연', name: '김서연', role: '사람 · 기획 / 최종 결정', initials: '서', kind: 'human' },
@@ -11,7 +11,7 @@ const people: { id: Speaker; name: string; role: string; initials: string; kind:
   { id: 'UI', name: 'UI Agent', role: '에이전트 · 화면 구성', initials: 'UI', kind: 'agent' },
   { id: 'PM', name: 'Ensemble', role: 'PM 에이전트 · 조율 / 확인', initials: 'E', kind: 'pm' },
 ];
-export function FixedDemo() {
+export function PmCoordinationDemo() {
   const [state, dispatch] = useReducer(demoReducer, undefined, initialDemo);
   const [draft, setDraft] = useState('');
   const [format, setFormat] = useState('동화');
@@ -35,7 +35,7 @@ export function FixedDemo() {
   useEffect(() => { end.current?.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }, [state.messages.length]);
   useEffect(() => { if (revision === 2 && format === '노래') setFormat('동화'); }, [revision, format]);
   return <main className="fd" data-phase={phase}>
-    <header className="fd-top"><a className="fd-brand" href="/demo"><i />ensemble</a><nav aria-label="시연 단계">{['Connect', 'Align', 'Deliver', 'Tuning & Loop'].map((label, i) => <span key={label} aria-current={i === step ? 'step' : undefined}>{label}</span>)}</nav><div className="fd-controls"><span className="fd-demo-label">SCRIPTED DEMO</span><button disabled={!state.history.length} onClick={() => dispatch({ type: 'back' })}>이전 단계</button><button onClick={() => dispatch({ type: 'reset' })}>처음부터</button><a href="/">실제 작업 화면 ↗</a></div></header>
+    <header className="fd-top"><a className="fd-brand" href="/demo/pm-coordination"><i />ensemble</a><nav aria-label="시연 단계">{['Connect', 'Align', 'Deliver', 'Tuning & Loop'].map((label, i) => <span key={label} aria-current={i === step ? 'step' : undefined}>{label}</span>)}</nav><div className="fd-controls"><span className="fd-demo-label">SCRIPTED DEMO</span><button disabled={!state.history.length} onClick={() => dispatch({ type: 'back' })}>이전 단계</button><button onClick={() => dispatch({ type: 'reset' })}>처음부터</button><a href="/">실제 작업 화면 ↗</a></div></header>
     <div className="fd-banner">고정 시나리오 · 실제 모델 호출 / 외부 Figma·저장소 연동 없음 <span>약 3분 발표 구성 · 측정 성능 아님</span></div>
     <div className="fd-layout">
       <aside className="fd-sidebar"><div className="fd-project-icon">Pg</div><h1>Pages ·<br />함께 만드는 첫 화면</h1><p>사람의 합의를 실행으로</p><div className="fd-label">CHANNELS</div><div className="fd-channel-name"># pages-general</div><div className="fd-label">MEMBERS · 2 HUMANS + 3 AGENTS</div><div className="fd-members">{people.map(p => <div key={p.id} className="fd-member"><span className={`fd-avatar ${p.kind}`}>{p.initials}</span><div><b>{p.name}</b><small>{p.role}</small></div></div>)}</div><div className="fd-sidebar-note">사람은 방향을 결정합니다.<br />PM은 막힌 일을 연결합니다.<br />에이전트는 합의를 구현합니다.</div></aside>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { demoReducer as reduce, initialDemo, type DemoState, type PendingChoice } from '../demo/scripted/coordination/fixed-demo.ts';
+import { demoReducer as reduce, initialDemo, type DemoState, type PendingChoice } from '../demo/scripted/pm-coordination/pm-coordination.ts';
 
 // Local scripted presentation only: no live PM reasoning, providers or rendered-output claims.
 const send = (state: DemoState, text: string) => reduce(state, { type: 'send', phase: state.phase, text });

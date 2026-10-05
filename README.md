@@ -78,4 +78,4 @@ npm run start -w @ensemble/web
 - [데모 안내](app/demo/README.md): `scripted/`의 세 고정 시연과 `runtime/`의 실제 앱 시연 도구
 - [현재 QA 안내](docs/qa/README.md): 실행 가능한 검사와 결과 관리
 
-제품 웹앱은 `app/apps/web`, PM·원장·저장소는 `app/packages`에 있습니다. 데모 전용 코드·이미지·설명은 `app/demo`로 분리했습니다. 기존 `/`, `/demo`, `/s27`, `/handoff` 주소는 유지합니다.
+제품 웹앱은 `app/apps/web`, PM·원장·저장소는 `app/packages`에 있습니다. 데모 전용 코드·이미지·설명은 `app/demo`로 분리했습니다. 실제 앱은 `/`, 스크립트 데모는 `/demo/pm-coordination`, `/demo/marketing-campaign`, `/demo/design-to-code`에서 엽니다. 기존 `/demo`, `/s27`, `/handoff`는 해당 새 주소로 연결됩니다.

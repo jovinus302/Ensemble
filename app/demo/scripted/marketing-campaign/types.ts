@@ -2,7 +2,7 @@
  * S27 marketing demo — shared contract (coordinator-owned; workers read only).
  *
  * Local scripted presentation for issue #62. Nothing here calls a model, Slack, a meeting service
- * or the Ensemble server. Story source: app/demo/scripted/s27/brief.md.
+ * or the Ensemble server. Story source: app/demo/scripted/marketing-campaign/brief.md.
  */
 
 /** Where something happens. `meeting` and `slack` are simulated channels; `hub` is Ensemble itself. */

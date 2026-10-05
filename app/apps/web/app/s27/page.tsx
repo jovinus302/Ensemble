@@ -1,5 +1,5 @@
-import { S27Demo } from '../../../../demo/scripted/s27/S27Demo';
+import { permanentRedirect } from 'next/navigation';
 
-export const metadata = { title: 'S27 데모 · Ensemble' };
-
-export default function S27Page() { return <S27Demo />; }
+export default function Page() {
+  permanentRedirect('/demo/marketing-campaign');
+}

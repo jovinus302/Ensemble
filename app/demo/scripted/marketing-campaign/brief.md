@@ -1,8 +1,8 @@
 # S27 마케팅 데모 — 스토리 브리프
 
-> 현행 연결 확인: 2026-10-05, `main@605521b`. PR #64로 병합된 `/s27`의 브리프다. [세 데모 비교](../../README.md)와 [발표 문서](README.md)를 함께 본다.
+> 현행 연결 확인: 2026-10-05, `main@605521b`. PR #64로 병합된 `/demo/marketing-campaign`의 브리프다. [세 데모 비교](../../README.md)와 [발표 문서](README.md)를 함께 본다.
 
-> 기준: [이슈 #62](https://github.com/jovinus302/Ensemble/issues/62) "10/7 소장님 보고". 이 문서는 데모 시나리오의 단일 원천이다. 코드(`app/demo/scripted/s27/`)와 발표 문서(`app/demo/scripted/s27/README.md`)는 이 브리프를 따른다.
+> 기준: [이슈 #62](https://github.com/jovinus302/Ensemble/issues/62) "10/7 소장님 보고". 이 문서는 데모 시나리오의 단일 원천이다. 코드(`app/demo/scripted/marketing-campaign/`)와 발표 문서(`app/demo/scripted/marketing-campaign/README.md`)는 이 브리프를 따른다.
 > 데모는 **로컬 스크립트형 시연**이다. 모델·Slack·녹스 미팅·Ensemble 서버를 호출하지 않는다. 실제 연동처럼 보이는 모든 화면에는 구현 현황 라벨을 붙인다.
 
 ## 전달할 메시지

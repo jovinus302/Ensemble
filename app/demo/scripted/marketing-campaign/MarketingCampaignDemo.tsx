@@ -11,7 +11,7 @@ import { MeetingPane } from './MeetingPane';
 import { MessengerPane } from './MessengerPane';
 import { TopBar } from './TopBar';
 import { Avatar, S27Context, type S27Ctx } from './shared';
-import './s27.css';
+import './marketing-campaign.css';
 
 const TABS: { surface: Surface; label: string }[] = [
   { surface: 'meeting', label: '미팅' },
@@ -21,7 +21,7 @@ const TABS: { surface: Surface; label: string }[] = [
 
 const humans = S27.actors.filter((a) => a.kind === 'human');
 
-export function S27Demo() {
+export function MarketingCampaignDemo() {
   const [state, dispatch] = useReducer(reduceS27, undefined, initialS27);
   const view = useMemo(() => viewS27(state), [state]);
   const [drawer, setDrawer] = useState(false);
