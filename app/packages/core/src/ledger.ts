@@ -1,5 +1,5 @@
 // Domain core: event ledger types, projections, computeGap, task state machine.
-// No external dependencies. Rules are defined in docs/product-state-model.md.
+// No external dependencies. Rules are defined in docs/work-model.md.
 
 export type Id = string;
 

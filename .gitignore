@@ -12,21 +12,8 @@ dist/
 coverage/
 *.tsbuildinfo
 
-# Local QA outputs; historical evidence is linked by immutable commit in docs/qa/README.md.
+# Local QA output stays outside the tracked documentation.
 .local/
-/docs/qa/**/*.json
-/docs/qa/**/*.png
-/docs/qa/**/*.log
-/docs/qa/**/*.txt
-/docs/qa/**/*.html
-/app/packages/benchmark/evidence/*/artifacts/
-/app/packages/benchmark/evidence/*/live-artifact/
-/app/packages/benchmark/evidence/*/screenshots/
-/app/packages/benchmark/evidence/*/live-screenshots/
-/app/packages/benchmark/evidence/*/reports/
-/app/packages/benchmark/evidence/*/ledgers/
-/app/packages/benchmark/evidence/*/preflight/
-/app/packages/benchmark/evidence/*/*.json
 
 # local runtime data
 app/data/

@@ -2,7 +2,9 @@
 
 Ensemble은 사람과 AI 에이전트의 작업을 한 프로젝트에서 조정하는 로컬 웹 애플리케이션입니다. PM이 목표를 작업으로 나누고, 변경 요청과 의사결정, 결과 검토를 이벤트 기록으로 연결합니다. 제품 방향은 [intent](intent.md), 현재 동작은 [작업 모델](docs/work-model.md)에서 설명합니다.
 
-**문서 확인 기준:** 2026-10-02, `main@c91234a01b2d597a4c452592ff2f58a49fa48acf` ([PR #53 병합](https://github.com/jovinus302/Ensemble/pull/53)). 아래 내용은 이 코드 시점의 설명이며, 과거 계획과 QA 결과에는 각각의 기준 시점이 있습니다.
+최신 문서 지도와 앱·세 데모의 구분은 [docs 안내](docs/README.md)를 참고하세요(2026-10-05, `main@605521b`).
+
+**문서 확인 기준:** 2026-10-05, `main@605521b`의 기능과 데모 분리를 반영했습니다. 제품 의도와 실제 구현, 스크립트 시연을 구분합니다.
 
 ## 현재 구현
 
@@ -13,7 +15,6 @@ Ensemble은 사람과 AI 에이전트의 작업을 한 프로젝트에서 조정
 - 정체 작업 점검과 하루 요약: 실행 중인 서버가 자유 프로젝트를 5분마다 확인하며, 기본 요약 시각은 Asia/Seoul 09:00 이후 하루 한 번입니다. 별도 상시 스케줄러가 아닙니다.
 - 제출 revision에 연결되는 검증·limitations 기록과 judge 전 검증 계약 ([PR #52](https://github.com/jovinus302/Ensemble/pull/52)). 신뢰 검증기는 host의 `ProjectManager` 코드가 `trustedValidator`와 `requireValidation`으로 제공·활성화합니다. 현재 웹 UI나 환경 변수에 이를 켜는 스위치는 없으며, 웹의 모든 작업이 자동으로 build/browser 검증을 받는다는 뜻은 아닙니다.
 
-[Product State 모델](docs/product-state-model.md)은 설계 제안입니다. 현재 이벤트 기반 프로젝트 상태가 그 제안 전체를 구현한 것은 아닙니다. 이 저장소의 로컬 앱·데모·벤치마크를 운영 서비스의 인증·배포 보장으로 해석하지 마세요.
 
 ## 설치와 로컬 실행
 
@@ -68,26 +69,13 @@ npm run build
 npm run start -w @ensemble/web
 ```
 
-`npm test`는 provider 호출 없이 핵심 회귀 시나리오만 실행합니다. 범위와 이유는 [필수 테스트 안내](docs/qa/essential-regressions.md)에 있습니다. 이어지는 명령은 타입 검사와 웹 빌드이며, 마지막 명령은 빌드 후 서버를 실행합니다. 위 런타임 환경 설정을 동일하게 적용해야 합니다. 과거 대규모 테스트·벤치마크 실행기는 복원하지 않았으며, 과거 테스트 수치는 현재 검증 결과가 아닙니다. 남아 있는 `live:*` 관찰 도구는 실제 provider를 호출할 수 있으므로 별도 실행 승인이 필요합니다.
+`npm test`는 provider 호출 없이 핵심 회귀 시나리오만 실행합니다. 범위와 이유는 [필수 테스트 안내](docs/qa/essential-regressions.md)에 있습니다. 이어지는 명령은 타입 검사와 웹 빌드이며, 마지막 명령은 빌드 후 서버를 실행합니다. 위 런타임 환경 설정을 동일하게 적용해야 합니다. 과거 테스트·벤치마크 증거는 현재 트리에서 제거했습니다. 남아 있는 `live:*` 관찰 도구는 실제 provider를 호출할 수 있으므로 별도 실행 승인이 필요합니다.
 
-이 기준 main에 기록된 v4 사전 검증은 **813개 테스트, typecheck, build 통과**입니다. 당시 build의 기존 동적 파일 추적 경고 3건은 남아 있습니다. [당시 검증 기록](https://github.com/jovinus302/Ensemble/blob/cb84ecc2849f8194e0d5d44d22642a5174ef4c4f/app/packages/benchmark/evidence/paired-validation-v4/preflight/code-checks.json)과 [현재 검증 실행 안내](docs/qa/README.md)를 참조하세요.
 
-## 문서 지도와 읽는 순서
+## 문서와 코드 위치
 
-| 순서 / 목적 | 문서 | 성격 |
-|---|---|---|
-| 1. 제품이 해결하려는 문제 | [intent](intent.md) | 제품 방향 |
-| 2. 현재 사용자·PM·worker 흐름 | [작업 모델](docs/work-model.md) | 현재 구현 설명과 동작 원칙 |
-| 3. 구조와 초기 범위 | [MVP 아키텍처](docs/mvp-architecture.md), [MVP 범위](docs/mvp-scope.md) | 초기 기준과 후속 구현 구분 |
-| 4. PM 행동·결정의 근거 | [PM 원칙](docs/pm-principles.md), [PM 계획](docs/pm-agent-plan.md), [결정 기록](docs/pm-agent-decisions.md) | 원칙·계획·시점별 결정 |
-| 5. 아직 설계 중인 모델 | [Product State](docs/product-state-model.md) | 제안, 구현 완료 아님 |
-| 6. 비교 측정 | [벤치마크 안내](app/packages/benchmark/README.md), [v4 결과](app/packages/benchmark/evidence/paired-validation-v4/README.md) | 고정 기준의 실험·재현 자료 |
-| 7. 검증 실행과 과거 증거 | [QA 실행 안내·증거 보관 위치](docs/qa/README.md) | 현재 타입 검사·빌드 안내와 고정 커밋의 역사적 실패·수정 기록 |
-| 8. 화면·영상·외부 조사 | [DESIGN](DESIGN.md), [MOTION](MOTION.md), [Remotion](motion-remotion/README.md), [Argo 비교](docs/argo/ensemble-comparison.md) | 디자인/영상 제안과 조사; 앱 구현과 구분 |
-| 9. 10/7 소장님 보고 데모 ([#62](https://github.com/jovinus302/Ensemble/issues/62)) | [S27 마케팅 데모 발표 문서](docs/demo/s27-marketing-demo.md), [스토리 브리프](docs/demo/s27-brief.md) | `/s27` 로컬 스크립트형 시연; Slack·녹스 연동은 시뮬레이션 |
+- [문서 안내](docs/README.md): 제품 범위·현재 구현·PM 원칙·결정 기록
+- [데모 안내](app/demo/README.md): `scripted/`의 세 고정 시연과 `runtime/`의 실제 앱 시연 도구
+- [현재 QA 안내](docs/qa/README.md): 실행 가능한 검사와 결과 관리
 
-## 비교 결과의 범위
-
-[PR #53](https://github.com/jovinus302/Ensemble/pull/53)에 합쳐진 v4의 8회는 모두 기능 검사를 통과했습니다. 같은 provider·과제의 네 쌍에서 Ensemble의 총시간이 direct보다 길었습니다. **조건당 1회(n=1)**로 일반적 우열을 결론 내릴 수 없으며, 실제 비용과 숨겨진 API 호출 수는 미상입니다. 변경 요구사항의 context hash가 갖는 메타데이터 한계도 [결과 보고서](app/packages/benchmark/evidence/paired-validation-v4/README.md)에 남아 있습니다.
-
-실험 기준은 PR #53 이전 `7cd8de8`이고, 이 문서의 최신 main 기준과 다릅니다. 과거 실패·오프라인 재평가·v4 측정은 합산하지 않습니다. [PR #51](https://github.com/jovinus302/Ensemble/pull/51)은 별도의 미병합 Draft이며, 승인된 실험 8슬롯은 모두 소진되어 추가 실행을 의미하지 않습니다.
+제품 웹앱은 `app/apps/web`, PM·원장·저장소는 `app/packages`에 있습니다. 데모 전용 코드·이미지·설명은 `app/demo`로 분리했습니다. 기존 `/`, `/demo`, `/s27`, `/handoff` 주소는 유지합니다.

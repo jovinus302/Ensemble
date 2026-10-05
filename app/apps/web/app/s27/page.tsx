@@ -1,4 +1,4 @@
-import { S27Demo } from '../../components/s27/S27Demo';
+import { S27Demo } from '../../../../demo/scripted/s27/S27Demo';
 
 export const metadata = { title: 'S27 데모 · Ensemble' };
 

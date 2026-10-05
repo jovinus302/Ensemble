@@ -1,10 +1,14 @@
 # AI PM의 발언 철학
 
-> **구현 대조 — 2026-10-02, main `c91234a`**: 아래 9월 28일 합의는 제품 원칙이며 모든 발언의 품질을 보장하는 테스트 결과가 아니다. 현재 [PM prompt](../app/packages/orchestrator/src/pm-prompt.ts)와 [Coordinator](../app/packages/orchestrator/src/coordination.ts)는 판단과 근거를 `pm_considered`·`pm_spoke`에 남긴다. [PR #49](https://github.com/jovinus302/Ensemble/pull/49)는 같은 작성자의 새 일반 메시지에 의해 대체된 이전 PM 조율 요청을 취소한다. 첨부·작업 스레드·카드 답변은 대체 대상이 아니며 실행 Agent steering과 별개다. 대기·호출 시간도 발언 유용성과는 별도 지표다.
+> **구현 대조 — 2026-10-05, main `605521b`**: 아래 9월 28일 합의는 제품 원칙이며 모든 발언의 품질을 보장하는 테스트 결과가 아니다. 현재 [PM prompt](../app/packages/orchestrator/src/pm-prompt.ts)와 [Coordinator](../app/packages/orchestrator/src/coordination.ts)는 판단과 근거를 `pm_considered`·`pm_spoke`에 남긴다. [PR #49](https://github.com/jovinus302/Ensemble/pull/49)는 같은 작성자의 새 일반 메시지에 의해 대체된 이전 PM 조율 요청을 취소한다. 첨부·작업 스레드·카드 답변은 대체 대상이 아니며 실행 Agent steering과 별개다. 대기·호출 시간도 발언 유용성과는 별도 지표다.
 
-[PR #52](https://github.com/jovinus302/Ensemble/pull/52)의 제출물 검증은 아래 “사실이나 계산에 근거한 말”을 지원한다. [TrustedValidator](../app/packages/orchestrator/src/validation.ts)를 주입한 필수 검증 경로에서는 측정 뒤 인계를 판단하고, 미실행·환경 차단·worker 자기보고를 구분한다. 모든 프로젝트의 실행 검증이나 [ProductState](product-state-model.md)의 목표 달성 판정을 뜻하지 않는다. 현재 실행 범위는 [구현 계획 대조](pm-agent-plan.md)와 [작업 모델](work-model.md)을 참조한다.
+[PR #52](https://github.com/jovinus302/Ensemble/pull/52)의 제출물 검증은 아래 “사실이나 계산에 근거한 말”을 지원한다. [TrustedValidator](../app/packages/orchestrator/src/validation.ts)를 주입한 필수 검증 경로에서는 측정 뒤 인계를 판단하고, 미실행·환경 차단·worker 자기보고를 구분한다. 모든 프로젝트의 실행 검증이나 목표 달성 판정을 뜻하지 않는다. 현재 실행 범위는 [MVP 범위](mvp-scope.md)와 [작업 모델](work-model.md)을 참조한다.
+
+고정 시연의 PM 대화는 이 원칙을 설명하기 위한 작성된 예시다. `/demo`·`/s27`·`/handoff`의 자연스러운 발언을 실제 모델의 개입 품질이나 원칙 준수율로 세지 않는다([데모 구분](../app/demo/README.md)).
 
 > 2026-09-28 사용자와 합의. PM이 채팅에서 언제 말하고 언제 조용히 있을지를 규칙 목록이 아니라 원칙으로 정한다. 규칙은 상황이 바뀌면 깨지지만, 원칙은 처음 보는 상황에서도 판단 근거가 되고 사람이 그 판단을 따져 볼 수 있다.
+
+적용 범위는 팀에 공유된 대화·결정·결과다. 개인 Agent의 비공개 대화나 초안을 자동으로 듣고 기록한다는 뜻은 아니다. 사람이 개인 Agent와 직접 일하고 무엇을 공유할지 정하는 권한은 [제품 의도](../intent.md)의 경계를 따른다.
 
 ## 한 문장
 
@@ -41,7 +45,7 @@ PM의 말은 작업 기록과 코드의 계산에 근거한다. 모르는 것은
 
 - 세 답은 모든 PM 발언과 함께 작업 기록에 남는다. "왜 그때 말했나 / 왜 가만있었나"를 원칙에 비춰 따져 본다. 개선은 규칙을 덧붙이는 것이 아니라 원칙 적용을 바로잡는 것이다.
 - 사실(기한 영향, 빠진 당사자, 확정된 결정과의 충돌)은 코드가 계산해 PM에게 준다. LLM은 그 재료로 원칙에 비춰 판단하고 1~2문장으로 쓴다.
-- 조용히 있는 동안에도 PM은 계속 듣고, 진행 중인 이야기를 기록해 둔다.
+- 조용히 있는 동안에도 PM은 팀에 공유된 대화를 듣고 기록한다. 개인 Agent의 비공개 작업은 이 범위에 들어가지 않는다.
 
 ## 예시
 
