@@ -114,7 +114,7 @@ Ensemble은 두 참고 대상에서 개념을 가져와 **PM Agent 중심의 팀
 | Buzz | 사람과 Agent가 같은 채널에서 대화하고 결과물을 공유하는 협업 방식 |
 | Argo | 역할별 AI 팀 구성, 공유 기억, 업무 위임, Agent 간 리뷰 |
 
-참고 저장소: Argo = `R2P/argo` (GitHub beyondworks/argo). [구조](docs/argo/structure.md), [가져올 규칙](docs/argo/takeaways.md), [비교](docs/argo/ensemble-comparison.md)를 참고한다.
+참고 저장소: Argo = `R2P/argo` (GitHub beyondworks/argo). [구조 조사](docs/argo/structure.md)를 참고한다.
 
 **규칙:** Argo의 코드·SQL·프롬프트 문장은 옮기지 않는다. 개념·패턴만 참고한다.
 

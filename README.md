@@ -4,11 +4,11 @@ Ensemble은 **PM Agent 중심의 팀 협업 도구**입니다. 사람은 자신�
 
 현재 저장소에는 이벤트 기록 기반의 로컬 웹 앱과 협업 경험을 보여 주는 시연 화면이 있습니다. 제품 방향은 [intent](intent.md), 앱의 작업·결정 흐름은 [작업 모델](docs/work-model.md)에서 설명합니다. 개인 Agent 연동과 지속적 공유 상태인 **Team Work State**는 제품 개념이며, 시연 화면이 이 전체를 실제 서비스로 구현했다는 뜻은 아닙니다.
 
-**문서 확인 기준:** 2026-10-05, `main@605521b` ([PR #69 병합](https://github.com/jovinus302/Ensemble/pull/69)). 과거 계획과 QA 결과에는 각각의 기준 시점이 있습니다.
+**문서 확인 기준:** 2026-10-05, `main@f9e8c82` ([PR #71 병합](https://github.com/jovinus302/Ensemble/pull/71)). 제품 방향은 PR #69, 협업 인계 시연은 PR #68, 데모·문서 구조는 PR #71을 반영했습니다.
 
 ## 먼저 볼 화면
 
-아래 경로는 같은 Next.js 서버에서 열 수 있습니다. 서버 실행 방법은 [설치와 로컬 실행](#설치와-로컬-실행)을 참고하세요.
+아래 경로는 같은 Next.js 서버에서 열 수 있습니다. 시연 소스와 이미지는 `app/demo/scripted/`에 모으고, 제품 UI·API는 `app/apps/web`에 유지합니다. 서버 실행 방법은 [설치와 로컬 실행](#설치와-로컬-실행)을 참고하세요.
 
 | 경로 | 확인할 내용 | 실행 방식 |
 |---|---|---|
@@ -28,7 +28,7 @@ Ensemble은 **PM Agent 중심의 팀 협업 도구**입니다. 사람은 자신�
 - 정체 작업 점검과 하루 요약: 실행 중인 서버가 자유 프로젝트를 5분마다 확인하며, 기본 요약 시각은 Asia/Seoul 09:00 이후 하루 한 번입니다. 별도 상시 스케줄러가 아닙니다.
 - 제출 revision에 연결되는 검증·limitations 기록과 judge 전 검증 계약 ([PR #52](https://github.com/jovinus302/Ensemble/pull/52)). 신뢰 검증기는 host의 `ProjectManager` 코드가 `trustedValidator`와 `requireValidation`으로 제공·활성화합니다. 현재 웹 UI나 환경 변수에 이를 켜는 스위치는 없으며, 웹의 모든 작업이 자동으로 build/browser 검증을 받는다는 뜻은 아닙니다.
 
-[Product State 모델](docs/product-state-model.md)은 설계 제안입니다. 현재 이벤트 기반 프로젝트 상태가 그 제안 전체를 구현한 것은 아닙니다. 이 저장소의 로컬 앱·데모·벤치마크를 운영 서비스의 인증·배포 보장으로 해석하지 마세요.
+제품의 전체 협업 경험과 현재 구현·미검증 가설의 구분은 [MVP 범위](docs/mvp-scope.md)를 참고하세요. 오래된 Product State 설계·초기 PM 구현 계획·날짜별 QA·벤치마크 자료는 PR #71에서 현재 트리에서 제거했습니다.
 
 ## 설치와 로컬 실행
 
@@ -93,42 +93,41 @@ npm run build
 npm run start -w @ensemble/web
 ```
 
-`npm test`는 Node 내장 테스트 러너와 `tsx`로 [app/test](app/test/)의 핵심 회귀 시나리오를 실행합니다. 현재 4개 파일에 18개 테스트가 있으며, 런타임의 결정 권한·중복 실행·종료·프로젝트 격리와 세 시연의 상태 전이를 다룹니다. 외부 provider 호출은 하지 않으며 모델의 판단 품질이나 브라우저 렌더링을 검증하는 테스트는 아닙니다. [필수 테스트 안내](docs/qa/essential-regressions.md)는 초기 8개 시나리오의 선정 이유를 기록한 문서로, 현재 파일·테스트 수와는 다릅니다.
+`npm test`는 Node 내장 테스트 러너와 `tsx`로 [app/test](app/test/)의 핵심 회귀 시나리오를 실행합니다. 현재 4개 파일에 18개 테스트가 있으며, 런타임의 결정 권한·중복 실행·종료·프로젝트 격리와 세 시연의 상태 전이를 다룹니다. 외부 provider 호출은 하지 않으며 모델의 판단 품질이나 브라우저 렌더링을 검증하는 테스트는 아닙니다. 파일별 검사 범위와 한계는 [필수 테스트 안내](docs/qa/essential-regressions.md)에 있습니다.
 
-이어지는 명령은 타입 검사와 웹 빌드이며, 마지막 명령은 빌드 후 서버를 실행합니다. 위 런타임 환경 설정을 동일하게 적용해야 합니다. 과거 대규모 테스트·벤치마크 실행기는 복원하지 않았으며, 과거 테스트 수치는 현재 검증 결과가 아닙니다. `live:pm`과 `demo:full`은 실제 provider를 호출할 수 있는 관찰 스크립트입니다. 특히 `demo:full`에는 특정 로컬 환경 파일 경로가 들어 있으므로 일반 설치 확인 명령으로 사용하지 않습니다.
+이어지는 명령은 타입 검사와 웹 빌드이며, 마지막 명령은 빌드 후 서버를 실행합니다. 위 런타임 환경 설정을 동일하게 적용해야 합니다. 과거 테스트·벤치마크 증거는 현재 트리에서 제거했으며, 과거 테스트 수치는 현재 검증 결과가 아닙니다. `live:pm`과 `demo:full`은 실제 provider를 호출할 수 있는 관찰 스크립트입니다. `demo:full`의 실행기는 [app/demo/runtime/run.ts](app/demo/runtime/run.ts)로 이동했습니다. 특정 로컬 환경 파일 경로가 들어 있으므로 일반 설치 확인 명령으로 사용하지 않습니다. 실행 조건은 [런타임 시연 안내](app/demo/runtime/README.md)를 참고하세요.
 
-검증 실행과 과거 증거의 구분은 [QA 안내](docs/qa/README.md), `/handoff`의 브라우저 시연 검증과 한계는 [2026-10-05 기록](docs/qa/pm-handoff-2026-10-05.md)을 참고하세요.
+현재 검사 실행과 로컬 결과 관리 방법은 [QA 안내](docs/qa/README.md), `/handoff`의 동작 범위와 브라우저 검사 위치는 [인계 시연 안내](app/demo/scripted/handoff/README.md)를 참고하세요.
 
 ## 저장소 구조
 
 | 경로 | 역할 |
 |---|---|
-| `app/apps/web` | Next.js 앱, API, 로컬 시연 화면 |
+| `app/apps/web` | 제품 Next.js UI·API와 기존 URL의 라우트 연결부 |
+| `app/demo/scripted` | `coordination`, `s27`, `handoff` 시연의 화면·상태·이미지·설명 |
+| `app/demo/runtime` | 실제 앱을 사용하는 시연 안내와 관찰 실행기 |
 | `app/packages/core`, `store` | 이벤트·작업·결정 모델과 상태 계산, 메모리·SQLite 저장 |
 | `app/packages/orchestrator` | PM의 계획·조율·배정·인계·검증 흐름 |
 | `app/packages/agents`, `llm` | 실행 Agent 세션 연결과 PM 모델 provider |
 | `app/packages/channel`, `scenarios` | 채널 계약과 준비된 시나리오 입력 |
 | `app/test` | provider 없는 필수 회귀 테스트 |
-| `app/packages/benchmark` | 과거 비교 실험 안내와 증거 보관 링크 |
 | `docs`, `motion-remotion` | 제품·설계·QA·발표 자료, 별도 Remotion 영상 프로젝트 |
 
 ## 문서 지도와 읽는 순서
 
-| 순서 / 목적 | 문서 | 성격 |
-|---|---|---|
-| 1. 제품이 해결하려는 문제 | [intent](intent.md) | 제품 방향 |
-| 2. 현재 사용자·PM·worker 흐름 | [작업 모델](docs/work-model.md) | 현재 구현 설명과 동작 원칙 |
-| 3. 구조와 초기 범위 | [MVP 아키텍처](docs/mvp-architecture.md), [MVP 범위](docs/mvp-scope.md) | 초기 기준과 후속 구현 구분 |
-| 4. PM 행동·결정의 근거 | [PM 원칙](docs/pm-principles.md), [PM 계획](docs/pm-agent-plan.md), [결정 기록](docs/pm-agent-decisions.md) | 원칙·계획·시점별 결정 |
-| 5. 아직 설계 중인 모델 | [Product State](docs/product-state-model.md) | 제안, 구현 완료 아님 |
-| 6. 비교 측정 | [벤치마크 안내](app/packages/benchmark/README.md), [v4 결과](app/packages/benchmark/evidence/paired-validation-v4/README.md) | 고정 기준의 실험·재현 자료 |
-| 7. 검증 실행과 과거 증거 | [QA 실행 안내·증거 보관 위치](docs/qa/README.md) | 현재 타입 검사·빌드 안내와 고정 커밋의 역사적 실패·수정 기록 |
-| 8. 화면·영상·외부 조사 | [DESIGN](DESIGN.md), [MOTION](MOTION.md), [Remotion](motion-remotion/README.md), [Argo 비교](docs/argo/ensemble-comparison.md) | 디자인/영상 제안과 조사; 앱 구현과 구분 |
-| 9. 10/7 소장님 보고 데모 ([#62](https://github.com/jovinus302/Ensemble/issues/62)) | [S27 마케팅 데모 발표 문서](docs/demo/s27-marketing-demo.md), [스토리 브리프](docs/demo/s27-brief.md) | `/s27` 로컬 스크립트형 시연; Slack·녹스 연동은 시뮬레이션 |
-| 10. 사람·개인 Agent·PM 협업 시연 | [협업 인계 QA와 동작 범위](docs/qa/pm-handoff-2026-10-05.md), [상태 전이 구현](app/apps/web/lib/team-handoff.ts) | `/handoff`의 합의·공유·검토·보완·인계 흐름 |
+[문서 안내](docs/README.md)는 제품 방향·현재 구현·검증·참고 자료를 연결합니다. [데모 안내](app/demo/README.md)는 실제 앱 시연과 세 스크립트 시연의 선택·실행 방법을 설명합니다.
 
-## 비교 결과의 범위
-
-[PR #53](https://github.com/jovinus302/Ensemble/pull/53)에 합쳐진 v4의 8회는 모두 기능 검사를 통과했습니다. 같은 provider·과제의 네 쌍에서 Ensemble의 총시간이 direct보다 길었습니다. **조건당 1회(n=1)**로 일반적 우열을 결론 내릴 수 없으며, 실제 비용과 숨겨진 API 호출 수는 미상입니다. 변경 요구사항의 context hash가 갖는 메타데이터 한계도 [결과 보고서](app/packages/benchmark/evidence/paired-validation-v4/README.md)에 남아 있습니다.
-
-실험 기준은 PR #53 이전 `7cd8de8`이고, 이 문서의 최신 main 기준과 다릅니다. 과거 실패·오프라인 재평가·v4 측정은 합산하지 않습니다. 당시 별도 Draft였던 [PR #51](https://github.com/jovinus302/Ensemble/pull/51)의 기록도 구분합니다. 기록된 실험 8회는 모두 완료됐으며, 이 결과 안내는 새로운 실험 실행을 의미하지 않습니다.
+| 목적 | 문서 |
+|---|---|
+| 제품이 해결하려는 문제 | [제품 의도](intent.md) |
+| 현재 기능과 미검증 가설 | [MVP 범위](docs/mvp-scope.md) |
+| 실행 구조·설정·코드 위치 | [아키텍처](docs/mvp-architecture.md) |
+| 작업·결정·결과의 연결 | [작업 모델](docs/work-model.md) |
+| PM 행동과 결정 이유 | [PM 원칙](docs/pm-principles.md), [결정 기록](docs/pm-agent-decisions.md) |
+| 검사 실행과 범위 | [QA 안내](docs/qa/README.md), [필수 회귀 검사](docs/qa/essential-regressions.md) |
+| 실제 앱의 자유형식·시나리오 실행 | [런타임 시연](app/demo/runtime/README.md) |
+| PM 조율 시연 | [Pages 조율 데모](app/demo/scripted/coordination/README.md) |
+| S27 마케팅 발표 시연 | [발표 문서](app/demo/scripted/s27/README.md), [스토리 브리프](app/demo/scripted/s27/brief.md) |
+| 사람·개인 Agent·PM 협업 시연 | [인계 데모](app/demo/scripted/handoff/README.md) |
+| 제품 발표와 참고 조사 | [PM·Agent 팀 발표](docs/presentations/ensemble-pm-agent-team.pptx), [Argo 구조 조사](docs/argo/structure.md) |
+| 디자인·영상 자료 | [DESIGN](DESIGN.md), [MOTION](MOTION.md), [Remotion](motion-remotion/README.md) |

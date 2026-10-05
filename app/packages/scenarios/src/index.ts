@@ -19,7 +19,7 @@ export interface ScriptedStep {
 export interface Scenario {
   key: string;
   title: string;
-  /** intent.md / product-state-model.md section this scenario reproduces. */
+  /** intent.md / docs/mvp-scope.md section this scenario reproduces. */
   source: string;
   members: { id: Id; kind: "human" | "agent" | "pm"; displayName: string; role?: string }[];
   steps: ScriptedStep[];

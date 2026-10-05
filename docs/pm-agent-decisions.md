@@ -1,20 +1,8 @@
-# AI PM agent — 사용자 결정과 확인된 사실 (계획 입력)
+# AI PM 결정 기록
 
-> 자동 테스트는 현재 체크아웃에서 제거되었습니다. 아래 테스트 링크는 삭제 전 고정 커밋의 역사적 근거이며, 과거 smoke 명령은 현재 실행 안내가 아닙니다.
+확인 기준: 2026-10-05. 사용자 발언에서 정한 것과 구현 시 채택한 기본값을 구분한다. 제품 방향은 [intent.md](../intent.md), 현재 상태는 [작업 모델](work-model.md), 범위는 [MVP 범위](mvp-scope.md)를 따른다. 아래 9월 28일 런타임 선택은 출발점이며 현재는 API·Codex·Claude를 지원한다.
 
-> **현재 읽기 기준 — 2026-10-02, main `c91234a`**: §1~§4는 9월 28일 사용자 결정·실험·미결 질문의 기록이다. §2.1의 모델 가용성과 proxy 동작은 당시 관측으로 현재 접속을 보장하지 않는다. §2.2의 “뼈대만 있다”는 현재 현황이 아니다. ProductState 문서는 **설계 정본**이며 현재 구현 명세가 아니다. 원문과 후속 결정을 지우지 않고 아래 대조를 추가한다.
-
-### 후속 구현 대조 (2026-10-02)
-
-- 실행 Agent의 [Codex·Claude 연결](../app/packages/agents/src/index.ts), PM의 [API·Codex CLI·Claude CLI 선택](../app/packages/llm/src/runtime.ts)이 구현돼 있다. `pmRuntimeFromEnv()` 헬퍼의 기본 경로는 `api`, standalone CLI 기본 effort는 `medium`, 호출 timeout은 5분이다. 웹 Codex PM의 app-server 경로는 기본 `low`·90초로 다르다. 실행 경로별 기본값은 [아키텍처](mvp-architecture.md)를 확인한다. 실제 모델·계정은 실행 설정에 달린다. §1.1의 proxy 결정이 모든 경로를 독점하지 않는다.
-- §4의 자동 행동 상한은 [상태 변경 12회](../app/packages/core/src/action-limit.ts)로 구현됐다. 발언과 장부 기록은 상한을 쓰지 않는다. 가용 시간·작업 추정·일별 요약의 현재 범위는 [작업 모델](work-model.md)을 따른다.
-- [PR #49](https://github.com/jovinus302/Ensemble/pull/49)의 [Coordinator](../app/packages/orchestrator/src/coordination.ts)는 같은 작성자의 새 일반 메시지 저장 후 이전 조율 요청을 취소하고 최신 원장을 확인한다. 첨부·작업 스레드·카드 답변을 무조건 건너뛰는 기능이나 Agent steering은 아니다. [회귀 테스트](https://github.com/jovinus302/Ensemble/blob/64373b8f9dbf2cbc27c77c220ed46f809822b3e2/app/packages/orchestrator/test/coordination.test.ts)가 경계를 다룬다.
-- [PR #52](https://github.com/jovinus302/Ensemble/pull/52)의 [제출물 검증](../app/packages/orchestrator/src/validation.ts)은 host 근거를 제출물·작업·계획·정책에 묶고, 필수 검증 모드에서 측정 통과 뒤 judge가 인계를 판단하게 한다. 검증기 없는 source review는 `not_run`이며 실측 통과로 주장하지 않는다. 취소·재검증·stale 근거 차단은 [테스트](https://github.com/jovinus302/Ensemble/blob/64373b8f9dbf2cbc27c77c220ed46f809822b3e2/app/packages/orchestrator/test/validation.test.ts)를 참조한다.
-- [v4 관측 기록](../app/packages/benchmark/evidence/paired-validation-v4/README.md)에는 human reopen 조건과 checkpoint/final phase가 context/policy digest에 명시되지 않는 한계가 남는다. 새 제출물의 전체 검증을 확인한 관측을 일반적인 요구사항 바인딩 완전성으로 확대하지 않는다.
-- ProductState criterion `passed`·`computeGap`·목표 승인은 [미구현 설계](product-state-model.md)다. 제출물 `validation.status = passed`나 작업 `checked`와 구분한다. §1.4의 “intent.md를 고치지 않는다”는 당시 계획 작성 범위의 기록으로 보존하며, 이번 갱신은 이후 구현 상태를 별도로 표시한다.
-
-> 2026-09-28 대화에서 사용자가 정한 것과 실제로 확인한 사실만 모았다. 계획서가 아니다. PM agent 구현 계획은 이 문서를 입력으로 새로 쓴다.
-> 제품 의도는 `intent.md`, 데이터 모델·규칙은 `docs/product-state-model.md`, 코드 구조는 `docs/mvp-architecture.md`가 정본이다. 이 문서의 결정이 그 문서들과 다르면 이 문서가 우선한다(§3에 충돌 지점을 적었다).
+최신 제품 의도는 개인 Agent와의 직접 작업, 명시적 공유, 필요한 검토·합의를 보장한다. 아래 날짜별 기록의 “PM이 기본 결정자”·자체 채널·Agent 우선 배정은 당시 구현 범위의 결정이다. 개인 Agent의 모든 실행을 PM이 소유하거나 비공개 작업을 자동 수집할 권한으로 확대하지 않는다.
 
 ## 1. 사용자 결정
 
@@ -48,42 +36,24 @@
 | intent.md 반영 | "intent.md에 넣을필요가 있나?" | intent.md는 고치지 않는다. 결정은 이 문서와 PM 계획서에 둔다 |
 | 실행 Agent 런타임 | "실행 Agent는 claude code나 codex 세션 자체를 실행 agent 런타임으로 하는것 좋네" | 실행 Agent는 앱이 직접 돌리는 API 루프가 아니라 Claude Code 또는 Codex 세션이다. 두 CLI 모두 mid-turn steering을 지원한다는 사용자 지적에 따른 결정 |
 
-## 2. 확인된 사실 (2026-09-28 실행)
 
-### 2.1 LLM proxy
-- 쓸 수 있는 Claude 모델: `claude-sonnet-5`, `claude-fable-5`, `claude-sonnet-4-6` (GPT·Gemini 계열도 목록에 있다).
-- tool use 동작(강제 호출 포함). Node SDK는 추가 TLS 설정 없이 연결된다.
-- 웹 검색 서버 도구는 **불가** (Vertex AI 조직 정책).
-- proxy가 **응답을 캐시**한다. 같은 요청에는 같은 응답 ID가 돌아온다.
-- 텍스트 응답이 한 번 빈 문자열로 왔고 재현되지 않았다.
+## 2. 현재 실행 선택
 
-### 2.2 코드 현황
-- `app/` 뼈대만 있다. `core`는 원장 이벤트 envelope 타입만, `store`·`channel`·`agents`·`scenarios`는 인터페이스만, `orchestrator`는 비어 있다. `llm`만 실제 구현(Anthropic provider, `npm run smoke:llm`)이 있다.
+- 자체 Slack형 웹앱, TypeScript·Next.js·SQLite와 이벤트 원장을 사용한다.
+- 실행 Agent는 Codex·Claude 세션이며 fake도 제공한다. PM의 provider 선택은 worker와 별개다([아키텍처](mvp-architecture.md)).
+- 주간 가용 시간과 최소~최대 작업 추정을 사용한다. PM 자동 상태 변경은 명시적 재개 사이 12회다. 발언·장부 기록은 세지 않는다.
+- 결과를 인계 조건과 대조한다. 일반 웹앱은 호스트 검증기를 주입하지 않으며 `checked`를 자동 실행 검증 통과로 읽지 않는다.
 
-### 2.3 mid-turn steering 실험
-- 방법: 프로토타입 Agent가 도구(`write_section`)로 흐름 섹션을 쓰는 루프에서, 첫 도구 결과와 같은 사용자 턴에 `[PM 업데이트 v2] 결제 단계 제외, 온보딩에 '관심 분야 선택' 추가` 텍스트를 붙였다.
-- 결과: 다음 단계에서 Agent가 `acknowledge_update`로 변경을 확인하고 온보딩 섹션을 고쳐 다시 썼다.
-- 사용자 지적: Claude Code와 Codex CLI도 작업 중 들어온 메시지를 다음 단계에 반영한다. 아래 동작은 두 CLI와 같은 방식이다.
-- 같은 날 Orca로 실행 중인 Codex 세션에 계획 변경 메시지를 보냈고, Codex 세션 기록에 그 메시지가 들어간 것을 확인했다. Orca의 전달 확인은 새 턴 시작만 감지하므로 mid-turn 메시지는 "턴 시작 미확인"으로 보고된다.
-- 설계에서 챙길 점:
-  - steering은 **Agent 루프의 단계 사이**에서만 먹힌다. 한 번의 긴 생성 도중에는 끼어들 수 없다. Agent 작업을 여러 단계로 나눠야 steering 지점이 생긴다.
-  - Agent가 첫 단계에서 4개 섹션을 병렬로 이미 써서, 옛 맥락으로 만든 "결제" 섹션이 남았다. Agent는 그것을 스스로 철회하지 않았다. 결과물이 어느 계획 버전 기준인지 기록하고, 무효가 된 결과물은 따로 표시해야 한다.
+## 3. 범위 결정 (2026-09-28)
 
-## 3. 기존 문서와 부딪히는 지점
+사용자가 “추천안대로 진행해”라고 확인한 초기 범위에서 검증 승인 카드·대상 제품의 `passed` 판정·목표 승인·`computeGap`은 제외했다. 맡겨진 범위 안의 명확한 결론은 PM이 반영하고, 위임 밖 변경과 사람의 새 시간 약속은 권한자·당사자에게 묻는다. 목표·기한 변경은 결정권자가 정한다.
 
-| 기존 규칙 | 사용자 결정 | 계획서가 정해야 할 것 |
-|---|---|---|
-| product-state-model §0 전제 6: 계획 밖 태스크·담당 교체·범위 변경 등은 결정권자 확인 | 승인은 되도록 PM, 필요하면 사람 | PM이 혼자 정하는 것과 사람에게 묻는 것의 경계 |
-| intent.md §7: 범위 변경·외부 공개·비용 발생·되돌리기 어려운 행동은 사람 승인. 사람의 일정은 사람이 조정 | 위와 같음 | 위 경계가 intent §7과 어떻게 맞는지. 사람 일정 자율성은 유지할지 |
-| intent.md §9: MVP 명제는 "사람 결과가 올라오면 지시 없이 다음 작업 시작" 하나 | 조율 → 계획 반영 → 공유가 핵심 | MVP에서 무엇을 증명할지. intent.md는 고치지 않는다 |
-| intent.md §9: 채널 1개 | "따로 방을 파던가" | 조율 공간을 스레드로 할지 방으로 할지 |
-| product-state-model §7: 결정 변경 영향 처리는 Phase 2 | 조율 결과를 계획에 반영하고 공유 | 영향 처리 중 무엇을 MVP로 당길지 |
-| product-state-model 결정 2: `passed`는 증거 또는 사람 승인만 | 승인은 되도록 PM | 검증 판정(`passed`)도 PM에게 넘길지, 증거 규칙은 유지할지 |
+## 4. 남아 있는 제품 결정
 
-## 4. 아직 정하지 않은 것
-- PM 자동 행동의 상한(몇 번까지 사람 개입 없이 진행하나)
-- 사람의 가용 시간·예상 소요를 누가 어떻게 입력하나
-- 시연의 통과 기준
+- 실제 팀에서 재설명·수동 추적·인계 재작업 감소를 어떻게 반복 측정할지, 기준선과 성공 목표치는 얼마인지.
+- 개인 Agent 작업과 팀 공유 결과의 경계·공유 권한·채널 연속성을 현재 프로젝트 중심 런타임에 어떻게 반영할지.
+- Agent 우선 라우팅이 사람의 실제 역할·가용 시간과 어떻게 함께 작동해야 하는지.
+- 아래 Q1~Q4 중 추천안을 기본값으로 구현한 부분을 실제 사용자 흐름에 맞게 유지할지.
 
 ## 5. 작업 항목·결정 요청 (이슈 #26, 2026-10-02 반영)
 
@@ -94,9 +64,9 @@
 |---|---|---|
 | 작업 항목 엔티티 | 새 Ticket 엔티티를 만들지 않고 기존 Task를 작업 항목으로 키운다. 계층은 `TaskSpec.parentId`(깊이 최대 2) | 상태 기계·시작 예약·인계 판단·steer·예측이 모두 `TaskState`에 묶여 있어 병렬 모델은 전부를 두 번 맞춰야 한다. 화면 용어는 "작업", 코드 식별자는 `task` 그대로 둔다 |
 | 구조와 메타 | 생성·분할·취소·담당 변경은 계획 버전(`plan_committed` v+1), 우선순위·라우팅 사유·출처·맥락 브리프는 별도 이벤트 `task_meta_set` | 메타를 `TaskSpec`에 넣으면 spec 차이로 `specVersion`이 올라 결과가 stale이 되고 `checked`가 `waiting`으로 되돌아간다. 두 이벤트는 같은 트랜잭션에 쓴다 |
-| 사람 호출 | 새 경로(작업 생성 승인, 사람 배정 수락, Agent 질문, 정체 처리)는 모두 `decision_requested`/`decision_resolved` 하나로. 추천안·선택지(2~4개, 보류 포함)·근거 필수 | 사람에게는 기획·결정만 묻고, 물을 때는 PM이 먼저 답을 제안한다 |
+| 사람 호출 | 새 경로(작업 생성 승인, 사람 배정 수락, Agent 질문, 정체 처리)는 모두 `decision_requested`/`decision_resolved` 하나로. 추천안·선택지(2~4개, 보류 포함)·근거 필수 | 호출 형식을 통일한다. 사람이 맡는 실제 업무를 승인으로 대체하는 규칙은 아니다 |
 | 기존 카드 이벤트 | `plan_proposed`/`authority_requested`는 이관하지 않는다. `openDecisions` 어댑터가 같은 모양으로 보여 주고 `cards/:id` API도 유지한다 | 원장 호환. 기존 원장을 다시 쓰지 않는다 |
-| JIRA 모양 | 사용자에게 작업 키를 보이지 않는다. 칸반·작업 생성 양식을 만들지 않는다 | JIRA 연동·복제가 아니다. 사람은 채널에서 말하고 결정 카드에 답할 뿐이다 |
+| JIRA 모양 | 사용자에게 작업 키를 보이지 않는다. 칸반·작업 생성 양식을 만들지 않는다 | JIRA 연동·복제가 아니다. 현재 UI는 채널 대화·결정 카드·결과 첨부를 중심으로 한다. 개인 Agent와 직접 일하는 제품 원칙을 제한하지 않는다 |
 
 ### 5.2 사용자 확인 항목 (Q1~Q4) 기본값
 별도 답이 오기 전까지 #26 §7의 추천안을 기본값으로 구현했고, 각각 설정 하나로 바꿀 수 있다.
@@ -110,7 +80,7 @@
 
 ### 5.3 구현에서 설계와 달라진 점 (2026-10-02 기준)
 - Q2 스위치는 라우팅 표시와 정체 점검의 담당 공백 처리에만 걸린다. 대화에서 사람 담당 작업을 만들 때의 수락 카드는 권한 규칙(`human_commitment`)에서 나온다.
-- 사람당 열린 결정 3개 초과 묶기는 core 함수(`bundleDecisions`)만 있고 화면에는 아직 쓰지 않는다.
+- 사람당 열린 결정은 `bundleDecisions`로 묶어 웹 보기 모델에 반영한다. 첫 3장 이후 요청은 세 번째 카드에 묶인다.
 - PM 메모를 작업 스레드에 남기는 `pm_spoke.threadId`는 아직 쓰는 쪽이 없다.
 - 하루 요약은 별도 타이머 없이 5분 정체 점검 틱에서 09:00 이후 첫 확인 때 나간다.
 - 나머지 차이는 `docs/work-model.md` §7에 모았다.

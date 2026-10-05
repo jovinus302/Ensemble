@@ -1,6 +1,6 @@
-# QA guide and historical archives
+# 현재 QA 안내
 
-Run the following from `app/` with existing dependencies (Node 24+). These provider-free commands run the small [essential regression suite](essential-regressions.md), check types, and build the web app.
+`app/`에서 Node.js 24 이상과 설치된 의존성을 사용한다.
 
 ```sh
 npm test
@@ -8,25 +8,24 @@ npm run typecheck
 npm run build
 ```
 
-The former broad test suites, dedicated browser/smoke runners, and standalone benchmark execution package remain removed. Only the small essential suite is maintained in `app/test/`, using Node’s built-in runner and the existing `tsx` dependency. Historical results below are preserved as observations of their recorded revisions, not current coverage. The removed source remains recoverable through Git at the [pre-removal snapshot](https://github.com/jovinus302/Ensemble/tree/64373b8f9dbf2cbc27c77c220ed46f809822b3e2). Restoring historical code does not authorize provider calls.
+현재 자동 검사는 [18개 핵심 회귀 검사](essential-regressions.md)다. 실제 모델·provider 로그인·외부 서비스를 사용하지 않는다. 타입 검사와 웹 빌드는 별도로 실행한다. 자동 검사 통과는 실제 모델 판단 품질이나 팀의 조율 시간 감소를 증명하지 않는다.
 
-Write new QA screenshots, reports, logs and generated artifacts beneath an ignored `.local/` directory, never into these historical folders. Check `git check-ignore` for the intended destination before collecting output. Preserve failures and distinguish fixture, offline re-evaluation and authorized live observations.
+## 브라우저 확인
 
-The ignore rules cover generated output. Review any curated evidence file and its references before publication; do not publish credentials or unrelated provider logs.
+[인계 데모 브라우저 검사](../../app/demo/scripted/handoff/qa/browser.cjs)는 `npm test`와 별개다. 기존 Playwright 설치와 실행 중인 로컬 서버를 사용한다.
 
-## Historical reproduction scripts
+`app/` 기준 PowerShell 예시:
 
-The former Codex-login browser scripts and issue-47 harness are no longer shipped. Their original versions remain in the [historical QA archive](https://github.com/jovinus302/Ensemble/tree/cb84ecc2849f8194e0d5d44d22642a5174ef4c4f/docs/qa). They can send real messages, approve work, and start workers, so they were never provider-free current-main checks. Existing archive documents and generated HTML/Markdown evidence are retained; they are not executable test fixtures.
+```powershell
+$env:ENSEMBLE_PLAYWRIGHT_PATH = '<기존 Playwright 모듈 경로>'
+$env:ENSEMBLE_DEMO_URL = 'http://127.0.0.1:3000'
+node demo/scripted/handoff/qa/browser.cjs
+```
 
-## Archived batches (2026-10-01)
+두 사람의 동의, 초안 공유, QA 보완, 사람 검토, 중복·오래된 입력, 중단·기록 이동, 좁은 화면과 이미지 실패 대체 표시를 확인한다. 출력은 저장소의 무시된 `.local/qa/handoff/`에 쓴다. 실제 provider나 제품 인증을 검증하지 않는다.
 
-These fixed-commit links preserve original documents and generated evidence removed from the current checkout. Historical failures are retained, not converted into passes. Later benchmark results do not validate unrelated QA flows.
+실제 앱 `/`의 브라우저 확인은 PM·Agent를 모두 fake로 설정하고 `ENSEMBLE_DATA_DIR`을 별도 로컬 경로로 지정한다([런타임 안내](../../app/demo/runtime/README.md)). provider를 호출하는 `demo:full`과 `live:pm`은 기본 검사에 포함하지 않는다.
 
-| Batch | Recorded outcome and limits | Immutable archive |
-|---|---|---|
-| codex-login-2026-10-01 | 508 tests; PM worked; nested cloud worker sandbox blocked final artifact completion. | [Full directory](https://github.com/jovinus302/Ensemble/tree/cb84ecc2849f8194e0d5d44d22642a5174ef4c4f/docs/qa/codex-login-2026-10-01) |
-| local-dual-provider-2026-10-01 | 623 tests; both providers completed browser/artifact flows; genuine timeout and recovery retained. Single isolated PM timing sample is not general performance evidence. | [Full directory](https://github.com/jovinus302/Ensemble/tree/cb84ecc2849f8194e0d5d44d22642a5174ef4c4f/docs/qa/local-dual-provider-2026-10-01) |
-| md2-dual-provider-2026-10-01 | Original failure and later delivery fixes retained; issues #46/#47 subsequently closed. External provider latency is not guaranteed. | [Full directory](https://github.com/jovinus302/Ensemble/tree/cb84ecc2849f8194e0d5d44d22642a5174ef4c4f/docs/qa/md2-dual-provider-2026-10-01) |
-| issue-47-2026-10-01 | 689 tests plus both-provider browser evidence; app preemption/cancellation improved. External completion latency and required FIFO waits remain limitations. | [Full directory](https://github.com/jovinus302/Ensemble/tree/cb84ecc2849f8194e0d5d44d22642a5174ef4c4f/docs/qa/issue-47-2026-10-01) |
+## 결과 관리
 
-Issues [#46](https://github.com/jovinus302/Ensemble/issues/46) and [#47](https://github.com/jovinus302/Ensemble/issues/47) retain additional commit-pinned evidence links; PR #49 links its final results and browser screenshots. The [benchmark archive index](../../app/packages/benchmark/evidence/README.md) separately records the original pilot, validation-only run and v4 paired experiment. The [v4 benchmark](../../app/packages/benchmark/evidence/paired-validation-v4/README.md), merged in PR #53, remains n=1 with unknown complete cost and unchanged frozen baseline; its generated evidence is also preserved at the immutable commit.
+날짜별 과거 QA 보고서·스크린샷·벤치마크 증거와 제거된 실행기 안내는 현재 트리에 보관하지 않는다. 새 실행 결과는 무시된 `.local/` 아래에 두고, 변경 설명에는 실행한 검사·환경·결과·제한을 적는다. 검증하지 않은 경로를 통과로 기록하지 않는다.
