@@ -11,9 +11,9 @@
 | 경로 | 진입점 | 상태·실행 경로 |
 |---|---|---|
 | `/` | [App](../app/apps/web/components/App.tsx) | [웹 runtime](../app/apps/web/lib/runtime.ts) → ProjectManager → 이벤트 원장·SQLite |
-| `/demo` | [FixedDemo](../app/demo/scripted/coordination/FixedDemo.tsx) | fixed-demo reducer와 고정 대화·결과 |
-| `/s27` | [S27Demo](../app/demo/scripted/s27/S27Demo.tsx) | S27 시나리오·노드/엣지·장면 상태 |
-| `/handoff` | [TeamHandoff](../app/demo/scripted/handoff/TeamHandoff.tsx) | team-handoff reducer와 합의·초안·공유·검토 상태 |
+| `/demo/pm-coordination` | [PmCoordinationDemo](../app/demo/scripted/pm-coordination/PmCoordinationDemo.tsx) | pm-coordination reducer와 고정 대화·결과 |
+| `/demo/marketing-campaign` | [MarketingCampaignDemo](../app/demo/scripted/marketing-campaign/MarketingCampaignDemo.tsx) | S27 시나리오·노드/엣지·장면 상태 |
+| `/demo/design-to-code` | [DesignToCodeDemo](../app/demo/scripted/design-to-code/DesignToCodeDemo.tsx) | design-to-code reducer와 합의·초안·공유·검토 상태 |
 
 뒤의 세 경로는 앱 서버 API·PM provider·worker connector·SQLite에 연결되지 않은 클라이언트 시연이다. 실제 앱의 fake 모드는 동일한 서버·원장을 쓰므로 이들과 구분한다. [데모 안내](../app/demo/README.md)에 조작과 한계를 정리했다.
 

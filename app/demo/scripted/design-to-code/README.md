@@ -1,6 +1,6 @@
-# 사람·Agent 인계 데모
+# 디자인→개발 협업 데모
 
-확인 기준: **2026-10-05, main `605521b` (PR #68 병합)**. 경로는 `/handoff`이며 실행 방법과 다른 데모와의 차이는 [데모 안내](../../README.md)를 참고한다.
+확인 기준: **2026-10-05, main `605521b` (PR #68 병합)**. 경로는 `/demo/design-to-code`이며 실행 방법과 다른 데모와의 차이는 [데모 안내](../../README.md)를 참고한다.
 
 ## 보여주는 흐름
 
@@ -21,4 +21,4 @@
 - QA 결과는 시나리오 예시다. 미리보기의 포커스 동작은 확인할 수 있지만 실제 작업자의 산출물을 실행 검증하는 시스템은 아니다.
 - 새로고침하거나 경로를 떠나면 새 시연을 시작한다. 원장·DB에 저장하지 않는다.
 
-코드: [화면](TeamHandoff.tsx), [상태와 시나리오](team-handoff.ts), [핵심 회귀 검사](../../../test/essential-handoff.test.ts). 현재 브라우저 확인은 [검사 실행기](qa/browser.cjs)와 [QA 안내](../../../../docs/qa/README.md)를 따른다.
+코드: [화면](DesignToCodeDemo.tsx), [상태와 시나리오](design-to-code.ts), [핵심 회귀 검사](../../../test/essential-design-to-code.test.ts). 현재 브라우저 확인은 [검사 실행기](qa/browser.cjs)와 [QA 안내](../../../../docs/qa/README.md)를 따른다.
