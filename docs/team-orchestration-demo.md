@@ -25,10 +25,13 @@
 npm ci
 
 # 1) 서버: 규칙 기반 PM과 가짜 Agent. 시연용 데이터 폴더는 따로 둔다.
-ENSEMBLE_PM_RUNTIME=fake ENSEMBLE_AGENT_RUNTIME=fake ENSEMBLE_DATA_DIR=./data-team-demo npm run dev
-#    PowerShell: $env:ENSEMBLE_PM_RUNTIME='fake'; $env:ENSEMBLE_AGENT_RUNTIME='fake'; $env:ENSEMBLE_DATA_DIR='./data-team-demo'; npm run dev
+#    `npm run dev`는 apps/web에서 돌기 때문에 상대 경로는 apps/web 기준이다. ../../data/team-demo = app/data/team-demo(gitignore 대상).
+ENSEMBLE_PM_RUNTIME=fake ENSEMBLE_AGENT_RUNTIME=fake ENSEMBLE_DATA_DIR=../../data/team-demo npm run dev
+#    PowerShell: $env:ENSEMBLE_PM_RUNTIME='fake'; $env:ENSEMBLE_AGENT_RUNTIME='fake'; $env:ENSEMBLE_DATA_DIR='../../data/team-demo'; npm run dev
+#    packages/* 코드를 고친 뒤에는 서버를 다시 켠다. 핫 리로드는 이미 만든 런타임의 PM을 바꾸지 않는다.
 
 # 2) 시나리오 시작: 브라우저 http://localhost:3000 → 상단 "팀 시연" 버튼
+#    (진행 중인 프로젝트가 있으면 "진행 중인 프로젝트는 보관되고 화면에서 사라집니다." 확인이 한 번 뜬다)
 #    (또는)
 curl -s -X POST localhost:3000/api/scenario/start -H 'Content-Type: application/json' \
   -d '{"name":"team-orchestration","confirmReplace":true}' > /dev/null
@@ -38,6 +41,7 @@ curl -s -X POST localhost:3000/api/scenario/start -H 'Content-Type: application/
 curl -s -X POST localhost:3000/api/scenario/next -H 'Content-Type: application/json' -d '{}'
 #    → 채널: "@김상성 로그인 API 구현을 곧 시작합니다."
 #    → 시나리오 바: "Ensemble 밖에서 진행" (다음 단계는 개인 Agent가 한다)
+#    → 이때 T-1은 `reserved`(시작 알림을 보낸 사람 작업, 화면에는 "진행 중")다. 결과 API는 이 상태를 받는다.
 
 # 4) 김상성의 개인 Coding Agent가 결과를 보낸다. 먼저 요청 본문을 확인하고:
 node scripts/personal-agent-submit.mjs --task T-1 --member kim-sangsung \
@@ -49,7 +53,8 @@ node scripts/personal-agent-submit.mjs --task T-1 --member kim-sangsung \
 # 5) 화면에서 확인
 #    - 채널: 김상성의 결과 줄(출처 칩 "IDE · 김상성의 Coding Agent", 🔗 Pull Request)
 #    - 채널: PM의 "자동 인계" 줄 (T-1 확인 → T-2를 UX Agent에게)
-#    - 작업 패널: T-2 진행 중 → 약 2초 뒤 완료, T-3는 박OO 차례
+#    - 작업 패널: T-2 진행 중 → 약 2초 뒤 완료, T-3는 박OO 차례("완료" 묶음은 접혀 있으니 눌러서 편다:
+#      T-1 👤 사람 + 출처 칩, T-2 🤖 Agent + "자동 인계" 칩)
 #    - T-2 상세의 활동 기록: "“로그인 API 구현” 확인 뒤 PM이 자동으로 맡겨 작업을 시작했어요"
 ```
 
@@ -79,17 +84,15 @@ node scripts/personal-agent-submit.mjs --task T-1 --member kim-sangsung \
 - 시작 알림 문구는 PM 코드의 기본 문구("@김상성 로그인 API 구현을 곧 시작합니다.")입니다. 기획 문서의 예시("T-1 시작할 수 있습니다")와 표현이 조금 다릅니다.
 - UX Agent의 점검 결과는 시연용 가상 문서입니다(실제 사용자 테스트 없음).
 
-## W1 연동 상태 (작업 분담)
+## 통합 상태 (W1 + W2, W3에서 확인)
 
-결과 수신 엔드포인트와 `via` 투영은 W1이 맡습니다(`packages/core`, `packages/orchestrator`, `apps/web/app/api/[...path]/route.ts`). 이 시연(W2)은 아래 계약을 기준으로 작성했습니다. **W1이 머지되기 전에는 4)단계 `POST /api/tasks/:id/result`가 404를 돌려주므로 처음부터 끝까지 이어서 돌릴 수 없습니다.**
+W1(결과 수신 API, #65)과 W2(이 시연, #66)는 W3 브랜치에서 합쳐졌고, 위 런북을 그대로 처음부터 끝까지 돌렸습니다. 명령 출력과 화면은 [docs/qa/team-orchestration/](qa/team-orchestration/README.md)에 있습니다.
 
-- 계약: `POST /api/tasks/:id/result`, `Authorization: Bearer <token>`(개발 모드 `dev-token`), 본문 `{ memberId, summary, artifacts?, via? }`, 응답 `{ ok: true, taskId, resultIndex }`. 투영된 결과에 선택 필드 `via`가 붙습니다.
-- W2가 W1에 기대하는 동작(통합할 때 확인할 것):
-  1. 결과를 `result_submitted`(actor = 사람 `memberId`)로 기록하고 PM의 인계 판단을 실행한다(`Dispatcher.onResultSubmitted`, 지금 공개 경로로는 `pm.retryValidation(taskId, resultId)`와 같다).
-  2. `file` 산출물은 `data:` URI의 `attachment_recorded`로 기록하고 `artifactIds`에 넣는다. PM이 읽어 인용하는 근거가 이것이다.
-  3. `url` 산출물은 `taskId`를 붙인 `attachment_recorded`(uri = 그 URL)로 기록하되, PM이 읽을 수 없으므로 **`artifactIds`에는 넣지 않는다.** 넣으면 인계 판단의 구조 점검이 "결과 파일을 찾을 수 없다"며 보완 요청으로 끝난다. 화면은 같은 작업에 붙어 제출 직전에 기록된 http(s) 첨부, `artifactIds` 안의 http(s) 첨부, 제출 기록의 `artifacts[kind=url]`를 모두 링크로 보여 준다.
-  4. `via`는 `result_submitted` 기록과 투영된 결과(`task.results[i].via`) 중 한 곳에만 있어도 된다. 화면은 두 곳을 다 읽고, 없으면 출처 줄을 그리지 않는다.
-- W2 쪽 검증: `test/team-orchestration.test.ts`가 W1 엔드포인트 대신 위 2~4의 형태로 기록을 남기고 `pm.retryValidation`을 불러, 실제 PM 코드에서 T-1 checked → T-2 자동 시작 → T-2 checked → T-3 사람 차례까지 확인합니다.
+- 계약: `POST /api/tasks/:id/result`, `Authorization: Bearer <token>`(`ENSEMBLE_MEMBER_TOKENS`가 없으면 `dev-token`), 본문 `{ memberId, summary, artifacts?, via? }`, 응답 `{ ok: true, taskId, resultIndex }`. 모델 판단 없이 바로 기록합니다.
+- 기록 순서: `attachment_recorded`(산출물마다) → `task_started`(아직 시작 기록이 없으면) → `result_submitted`(`via` 포함) → PM 인계 판단 → 의존 작업 시작. 받을 수 있는 상태는 `ready`, `running`, 그리고 사람 담당의 `reserved`입니다.
+- `url` 산출물은 `text/uri-list` 첨부로 `artifactIds`에 들어가고, 인계 판단은 그 URL을 텍스트로 읽습니다. 그래서 PR 링크가 함께 있어도 보완 요청으로 끝나지 않습니다(W2가 걱정한 경우는 재현되지 않음). `file` 산출물은 `data:` URI 첨부입니다.
+- `via`와 산출물은 `result_submitted`와 투영된 결과(`task.results[i].via`, `task.results[i].artifacts`) 양쪽에 있습니다.
+- 회귀 테스트: `packages/orchestrator/test/external-result.test.ts`(HTTP 경로), `test/team-orchestration.test.ts`(실제 런타임에서 계획 승인 → 실제 엔드포인트로 T-1 제출 → T-2 자동 시작·완료 → T-3 사람 차례). 루트 `npm test`가 두 위치를 모두 돌립니다.
 
 ## 코드 위치
 
