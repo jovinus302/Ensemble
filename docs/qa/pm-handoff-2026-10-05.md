@@ -1,58 +1,68 @@
-# PM team handoff demo — local implementation and QA
+# Ensemble collaborative handoff — UX revision
 
-## Checkout and source of truth
+## Outcome
+
+The `/handoff` route now starts with Jiyoon and Sangseong discussing a visible, broken expired-login screen. The conversation, not the sidebar, explains why PM intervenes. PM proposes a recovery route based on their messages, waits for both people, and connects a shared UX draft to implementation, implementation to QA evidence, and accepted evidence to a human review and mobile rollout handoff.
+
+Two choices produce different artifacts: return to the existing login screen, or resend with a 60-second restriction. An added privacy constraint masks the example email. Objection reopens discussion. A QA failure requests only focus recovery; a human revision changes the button copy while preserving the decision and passing behavior. Private draft creation never changes the shared artifact.
+
+Compact cards carry proposal, agreement/work ownership, artifact changes, QA findings, and handoff. Their disclosures point back to immutable source dialogue/results. The right column shows a one-line goal, latest shared artifact, owners/waiting states, and the PM's next action. The fixed viewer remains Sangseong; role-play controls identify the current participant.
+
+## Local checkout
 
 - Worktree: `C:\Users\siheon.ryu\Documents\Codex\2026-10-05\task\ensemble-pm-handoff`
 - Branch: `demo/pm-team-handoff-20261005`
-- Base: `7256395f47ce913b3be032df30a47b2c039105db` (latest main fetched on 2026-10-05).
-- PR64: merged at `2026-10-05T04:27:23Z`, head `8759c155ac4868c896611710a6d807c5d9b1e9cb`; verified with `git ls-remote` and `gh pr view`. The first connector response returned the earlier draft state, so direct remote Git/CLI results were used.
-- A separate bare clone with `--no-hardlinks` owns the new worktree. Existing trees, branches, and processes were not changed. The restricted document commit `9ea0d5e` was not cherry-picked or published.
-- No checkout or ancestor `AGENTS.md`, or checkout `.agents` instructions were found. README and `docs/qa/essential-regressions.md` supplied execution instructions.
+- Upstream base: `7256395f47ce913b3be032df30a47b2c039105db` (merged PR64).
+- Previous local implementation: `4a8353de7b332a688224139923fe478add739dc1`.
+- Existing owned development server retained at `http://127.0.0.1:3497/handoff`; no unrelated processes/trees modified.
+- No push, PR, merge, or PR67 integration. The restricted document commit was not incorporated.
 
-## Experience and scope
+## Identity, images, and readability
 
-Open `http://127.0.0.1:3497/handoff`. The existing Jin-based fixed demo's shell, colors, messenger bubbles, alignment, and responsive layout are reused through `fixed-demo.css`; the new route has isolated state and scoped CSS overrides. `/demo` and `/s27` remain intact. Current code is a Next.js app, not the unverified `server.js/index` implementation.
+Original repository-native vectors: `app/apps/web/public/handoff/ensemble-logo.svg` and `ensemble-symbol.svg`. Two circular endpoints and a square endpoint join three lines into a compact E-like team mark. This product mark is distinct from the PM participant's lime robot/coordination icon. UX, Coding, and QA use different vector glyphs and colors, with explicit role labels.
 
-1. PM assigns T-1 to Kim Sangseong with expired-link recovery and keyboard-focus criteria.
-2. Sangseong works directly with his Coding Agent in the private-work preview.
-3. Generating output does not publish it. Explicit sharing adds only output and evidence to team state.
-4. PM checks the shared output and dependency, then requests Jiyoon's review.
-5. Approval records T-1 completion and passes the goal, accepted version, review decision, and retained behavior to UX Agent's T-2. T-2 output remains pending.
-6. Rejection keeps T-2 blocked; a revised version must be shared and reviewed again.
+The human profiles are newly generated fictional adult portraits, not actual Jiyoon/Sangseong photographs. `jiyoon-generated.png` and `sang-generated.png` live in the same public directory. No stock photographs are used in the final implementation. The built-in ImageGen path was used, without API/CLI fallback. Both returned images were visually checked and copied as unchanged PNG bytes into the repository. Shared prompt:
 
-Use **내 Coding Agent와 작업하기 → T-1에 결과와 근거 공유 → 검토 승인 · 다음 담당에게** for the normal path. At review, use **수정 요청 · 포커스 복귀** for the revision path. The previous-version disclosure exposes rejected stale-event attempts. Review is explicitly role-played as Jiyoon; it is not a production authorization model.
+> Use case: photorealistic-natural. A single square professional profile photograph for a fictional team demo. [subject] Friendly calm expression, authentic skin texture, soft diffused daylight, warm gray seamless background. Centered head and shoulders, face fills upper central area, generous margins for circular crop. No real person reference, no text, no logo, no watermark. Photographic, not illustration.
 
-All dialogue, output, test evidence, checks, and receipts are scripted examples. No model, real agent, IDE, Slack, Knox, or MCP integration is invoked. Private conversations are not collected. State lives in memory; reload or leaving and returning starts the demo again. The simplified graph reflects current shared evidence, review, and handoff.
+Subjects: (1) fictional adult Korean woman UX designer in her early 30s, natural shoulder-length dark hair, muted sage blouse; (2) fictional adult Korean man software engineer in his early 30s, short dark hair, navy knit shirt.
+
+Heading 24px, decision 20px, conversation 16px (15px mobile), with smaller metadata and progressive disclosure. Body copy wraps Korean by word where possible and breaks long tokens safely. Generated photos use circular `object-fit: cover` crops, descriptive alt text, and named fallback avatars. An effect checks failures occurring before React hydration as well as the normal image error handler.
 
 ## Verification
 
-- `npm test`: 17/17 passed, including 3 risk-based handoff tests.
-- `npm run typecheck`: passed.
-- `npm run build`: passed; `/handoff` generated statically. Three existing dynamic-filesystem tracing warnings in the Claude/Codex connector/settings sources remain.
-- Actual local Chromium `153.0.8010.12` clicking, not reducer-only verification: normal handoff; generation without sharing; review wait; rejection/revision; duplicate share/approval; old result/old approval; cancel/reset during both asynchronous phases; cancel then reshare; browser Back/Forward during a pending callback; reload; desktop 1440x1000 and mobile 390/320 widths.
-- No browser page errors, application API requests, or external requests. Mobile horizontal overflow: zero.
-- Preview dialog: Tab stays on its only interactive control, Escape closes it, and focus returns to the opener.
+Commands run from `app/`: `npm test`, `npm run typecheck`, `npm run build`. The 18-test suite includes four risk-based tests covering both human consents, changed constraints, dependency flow, revision/old-version guards, duplicate actions, and interrupted/history-restored callbacks. Three existing dynamic-filesystem tracing build warnings remain in unrelated connector/settings sources.
 
-QA caught a real UI defect: the second click of a share double-click could hit the newly rendered Cancel button. Cancel now ignores the second click of the same gesture. Reducer guards separately prevent duplicate state transitions. Browser navigation waits were also corrected to wait for completed navigation before immediately moving Forward/Back.
+`app/scripts/handoff-browser.cjs` runs actual local Chromium clicks against port 3497 using an existing Playwright installation (no new dependency):
 
-To reproduce browser QA, use an existing Playwright installation (no dependency added):
+- Discussion, objection, alternate route, additional privacy constraint, both explicit consents.
+- UX draft remains private until shared; shared draft feeds Coding; selected implementation affects QA.
+- Missing focus creates a QA request; scoped repair updates the artifact; human copy revision is preserved.
+- Duplicate agreement/share/approval; stale result/approval; human review blocks handoff.
+- Cancel/reset during UX, Coding, and QA callbacks; internal Back/Forward restores coherent snapshots without restarting timers; browser Back/Forward during a pending callback resets the session.
+- Interactive artifact focus behavior, Escape, and opener focus restoration.
+- 1440px desktop, complete 390px/320px mobile flows, no horizontal overflow; 720px viewport reflow is the layout-equivalent check for 200% zoom of a 1440px viewport (not an OS/browser zoom-setting test).
+- Real image-request failures show accessible fallbacks; generated images load and crop correctly.
+- Browser page errors, application API calls, and external requests must all be zero.
 
-```powershell
-cd app
-$env:ENSEMBLE_PLAYWRIGHT_PATH = '<absolute path to installed playwright or playwright-core>'
-node scripts/handoff-browser.cjs
-```
+Evidence: ignored local `docs/qa/pm-handoff-2026-10-05/ux-result.json` and `ux-*.png`. Core screenshots: `ux-consensus.png`, `ux-qa-feedback.png`, `ux-artifact-review.png`. Mobile: `ux-mobile-390.png`, `ux-mobile-320.png`. Logo source is the SVG above.
 
-The server was started with both `ENSEMBLE_PM_RUNTIME=fake` and `ENSEMBLE_AGENT_RUNTIME=fake`, bound to `127.0.0.1:3497`. Launch command from `app`: `node node_modules/next/dist/bin/next dev apps/web --hostname 127.0.0.1 --port 3497`. Only this task's server was created; existing processes were untouched.
+QA found and fixed an early image-error/hydration race. The focus assertion was adjusted to wait for the real focus transition rather than sample before the pending DOM update.
 
-## Local evidence and Library blocker
+## Boundaries
 
-Evidence directory: `docs/qa/pm-handoff-2026-10-05/` (local QA files intentionally follow the repository's ignored-evidence convention).
+This remains an interactive scripted UI/state demonstration: finite reply choices, fixed scenario data, role-played approvals, and example QA checks. Only explicitly started local preparations have a short timer; timers never approve decisions or share private drafts. The artifact can simulate login navigation/resend/focus without making requests. The resend cooldown is a displayed sample state, not a real email service or elapsed-time implementation. There is no model inference, external Agent/API integration, production authorization, persistence, or measured quality claim. Reload/route departure starts a new demo.
 
-- `desktop-assignment.png`, `desktop-artifact.png`, `desktop-review.png`, `desktop-handoff.png`, `desktop-revision.png`
-- `mobile-390-review.png`, `mobile-390-handoff.png`, `mobile-320-review.png`, `mobile-320-handoff.png`
-- `result.json`: browser version, checked flows, and empty error/API/external-request arrays.
+## Final verified result
 
-The current Library skill's prepared-upload helper was fetched with its companion files and invoked once for desktop review, handoff, revision, and mobile handoff screenshots. It failed with the exact error: `library upload failed: Library prepare_uploads is not available`. No direct upload fallback or alternate transfer was attempted. No confirmed `library_file_id` exists. Local screenshots remain available.
+2026-10-05: `npm test` PASS (18/18), `npm run typecheck` PASS, `npm run build` PASS. Build retains three existing dynamic filesystem tracing warnings. Actual Chromium 153.0.8010.12 click QA PASS, with zero page errors, application API calls, or external requests. See `ux-result.json` for the executed checks.
 
-Local implementation and validation only: no push, PR, or merge was performed.
+Current core screenshots were successfully saved in Library:
+
+| Screenshot | Confirmed library_file_id |
+| --- | --- |
+| ux-consensus.png | libfile_083a0179158081919647d80040ea0e52 |
+| ux-qa-feedback.png | libfile_92cd5a6516d48191902e768738059094 |
+| ux-artifact-review.png | libfile_1cdc2dcec9848191b27ce047ded72474 |
+
+The official metadata helper was attempted immediately after upload for each original local file. Windows Python failed with `AttributeError: module 'os' has no attribute 'setxattr'`. Library creation succeeded; only local extended-attribute tracking failed. No duplicate uploads or workaround metadata were created.
