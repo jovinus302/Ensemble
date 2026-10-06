@@ -32,6 +32,12 @@ PR #49의 선점은 같은 작성자가 채널에 연속으로 보낸, 첨부와
 
 하루 요약은 이미 구현되어 있다. 자유 진행 프로젝트의 서버가 실행 중일 때 5분 주기로 점검하고, 서울 시간 09:00 이후 하루 한 번을 기준으로 변경이 있는 사람의 완료·새 작업·결정 요청을 코드 템플릿으로 요약한다. `ENSEMBLE_DIGEST=off`로 끌 수 있다. 외부 예약 서비스나 추가 LLM 호출은 사용하지 않는다. 근거: [digest](../app/packages/orchestrator/src/digest.ts), [실행 타이머](../app/apps/web/lib/runtime.ts).
 
+
+### WORK CONTEXT (Pages v2.5 시나리오)
+
+`context_session_started`가 있는 프로젝트(현재는 시나리오 `pages-v25`만)는 작업 계획 없이 WORK CONTEXT로 움직인다. 채널 메시지는 계획 조율(`Coordinator`) 대신 `WorkContextPm`으로 간다. PM은 facts를 받아 `update_work_context` 도구 하나로 답하고, `applyWorkContextOutput`이 op마다 형태·참조·권한을 검사해 통과한 것만 한 트랜잭션에 기록한다(`pm_considered`·`pm_spoke`·`context_card_posted` 포함). 분기·Proposal 확정과 변경 적용은 사람의 직접 발언·버튼으로만 닫히고, pool 후보는 목록의 참여 가능한 사람만, 제작 도구는 연결된 것만, 같은 도구의 같은 회차는 한 번만 넘길 수 있다. 거절된 op는 버리고 이유를 `pm_considered.reason`에 남긴다.
+
+pool 합류와 제작 도구 진행·빌드는 `fake-integrations.ts`가 시뮬레이션하며(외부 서비스 없음) 합류·빌드·변경 적용 때 PM을 다시 깨운다. 변경 카드는 `POST /api/context/changes/:id { me, outcome }`(결정권자만, 1회; 아니면 403·409·404). WORK CONTEXT 이벤트는 자동 행동 상한(12회)에 세지 않는다. `ENSEMBLE_PM_RUNTIME=fake`의 결정적 규칙은 `fake-work-context-pm.ts`다. 계약 전체와 아직 남은 화면 작업은 [Pages v2.5 설계](pages-v25-runtime-demo.md)를 따른다. 근거: [검증](../app/packages/core/src/work-context-apply.ts), [PM 턴](../app/packages/orchestrator/src/work-context.ts), [런타임](../app/apps/web/lib/runtime.ts).
 ---
 
 > 이슈 #26 설계안을 main에 병합된 코드 기준으로 다시 쓴 확정본이다(2026-10-02). 설계안과 코드가 다른 곳은 **코드를 적고** "설계와 다름"으로 표시했다.
