@@ -1,6 +1,7 @@
 ﻿import { project, type AnyEvent, type LedgerEvent, type ProjectState, type TaskStatus } from '@ensemble/core';
 import type { ProjectManager } from '@ensemble/orchestrator';
 import type { ScriptedStep } from './index.ts';
+import type { PagesStep } from './pages-v25/lines.ts';
 import { respondToRevision, type RevisionGenerator } from './revision.ts';
 import { ScenarioError, draftFailureDetail } from './errors.ts';
 
@@ -13,6 +14,14 @@ export type Condition = (
   | { kind: 'agentTurnFinished' | 'agentTurnRunning'; agentId: string }
   | { kind: 'agentUpdated'; agentId: string; afterStep: number }
   | { kind: 'all' | 'any'; conditions: Condition[] }
+  // Pages v2.5 Work Context (pages-v25/lines.ts `WorkContextCondition` is the subset its script uses).
+  | { kind: 'memberJoined'; memberId: string }
+  | { kind: 'branchOpen'; itemId: string }
+  | { kind: 'branchPreviewed'; itemId: string; optionId: string }
+  | { kind: 'proposalStatus'; proposalId: string; status: 'generated' | 'confirmed' }
+  /** The build exists and the PM has announced it (a build card), so the next line follows the announcement. */
+  | { kind: 'buildProduced'; version: string }
+  | { kind: 'changeSetProposed'; changeSetId: string }
 ) & { timeoutMs?: number };
 export const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
 
@@ -73,6 +82,18 @@ export function conditionMet(condition: Condition, events: readonly LedgerEvent[
       const seq = anchors[condition.afterStep];
       return seq !== undefined && typed.some(e => e.seq > seq && e.type === 'update_acknowledged' && state.tasks.get(e.payload.taskId)?.spec.assignee === condition.agentId);
     }
+    case 'memberJoined': return state.members.has(condition.memberId);
+    case 'branchOpen': return !!state.workContext?.branches.has(condition.itemId);
+    case 'branchPreviewed': return state.workContext?.branches.get(condition.itemId)?.preview?.optionId === condition.optionId;
+    case 'proposalStatus': {
+      const status = state.workContext?.proposals.get(condition.proposalId)?.status;
+      return condition.status === 'generated' ? !!status : status === 'confirmed';
+    }
+    case 'buildProduced': {
+      const build = [...(state.workContext?.builds.values() ?? [])].find(b => b.version === condition.version);
+      return !!build && [...state.workContext!.cards.values()].some(c => c.kind === 'build' && c.buildId === build.buildId);
+    }
+    case 'changeSetProposed': return !!state.workContext?.changeSets.has(condition.changeSetId);
   }
 }
 export interface WaitOptions {
@@ -192,6 +213,45 @@ export async function advanceScript(host: ScriptHost, steps: readonly ScriptedSt
     }
     if (next >= steps.length && completion) await waitForCondition(completion, () => host.read(), progress.anchors, host.waitOptions);
     progress.step = next;
+  } catch (error) {
+    console.error(`[ensemble] 대본 ${progress.step + 1}단계 중단`, error);
+    const reason = error instanceof ScenarioError ? error.message : error instanceof Error && error.message === '대본 대기를 취소했습니다.' ? error.message : '대본 진행 조건을 확인하지 못했습니다. 현재 작업 상태를 확인한 뒤 다시 시도해 주세요.';
+    progress.stopped = `대본 ${progress.step + 1}단계: ${reason}`;
+    await host.recordStop(progress.stopped);
+    throw new Error(progress.stopped);
+  }
+}
+
+/** Pages v2.5 script host: posting a line (a person's message, or an agent's scripted premise) and pressing 변경 적용. */
+export interface PagesScriptHost {
+  waitOptions?: WaitOptions;
+  read(): Promise<LedgerEvent[]>;
+  say(step: PagesStep): Promise<void>;
+  applyChange(step: PagesStep): Promise<void>;
+  recordStop(reason: string): Promise<void>;
+}
+/** One Pages v2.5 step: wait for its condition, post it, and (after the last step) wait for completion. Only inputs, never PM output. */
+export async function advancePagesScript(host: PagesScriptHost, steps: readonly PagesStep[], progress: ScriptProgress, completion?: Condition) {
+  if (progress.stopped) throw new Error(progress.stopped);
+  try {
+    const step = steps[progress.step];
+    if (!step) return;
+    if (!progress.executed?.[progress.step]) {
+      if (step.waitFor) await waitForCondition(step.waitFor, () => host.read(), progress.anchors, host.waitOptions);
+      const state = project(await host.read());
+      progress.anchors[progress.step] = state.lastSeq;
+      const kind = state.members.get(step.as)?.kind;
+      if (step.action === 'applyChange') {
+        if (kind !== 'human' || state.goal?.decider !== step.as) throw new ScenarioError('대본: 변경 적용은 결정권자가 해야 합니다.');
+        await host.applyChange(step);
+      } else {
+        if (kind !== 'human' && kind !== 'agent') throw new ScenarioError(`대본: ${step.as} 멤버가 아직 채널에 없습니다.`);
+        await host.say(step);
+      }
+      (progress.executed ??= {})[progress.step] = true;
+    }
+    if (progress.step === steps.length - 1 && completion) await waitForCondition(completion, () => host.read(), progress.anchors, host.waitOptions);
+    progress.step++;
   } catch (error) {
     console.error(`[ensemble] 대본 ${progress.step + 1}단계 중단`, error);
     const reason = error instanceof ScenarioError ? error.message : error instanceof Error && error.message === '대본 대기를 취소했습니다.' ? error.message : '대본 진행 조건을 확인하지 못했습니다. 현재 작업 상태를 확인한 뒤 다시 시도해 주세요.';

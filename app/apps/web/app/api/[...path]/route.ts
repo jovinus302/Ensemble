@@ -59,7 +59,8 @@ export async function POST(request: Request, context: Context) {
     const resolving = parts[0] === 'tasks' && parts.length === 3 && parts[2] === 'resolve';
     const commenting = parts[0] === 'tasks' && parts.length === 3 && parts[2] === 'comments';
     const deciding = parts[0] === 'decisions' && parts.length === 2;
-    if (!resolving && !commenting && !deciding && !['messages', 'availability', 'free/start', 'scenario/start', 'scenario/next', 'scenario/retry', 'scenario/skip'].includes(route) && !(parts[0] === 'cards' && parts.length === 2)) return json({ error: { code: 'not_found', message: '요청한 경로를 찾지 못했습니다.' } }, 404);
+    const changing = parts[0] === 'context' && parts[1] === 'changes' && parts.length === 3;
+    if (!resolving && !commenting && !deciding && !changing && !['messages', 'availability', 'free/start', 'scenario/start', 'scenario/next', 'scenario/retry', 'scenario/skip'].includes(route) && !(parts[0] === 'cards' && parts.length === 2)) return json({ error: { code: 'not_found', message: '요청한 경로를 찾지 못했습니다.' } }, 404);
     let parsed: unknown;
     try { parsed = await request.json(); } catch { throw new InputError('요청 내용을 읽을 수 없습니다.'); }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new InputError('요청 형식이 올바르지 않습니다.');
@@ -89,6 +90,13 @@ export async function POST(request: Request, context: Context) {
       const action = body.action as 'approve' | 'choose' | 'edit' | 'reject' | 'answer';
       await app.run(() => app.decide(parts[1]!, answerer, { action, ...(body.optionId ? { optionId: body.optionId as string } : {}), ...(body.edits ? { edits: body.edits as Record<string, unknown> } : {}), ...(typeof body.text === 'string' ? { text: body.text } : {}) }));
       return json(await app.state(answerer));
+    }
+    if (changing) {
+      // Pages v2.5 change card: 변경 적용 / 되돌리기, by the person pressing it.
+      const by = text(body.me, 'me');
+      if (body.outcome !== 'applied' && body.outcome !== 'reverted') throw new InputError('적용 또는 되돌리기를 선택해 주세요.');
+      await app.resolveContextChange(parts[2]!, by, body.outcome);
+      return json(await app.state(by));
     }
     if (body.confirmReplace !== undefined && typeof body.confirmReplace !== 'boolean') throw new InputError('프로젝트 교체 확인 값이 올바르지 않습니다.');
     if (route === 'messages') {

@@ -12,6 +12,15 @@
 
 모델 호출 없이 앱의 흐름을 보려면 PM과 Agent를 둘 다 fake로 설정한다.
 
+### Pages v2.5 (WORK CONTEXT)
+
+상단 **대본**에서 **Pages v2.5 · WORK CONTEXT**를 고르고 **시나리오**를 누른 뒤 **다음 발언**을 반복한다. 장면 03(감지)→04(정렬·pool·Proposal·"A로 가면?")→05(확정·제작 도구 전달·v1.0 빌드)→06(v1.1 변경)이 채팅 | WORK CONTEXT 캔버스·LOG | 모바일 미리보기로 진행된다. 장면 06의 "변경 적용"은 대본이 결정권자 김서연으로 누르며, 사람이 카드에서 직접 누를 수도 있다.
+
+- 대본은 사람 발언만 재생한다. 예외로 장면 03의 Story Agent·UI Agent 두 줄은 실행기가 기록한다(시연 대본의 한계). PM 출력은 대본에 없다.
+- `ENSEMBLE_PM_RUNTIME=fake`이면 PM이 규칙으로 답해 매번 같은 기록을 남긴다([golden ledger](../../packages/scenarios/src/pages-v25/golden.ts)와 같은 WORK CONTEXT). api·codex·claude PM은 같은 `update_work_context` 계약을 모델이 채운다.
+- 인력 pool 합류와 Figma·프롬프트 스튜디오·개발 도구의 진행·빌드는 모든 PM 런타임에서 시뮬레이션이며 외부 서비스를 부르지 않는다. 한 단계는 약 2초다.
+- 설계와 소유 경계는 [Pages v2.5 설계](../../../docs/pages-v25-runtime-demo.md)를 따른다.
+
 ```powershell
 $env:ENSEMBLE_PM_RUNTIME = 'fake'
 $env:ENSEMBLE_AGENT_RUNTIME = 'fake'
