@@ -19,3 +19,4 @@ export { opsApplicable } from './op-validation.ts';
 export { runDigest, digestText, type DigestOptions } from './digest.ts';
 export { questionRequestId } from './dispatch.ts';
 export type { TrustedValidator, ValidationInput, ValidationOutput, ValidationArtifact, ValidationOptions } from './validation.ts';
+export { WORK_CONTEXT_SYSTEM_PROMPT, workContextTool, workContextUserMessage } from './work-context-prompt.ts';
