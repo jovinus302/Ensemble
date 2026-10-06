@@ -15,7 +15,7 @@ const CHECKPOINTS: PagesCheckpoint[] = ['seeded', 's03_detected', 's04_aligned',
 const cardsOf = (vm: ViewModel) => vm.messages.flatMap(m => (m.contextCard ? [{ messageId: m.id, card: m.contextCard }] : []));
 const cardOn = (vm: ViewModel, kind: VmContextCard['kind'], nth = 0) => cardsOf(vm).filter(c => c.card.kind === kind)[nth];
 
-/** The golden ledger never posts `pool_candidates` or `proposal` cards; post them (plus one dangling card) on human lines. */
+/** Posts extra cards (e.g. a dangling one) on human lines after the golden end. */
 function withExtraCards(cards: ContextCard[]): ViewModel {
   const events = pagesEvents('s06_built');
   const last = events.at(-1)!;
@@ -25,12 +25,13 @@ function withExtraCards(cards: ContextCard[]): ViewModel {
 }
 
 test('all nine chat card kinds resolve from ledger ids, and a dangling reference draws no card', () => {
+  // The golden run posts all nine kinds in deck order (11:07 and 11:13 are steps → text → candidates / Proposal).
   const golden = cardsOf(pagesViewModel('s06_built')).map(c => c.card.kind);
-  assert.deepEqual(golden, ['branch_options', 'pm_steps', 'pm_steps', 'branch_preview', 'expansion', 'tool_handoffs', 'build', 'change_set', 'tool_handoffs', 'build']);
-  const vm = withExtraCards([{ kind: 'pool_candidates', searchId: X.search }, { kind: 'proposal', proposalId: X.proposal }, { kind: 'proposal', proposalId: 'missing-proposal' }]);
-  const kinds = new Set(cardsOf(vm).map(c => c.card.kind));
-  assert.equal(kinds.size, 9, [...kinds].join(','));
-  assert.equal(vm.messages.find(m => m.id === PAGES_LINES[8]!.messageId)!.contextCard, undefined, 'a card whose record is missing is dropped');
+  assert.deepEqual(golden, ['branch_options', 'pm_steps', 'pool_candidates', 'pm_steps', 'proposal', 'branch_preview', 'expansion', 'tool_handoffs', 'build', 'change_set', 'tool_handoffs', 'build']);
+  assert.equal(new Set(golden).size, 9);
+  const vm = withExtraCards([{ kind: 'proposal', proposalId: 'missing-proposal' }]);
+  assert.equal(cardsOf(vm).length, 12);
+  assert.equal(vm.messages.find(m => m.id === PAGES_LINES[6]!.messageId)!.contextCard, undefined, 'a card whose record is missing is dropped');
   const pool = cardOn(vm, 'pool_candidates')!.card;
   assert.ok(pool.kind === 'pool_candidates');
   assert.deepEqual(pool.candidates.map(c => [c.name, poolRow(c).status.text]), [['한지우', '합류'], ['정유나', '합류']]);
@@ -38,17 +39,17 @@ test('all nine chat card kinds resolve from ledger ids, and a dangling reference
   assert.ok(proposal.kind === 'proposal');
   assert.deepEqual(cardTexts(proposal).slice(0, 2), ['Proposal v1', '확정']);
   // The Proposal card shows the chosen branch while the item is still a branch (deck: "… (B) 확정").
-  const generated = cardOn(pagesViewModel('s04_proposal'), 'pm_steps', 1)!.card;
-  assert.ok(generated.kind === 'pm_steps' && generated.proposal);
+  const generated = cardOn(pagesViewModel('s04_proposal'), 'proposal')!.card;
+  assert.ok(generated.kind === 'proposal');
   assert.deepEqual(generated.proposal.decisions.map(d => [d.key, d.statusLabel]), [['D1', '통합'], ['D2', '확정']]);
   assert.match(generated.proposal.decisions[1]!.title, /가명화.*\(B\)$/);
 });
 
 test('a card keeps its place while its progress label follows the ledger', () => {
   // Pool call: 호출 중 → 합류, on the same PM message.
-  const invited = cardOn(pagesViewModel('s04_pool_invited'), 'pm_steps')!, joined = cardOn(pagesViewModel('s04_pool_joined'), 'pm_steps')!;
+  const invited = cardOn(pagesViewModel('s04_pool_invited'), 'pool_candidates')!, joined = cardOn(pagesViewModel('s04_pool_joined'), 'pool_candidates')!;
   assert.equal(invited.messageId, joined.messageId);
-  const statuses = (c: VmContextCard) => (c.kind === 'pm_steps' ? c.candidates ?? [] : []).map(x => poolRow(x).status.text);
+  const statuses = (c: VmContextCard) => (c.kind === 'pool_candidates' ? c.candidates : []).map(x => poolRow(x).status.text);
   assert.deepEqual([statuses(invited.card), statuses(joined.card)], [['호출 중', '호출 중'], ['합류', '합류']]);
   // Tool handoffs: 전달됨 → 제작 완료 / 빌드 완료, on the same message; round 2 starts as 재전달.
   const labels = (checkpoint: PagesCheckpoint, nth = 0) => {
@@ -103,12 +104,14 @@ test('pool members carry the POOL flag and the member header counts them as "+N 
 
 test('previews come from data: A beside B with real-name marks, and v1.1 drops 노래 and adds the fiction label', () => {
   const s04 = pagesViewModel('s04_preview_a').workContext!;
+  // The deck shows the fiction badge only from v1.1 on (.phone.v2 .pg-fic).
   assert.deepEqual([s04.comparePreview?.spec.hero.badge?.text, s04.comparePreview?.spec.notice?.text, s04.preview?.spec.hero.badge?.text],
-    ['실명', 'feed 공유 · 검수 대기 2건', 'fiction 포함']);
+    ['실명', 'feed 공유 · 검수 대기 2건', undefined]);
   assert.equal(pagesViewModel('s05_confirmed').workContext!.comparePreview, undefined, 'the A path is withdrawn once B is kept');
   const v10 = pagesViewModel('s05_built').workContext!.preview!, v11 = pagesViewModel('s06_built').workContext!.preview!;
   assert.deepEqual([v10.spec.activeVersion, v10.spec.formats.includes('노래'), v10.spec.annotations ?? []], ['v1.0', true, []]);
   assert.deepEqual([v11.spec.activeVersion, v11.spec.formats.includes('노래'), v11.spec.annotations?.map(a => a.text)], ['v1.1', false, ['fiction이 섞인 이야기예요']]);
+  assert.deepEqual([v10.spec.hero.badge, v11.spec.hero.badge?.text], [undefined, 'fiction 포함']);
 });
 
 test('no internal id leaks into card, member or preview text at any checkpoint', () => {
