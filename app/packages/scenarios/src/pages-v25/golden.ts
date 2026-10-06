@@ -21,12 +21,12 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
   const emit = <K extends keyof EventPayloads>(type: K, payload: Payload<K>, actor: Actor = pm) => { events.push({ ...context, actor, type, payload, at: pagesAt(clock) }); };
   const upsert = (...items: ContextItem[]) => items.forEach(i => emit('context_item_upserted', { item: i }));
   const link = (...edges: ContextEdge[]) => edges.forEach(e => emit('context_edge_upserted', { edge: e }));
-  /** A scripted line: humans via message_recorded, agents (scene 03 premises) via reply_recorded. */
+  /** A scripted line. The two scene-03 agent premises are written by the scenario runner (actor system), never by an agent. */
   const say = (index: number) => {
     const line = PAGES_LINES[index]!;
     clock = line.clock;
-    if (line.as === M.storyAgent || line.as === M.uiAgent) emit('reply_recorded', { memberId: line.as, text: line.text }, { kind: 'agent', id: line.as });
-    else emit('message_recorded', { messageId: line.messageId, authorId: line.as, text: line.text, attachmentIds: [] }, { kind: 'human', id: line.as });
+    const agent = line.as === M.storyAgent || line.as === M.uiAgent;
+    emit('message_recorded', { messageId: line.messageId, authorId: line.as, text: line.text, attachmentIds: [] }, agent ? { kind: 'system', id: 'scenario' } : { kind: 'human', id: line.as });
     return line.messageId;
   };
   let speeches = 0;
@@ -50,11 +50,11 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
   link(edge(I.i2, I.d2Manual), edge(I.d1, I.d2Manual, 'conflicts'));
   const m3 = say(2);
   upsert(item(I.fourDaily, 'feature', '4종 매일 동시 생성', 'violation', M.dev, [m3], { note: '비용 한도' }));
-  say(3);
-  upsert(item(I.dataFiction, 'feature', 'data + fiction 섞어 생성', 'stated', M.storyAgent, []));
-  say(4);
+  const m4 = say(3);
+  upsert(item(I.dataFiction, 'feature', 'data + fiction 섞어 생성', 'stated', M.storyAgent, [m4]));
+  const m5 = say(4);
   upsert(
-    item(I.threeTabs, 'screen', 'home · 채팅 · feed 3탭', 'undecided', M.uiAgent, [], { note: '생성 버튼 위치' }),
+    item(I.threeTabs, 'screen', 'home · 채팅 · feed 3탭', 'undecided', M.uiAgent, [m5], { note: '생성 버튼 위치' }),
     item(I.fictionLevel, 'decision', 'fiction 수위 기준', 'missing', 'pm', []),
     item(I.sharePrivacy, 'decision', 'feed 공유 시 개인정보 기준', 'missing', 'pm', []),
     item(I.onboarding9, 'screen', '온보딩 · 9시 자동 설정', 'missing', 'pm', []),
@@ -176,7 +176,7 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
   emit('tool_progress_reported', { handoffId: X.handoffs.dev, status: 'in_progress', note: '통합 빌드 중' }, tools);
   clock = '15:40';
   emit('tool_progress_reported', { handoffId: X.handoffs.dev, status: 'done', note: '통합 빌드 v1.0' }, tools);
-  emit('preview_rendered', { previewId: X.previews.build10, source: 'build', label: 'v1.0 빌드', refId: X.build10, spec: PREVIEW_B });
+  emit('preview_rendered', { previewId: X.previews.build10, source: 'build', label: 'v1.0 빌드', refId: X.build10, spec: PREVIEW_B }, tools);
   emit('build_produced', { buildId: X.build10, version: '1.0', handoffIds: [X.handoffs.figma, X.handoffs.prompt, X.handoffs.dev], previewId: X.previews.build10 }, tools);
   speak('15:40', X.build10, 'Figma 화면과 생성 템플릿이 개발 도구에서 합쳐져 v1.0 빌드가 나왔습니다. 우측 화면이 그 빌드, Pages v1.0입니다. 직접 써보시고, 고칠 점이 있으면 여기서 바로 말씀해 주세요.',
     'fact', '빌드가 나와 사람이 직접 써 볼 수 있다', { kind: 'build', buildId: X.build10 });
@@ -201,6 +201,7 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
 
   clock = '16:13';
   emit('context_change_resolved', { changeSetId: X.changeSet, outcome: 'applied', by: M.planner }, { kind: 'human', id: M.planner });
+  emit('preview_rendered', { previewId: X.previews.design11, source: 'design', label: 'PAGES · HOME · 예상 화면 v1.1', refId: I.s1, spec: PREVIEW_V11 });
   emit('tool_handoff_sent', { handoffId: X.handoffs.figma2, toolId: 'figma', itemIds: [I.s1, I.s2], title: 'S1 · S2 변경 2건', round: 2 });
   emit('tool_handoff_sent', { handoffId: X.handoffs.prompt2, toolId: 'prompt-studio', itemIds: [I.f2], title: '노래 템플릿 제외', round: 2 });
   emit('tool_handoff_sent', { handoffId: X.handoffs.dev2, toolId: 'dev-tools', itemIds: [I.f5, I.s1, I.s2], title: 'F5 구현 · 재빌드', round: 2 });
@@ -210,7 +211,7 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
   clock = '16:14';
   for (const handoffId of [X.handoffs.figma2, X.handoffs.prompt2, X.handoffs.dev2]) emit('tool_progress_reported', { handoffId, status: 'done' }, tools);
   upsert(item(I.s1, 'screen', '[화면] home · 생성물', 'updated', 'pm', [m16], { key: 'S1', derivedFrom: [I.f1, I.f3] }), item(I.s2, 'screen', '[화면] 채팅 · feed', 'updated', 'pm', [m16], { key: 'S2', derivedFrom: [I.f1, I.f4, I.f5] }));
-  emit('preview_rendered', { previewId: X.previews.build11, source: 'build', label: 'v1.1 빌드', refId: X.build11, spec: PREVIEW_V11 });
+  emit('preview_rendered', { previewId: X.previews.build11, source: 'build', label: 'v1.1 빌드', refId: X.build11, spec: PREVIEW_V11 }, tools);
   emit('build_produced', { buildId: X.build11, version: '1.1', handoffIds: [X.handoffs.figma2, X.handoffs.prompt2, X.handoffs.dev2], previewId: X.previews.build11 }, tools);
   speak('16:14', X.build11, '후속 항목을 다시 이었습니다. 개발 도구에서 다시 빌드된 화면 v1.1 — 카드에 fiction 포함 라벨이 붙고, 포맷에서 노래가 빠졌습니다. 결정 D1·D2는 바뀌지 않았습니다.',
     'fact', '재빌드가 끝났다', { kind: 'build', buildId: X.build11 });

@@ -87,7 +87,8 @@ describe('Pages v2.5 script', () => {
 
   it('records every scripted line in the golden ledger in script order', () => {
     const typed = stamp(golden.events) as AnyEvent[];
-    const said = typed.flatMap(e => e.type === 'message_recorded' ? [e.payload.text] : e.type === 'reply_recorded' ? [e.payload.text] : []);
+    const said = typed.flatMap(e => e.type === 'message_recorded' ? [e.payload.text] : []);
+    expect(typed.filter(e => e.type === 'message_recorded' && e.actor.kind !== 'human').map(e => e.actor)).toEqual([{ kind: 'system', id: 'scenario' }, { kind: 'system', id: 'scenario' }]);
     expect(said).toEqual(PAGES_LINES.map(l => l.text));
   });
 });

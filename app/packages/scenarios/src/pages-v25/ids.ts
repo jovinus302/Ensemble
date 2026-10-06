@@ -40,7 +40,7 @@ export const PAGES_IDS = {
   build11: 'build-v1.1',
   changeSet: 'change-v1.1',
   handoffs: { figma: 'handoff-figma-1', prompt: 'handoff-prompt-1', dev: 'handoff-dev-1', figma2: 'handoff-figma-2', prompt2: 'handoff-prompt-2', dev2: 'handoff-dev-2' },
-  previews: { proposal: 'preview-proposal-v1', branchA: 'preview-branch-a', design: 'preview-design-s1s2', build10: 'preview-build-v1.0', build11: 'preview-build-v1.1' },
+  previews: { proposal: 'preview-proposal-v1', branchA: 'preview-branch-a', design: 'preview-design-s1s2', design11: 'preview-design-v1.1', build10: 'preview-build-v1.0', build11: 'preview-build-v1.1' },
 } as const;
 
 /** Points in the golden ledger a UI test can render (pagesV25Ledger().checkpoints). */
