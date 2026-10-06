@@ -1,6 +1,6 @@
 import { channelText, particle } from './channel-text.ts';
 import { randomUUID } from 'node:crypto';
-import { automationGate, project, taskThreadId, type AnyEvent, type DecisionAnswer, type DecisionSettings, type DigestSettings, type EventContext, type NewLedgerEvent, type ProjectState, type TaskState } from '@ensemble/core';
+import { automationGate, project, resolveContextChangeEvent, taskThreadId, type LedgerEvent, type WorkContextTrigger, type AnyEvent, type DecisionAnswer, type DecisionSettings, type DigestSettings, type EventContext, type NewLedgerEvent, type ProjectState, type TaskState } from '@ensemble/core';
 import type { UpdateInstructionsInput } from '@ensemble/agents';
 import type { SessionConnector, SessionEvent } from '@ensemble/agents';
 import type { LlmProvider } from '@ensemble/llm';
@@ -16,6 +16,7 @@ import { decideRequest, type DecideExtra, type DecisionFlowOptions } from './dec
 import { runSweep } from './sweep.ts';
 import { runDigest } from './digest.ts';
 import type { ValidationOptions } from './validation.ts';
+import { WorkContextPm } from './work-context.ts';
 
 export interface MessageAttachment { name: string; mimeType: string; content: string; contentBase64?: string; taskId?: string }
 export interface ProjectManagerOptions extends EventContext, ValidationOptions {
@@ -35,6 +36,8 @@ export interface ProjectManagerOptions extends EventContext, ValidationOptions {
   digestSettings?: DigestSettings;
   /** Q2: work for a person goes through that person's acceptance card. Default true (`HUMAN_ASSIGNMENT_NEEDS_ACCEPTANCE`). */
   humanAssignmentNeedsAcceptance?: boolean;
+  /** Pages v2.5: every event a Work Context turn appended (the simulated pool and production tools react to them). */
+  onWorkContextEvents?: (events: LedgerEvent[]) => void;
 }
 export type PmPost = CoordinationResult['posts'][number];
 
@@ -72,6 +75,7 @@ export class ProjectManager {
   readonly sessions: SessionRunner;
   private readonly coordinator: Coordinator;
   private readonly dispatcher: Dispatcher;
+  private readonly workContext: WorkContextPm;
   private queue: Promise<unknown> = Promise.resolve();
   private background: PmPost[] = [];
   private queued = 0;
@@ -92,6 +96,7 @@ export class ProjectManager {
       }, sendUpdate: (agentId, input) => this.sessions.sendUpdate(agentId, input),
       deliver: (agentId, taskId, input) => this.sessions.deliver(agentId, taskId, input) }, readResult: result => this.readResult(result) });
     this.coordinator = new Coordinator(options.store, options.llm, this.sessions, { ...this.context, model: options.model, clock: options.clock, onTiming: options.onModelTiming });
+    this.workContext = new WorkContextPm({ ...this.context, store: options.store, llm: options.llm, model: options.model, clock: options.clock, onAppended: options.onWorkContextEvents });
     // Runner subscribes first. flush below ensures its asynchronous validation finished.
     this.unsubscribe = options.connector.onEvent(event => {
       void this.onSessionEvent(event).then(posts => { this.background.push(...posts); }).catch(error => this.failures.push(error));
@@ -321,6 +326,28 @@ export class ProjectManager {
     return this.processRecordedMessage(messageId);
   }
 
+  /** Pages v2.5 script only: an agent's scripted premise line, written by the scenario runner (never by the agent), then the usual turn. */
+  async postScriptedLine(authorId: string, text: string): Promise<PmPost[]> {
+    const state = project(await this.read());
+    if (!state.workContext || state.members.get(authorId)?.kind !== 'agent') throw new Error('대본 Agent 발언은 WORK CONTEXT 프로젝트의 Agent만 쓸 수 있습니다');
+    const messageId = randomUUID();
+    await this.options.store.append([{ ...this.context, actor: { kind: 'system', id: 'scenario' }, type: 'message_recorded', payload: { messageId, authorId, text, attachmentIds: [] } }]);
+    return this.processRecordedMessage(messageId);
+  }
+  /** A Work Context turn woken by a ledger event (a pool member joined, a build finished, a change was resolved). */
+  considerWorkContext(trigger: WorkContextTrigger): Promise<PmPost[]> {
+    return this.enqueue(async () => (await this.workContext.consider(trigger)).posts);
+  }
+  /** 변경 적용 / 되돌리기 on a change card: the decider only, once; then the PM carries the change on. */
+  resolveContextChange(changeSetId: string, by: string, outcome: 'applied' | 'reverted'): Promise<PmPost[]> {
+    return this.enqueue(async () => {
+      const { event, problem } = resolveContextChangeEvent(await this.read(), this.context, changeSetId, by, outcome);
+      if (problem) throw new TaskResolutionError(problem.code, problem.message);
+      await this.options.store.append([event!]);
+      return (await this.workContext.consider({ kind: 'event', eventType: 'context_change_resolved', refId: changeSetId })).posts;
+    });
+  }
+
   processRecordedMessage(messageId: string): Promise<PmPost[]> {
     return this.enqueue(async () => {
       const before = await this.read();
@@ -328,6 +355,8 @@ export class ProjectManager {
       const state = project(before);
       const message = (before as AnyEvent[]).find((e): e is Extract<AnyEvent, { type: 'message_recorded' }> => e.type === 'message_recorded' && e.payload.messageId === messageId);
       if (!message) throw new Error('기록된 사람 메시지를 찾을 수 없습니다');
+      // A Work Context project (Pages v2.5) has no task plan: its messages go to the Work Context turn only.
+      if (state.workContext) return (await this.workContext.consider({ kind: 'message', messageId })).posts;
       const { authorId, text, attachmentIds } = message.payload;
       await this.forwardComment(message.payload, state);
       const actor = { kind: 'human' as const, id: authorId };
