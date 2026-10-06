@@ -132,8 +132,17 @@
   .cv-tool[data-working] .cv-dot { animation: none; }
 }
 
+/* ---------- 중간 칸(노트북 3열): 열은 유지하고 촘촘하게 ---------- */
+@container cvgraph (max-width: 640px) {
+  .cv-columns { gap: var(--ens-space-3); }
+  .cv-node { padding: 6px; gap: 2px var(--ens-space-1); }
+  .cv-node-label { flex-basis: 100%; }
+  .cv-tag, .cv-pool { padding: 0 4px; }
+  .cv-avatar { min-width: 20px; height: 20px; }
+}
 /* ---------- 좁은 칸: 열을 세로로 쌓고 연결선은 숨긴다(가로 스크롤 없음) ---------- */
-@container cvgraph (max-width: 560px) {
+@container cvgraph (max-width: 420px) {
   .cv-columns { grid-template-columns: minmax(0, 1fr); gap: var(--ens-space-4); }
+  .cv-node-label { flex-basis: 8em; }
   .cv-edges { display: none; }
 }
