@@ -32,6 +32,10 @@ export interface ContextItem {
   status: ContextItemStatus;
   /** Short reason shown next to the status ("D1과 충돌", "비용 한도", "생성 버튼 위치"). */
   note?: string;
+  /** Short name for the LOG and card summaries ("9시 설정 화면", "버튼 수동"); the canvas keeps `title`. */
+  short?: string;
+  /** The PM's longer reason for the LOG ("생성 비용·시간 한도 초과"); the canvas keeps `note`. */
+  detail?: string;
   /** Who the item came from; `pm` when the PM itself filled a gap. */
   sourceMemberId: Id;
   sourceMessageIds: Id[];
@@ -49,6 +53,8 @@ export interface BranchOption {
   /** "A" / "B". */
   optionId: Id;
   title: string;
+  /** Short name for the LOG ("실명 그대로"). */
+  short?: string;
   /** Gain and risk in one line each ("몰입 ↑", "feed 공유 시 제3자 개인정보 노출 위험"). */
   gains: string[];
   risks: string[];
@@ -62,6 +68,8 @@ export interface PoolCandidate {
   availability: "available" | "busy";
   /** Why this person fits, one line ("유사 과제 3건"). */
   note: string;
+  /** Short role for the LOG ("정책"). */
+  short?: string;
 }
 
 export type ProductionToolId = "figma" | "prompt-studio" | "dev-tools";
@@ -143,7 +151,8 @@ export interface WorkContextEventPayloads {
   proposal_confirmed: { proposalId: Id; contextVersion: string; confirmedBy: Id; sourceMessageIds: Id[] };
   /** Items are upserted separately; this records which items the proposal unfolded into (D → F → S → V). */
   proposal_expanded: { proposalId: Id; itemIds: Id[] };
-  tool_handoff_sent: { handoffId: Id; toolId: ProductionToolId; itemIds: Id[]; title: string; round: number };
+  /** short: the LOG's compact name ("S1 S2", "구현·통합"). */
+  tool_handoff_sent: { handoffId: Id; toolId: ProductionToolId; itemIds: Id[]; title: string; round: number; short?: string };
   /** Written by the simulated tool integration, never by the PM. */
   tool_progress_reported: { handoffId: Id; status: ToolHandoffStatus; note?: string };
   build_produced: { buildId: Id; version: string; handoffIds: Id[]; previewId?: Id };

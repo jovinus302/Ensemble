@@ -17,8 +17,8 @@ export const PAGES_TEAM: EventPayloads['member_joined'][] = [
 
 /** The simulated pool. Two fit the D2 branch; two are there so the search is a real choice. */
 export const PAGES_POOL_CANDIDATES: PoolCandidate[] = [
-  { candidateId: P.policy, displayName: '한지우', role: '개인정보·AI 정책', expertise: ['개인정보', 'AI 정책', '공유 기준'], availability: 'available', note: '유사 과제 3건' },
-  { candidateId: P.narrative, displayName: '정유나', role: '내러티브 디자이너', expertise: ['내러티브', 'fiction 수위', '숏폼·동화'], availability: 'available', note: '숏폼·동화 경험' },
+  { candidateId: P.policy, displayName: '한지우', role: '개인정보·AI 정책', expertise: ['개인정보', 'AI 정책', '공유 기준'], availability: 'available', note: '유사 과제 3건', short: '정책' },
+  { candidateId: P.narrative, displayName: '정유나', role: '내러티브 디자이너', expertise: ['내러티브', 'fiction 수위', '숏폼·동화'], availability: 'available', note: '숏폼·동화 경험', short: '내러티브' },
   { candidateId: P.backend, displayName: '백민서', role: '백엔드 개발자', expertise: ['생성 파이프라인', '비용 최적화'], availability: 'busy', note: '다른 프로젝트 배정 중' },
   { candidateId: P.growth, displayName: '오태호', role: '그로스 마케터', expertise: ['지표', '리텐션'], availability: 'available', note: '지표 설계 경험' },
 ];

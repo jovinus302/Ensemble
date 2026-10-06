@@ -48,13 +48,12 @@ export function branchPreviewView(branch: VmContextBranch, optionId: string): { 
   return { title: `${optionId}로 가면`, open, effects: open ? branch.previewEffects ?? [] : [], chips, status };
 }
 
-/** Proposal 요약 줄: 결정 · 화면 N · 누락 보완 · 입력 N. */
+/** Proposal 요약 줄(덱): 결정 · 화면 "N SCREENS" · 누락 보완. 입력 수는 미리보기 설명("5 inputs")에 있다. */
 export function proposalView(p: VmProposal): { title: string; status: ToneText; rows: { head: string; text: string; status: ToneText }[] } {
   const rows = [
     ...p.decisions.map(d => ({ head: d.key ? `결정 ${d.key}` : "결정", text: d.title, status: { text: d.statusLabel || "제안", tone: d.statusLabel === "분기" ? "branch" as const : "ok" as const } })),
-    { head: "화면", text: p.screens.join(" · "), status: { text: `화면 ${p.screens.length}`, tone: "info" as const } },
+    { head: "화면", text: p.screens.join(" · "), status: { text: `${p.screens.length} SCREENS`, tone: "info" as const } },
     ...(p.filledTitles.length ? [{ head: "누락 보완", text: p.filledTitles.join(" · "), status: { text: "포함", tone: "ok" as const } }] : []),
-    { head: "입력", text: `대화·참여 항목 ${p.inputCount}개를 이었어요`, status: { text: `입력 ${p.inputCount}`, tone: "info" as const } },
   ];
   return { title: `Proposal v${p.version}`, status: p.status === "confirmed" ? { text: "확정", tone: "ok" } : { text: "생성됨", tone: "changed" }, rows };
 }

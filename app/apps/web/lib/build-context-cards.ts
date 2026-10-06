@@ -10,6 +10,8 @@ const DEV_LABEL: Record<ToolHandoffStatus, string> = { delivered: '전달됨', i
 const handoffLabel = (toolId: string, status: ToolHandoffStatus, round: number) =>
   status === 'delivered' && round > 1 ? '재전달' : (toolId === 'dev-tools' ? DEV_LABEL : HANDOFF_LABEL)[status];
 
+/** A decision settled inside a Proposal (merged or confirmed) reads as 확정 on the card. */
+const SETTLED = ['merged', 'confirmed', 'kept'];
 export interface ContextCardsView {
   preview?: VmAppPreview; comparePreview?: VmAppPreview; handoffs: VmToolHandoff[]; proposal?: VmProposal; changeSet?: VmChangeSet;
   pool: { candidates: VmPoolCandidate[]; joinedCount: number };
@@ -35,15 +37,15 @@ export function buildContextCards(state: ProjectState, name: NameOf, me: string)
   const proposalView = (id: string): VmProposal | undefined => {
     const p = wc.proposals.get(id);
     if (!p) return undefined;
-    // 사람이 고른 분기는 항목이 아직 "분기"여도 고른 선택지로 보인다("… (B)" · 확정). 확정 뒤에는 항목 제목·상태를 그대로 쓴다.
+    // 사람이 고른 분기는 항목이 아직 "분기"여도 고른 선택지로 보인다("… (B)" · 확정). 통합된 결정도 Proposal 안에서는 확정이다(덱 "D1 … 확정").
     const decisions = p.proposal.decisionItemIds.flatMap(itemId => {
       const item = wc.items.get(itemId);
       if (!item) return [];
       const branch = wc.branches.get(itemId), chosen = item.status === 'branch' && branch?.resolved ? branch.options.find(o => o.optionId === branch.resolved!.optionId) : undefined;
-      return [{ ...(item.key ? { key: item.key } : {}), title: chosen ? `${chosen.title} (${chosen.optionId})` : item.title, statusLabel: chosen ? '확정' : STATUS_VIEW[item.status].label ?? '' }];
+      return [{ ...(item.key ? { key: item.key } : {}), title: chosen ? `${chosen.title} (${chosen.optionId})` : item.title, statusLabel: chosen || SETTLED.includes(item.status) ? '확정' : STATUS_VIEW[item.status].label ?? '' }];
     });
     return { id, version: p.proposal.version, title: p.proposal.title, status: p.status, decisions, screens: p.proposal.screens,
-      filledTitles: p.proposal.filledItemIds.flatMap(itemId => wc.items.get(itemId)?.title ?? []), inputCount: p.proposal.inputItemIds.length };
+      filledTitles: p.proposal.filledItemIds.flatMap(itemId => { const item = wc.items.get(itemId); return item ? [item.short ?? item.title] : []; }), inputCount: p.proposal.inputItemIds.length };
   };
   const changeView = (id: string): VmChangeSet | undefined => {
     const c = wc.changeSets.get(id);

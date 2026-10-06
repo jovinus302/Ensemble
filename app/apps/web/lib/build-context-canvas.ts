@@ -59,6 +59,14 @@ function stageLabel(wc: WorkContextState): string | undefined {
   return steps.join(' → ');
 }
 
+/**
+ * 덱의 "연결 N": 보이는 항목 사이의 실선(충돌·낡음 선 제외)에 Proposal 구성 연결(inputItemIds)을 더한 수.
+ * 덱 장면 03은 2(I1→D1, I2→D2), 장면 04 끝은 14(의도·결정 3 + 참여 3 + 분기 근거 2 + D2 → 템플릿 1 + Proposal 구성 5)다.
+ */
+export function linkCount(wc: WorkContextState, edges: readonly { kind: string; stale?: boolean }[]): number {
+  const proposal = [...wc.proposals.values()].at(-1);
+  return edges.filter(e => e.kind !== 'conflicts' && !e.stale).length + (proposal?.proposal.inputItemIds.length ?? 0);
+}
 function summaryChips(state: ProjectState, visible: ContextItem[], edgeCount: number): VmContextSummaryChip[] {
   const wc = state.workContext!;
   const summary: VmContextSummaryChip[] = [{ label: '연결', count: edgeCount, tone: 'ok' }];
@@ -70,16 +78,14 @@ function summaryChips(state: ProjectState, visible: ContextItem[], edgeCount: nu
     return summary;
   }
   const branches = [...wc.branches.values()].filter(b => visible.some(i => i.itemId === b.itemId));
-  if (branches.length) summary.push({ label: '분기', count: branches.length, tone: 'branch' });
-  for (const b of branches) {
-    const key = branches.length > 1 ? `${wc.items.get(b.itemId)?.key ?? ''} ` : '';
-    if (b.resolved) summary.push({ label: `${key}${b.resolved.optionId} 선택`, tone: 'ok' });
-    if (b.preview) summary.push({ label: `${key}${b.preview.optionId} 예상`, tone: 'info' });
-  }
+  // Deck copy: "분기 1 (B 선택) · pool 2 합류 · Proposal v1", then the legend-like "예상 (A)".
+  const chosen = branches.flatMap(b => b.resolved ? [`${branches.length > 1 ? `${wc.items.get(b.itemId)?.key ?? ''} ` : ''}${b.resolved.optionId} 선택`] : []);
+  if (branches.length) summary.push({ label: `분기 ${branches.length}${chosen.length ? ` (${chosen.join(', ')})` : ''}`, tone: 'branch' });
   const joined = [...state.members.values()].filter(m => m.source === 'pool').length;
-  if (joined) summary.push({ label: 'pool 합류', count: joined, tone: 'info' });
+  if (joined) summary.push({ label: `pool ${joined} 합류`, tone: 'info' });
   const proposal = [...wc.proposals.values()].at(-1);
-  if (proposal) summary.push({ label: `Proposal v${proposal.proposal.version} 생성`, tone: 'ok' });
+  if (proposal) summary.push({ label: `Proposal v${proposal.proposal.version}`, tone: 'ok' });
+  for (const b of branches) if (b.preview) summary.push({ label: `예상 (${b.preview.optionId})`, tone: 'info' });
   return summary;
 }
 
@@ -98,7 +104,7 @@ export function buildContextCanvas(state: ProjectState, name: NameOf, events: re
   return {
     versionLabel: open ? `v${open.change.fromVersion} → v${open.change.toVersion}` : `v${wc.version}`,
     ...(stage ? { stageLabel: stage } : {}),
-    summary: summaryChips(state, visible, edges.length),
+    summary: summaryChips(state, visible, linkCount(wc, edges)),
     items: visible.map(i => contextItemView(i, state, name)),
     edges: edges.map(e => ({ id: e.edgeId, from: e.from, to: e.to, kind: e.kind, ...(e.stale ? { stale: true } : {}) })),
     branches: [...wc.branches.keys()].flatMap(id => ids.has(id) ? contextBranchView(wc, id, name) ?? [] : []),

@@ -19,6 +19,8 @@ const CHANGE_KIND = { added: '추가', excluded: '제외', updated: '갱신' } a
 export function itemLabel(item: Pick<ContextItem, 'key' | 'layer' | 'title'>): string {
   return item.key ? `${item.key} ${item.title}` : `${LAYER_LABEL[item.layer]} ${item.title}`;
 }
+/** The deck's compact form for detection lines ("D1 9시 자동"): the item's short name when the PM gave one. */
+const shortLabel = (item: ContextItem) => itemLabel({ ...item, title: item.short ?? item.title });
 const layerName = (item: ContextItem) => LAYER_LABEL[item.layer].replace(/[[\]]/g, '');
 const keyOrTitle = (item: ContextItem | undefined) => item ? item.key ?? item.title : '';
 
@@ -127,9 +129,10 @@ export function buildContextLog(events: readonly AnyEvent[], state: ProjectState
         switch (next.status) {
           case 'stated': break;
           case 'conflict': if (!conflictEdgeEnds.has(next.itemId)) line('conflict', next.itemId, '충돌', () => `${label} — ${next.note ?? '같은 단계에 서로 다른 전제'}`); break;
-          case 'violation': line('violation', next.itemId, '위반', () => `${label} → ${next.note ?? '한도 초과'}`); break;
-          case 'undecided': line('undecided', next.itemId, '미정', () => next.note ? `${label} — ${next.note}` : label); break;
-          case 'missing': listLine('missing', 'all', '누락', list => `대화에는 없지만 이 맥락에 꼭 필요한 항목 ${list.length} — ${list.join(' · ')}`, next.title); break;
+          case 'violation': line('violation', next.itemId, '위반', () => `${label} → ${next.detail ?? next.note ?? '한도 초과'}`); break;
+          // The deck's LOG does not list 미정: it stays a canvas chip until the PM organizes the context.
+          case 'undecided': break;
+          case 'missing': listLine('missing', 'all', '누락', list => `대화에는 없지만 이 맥락에 꼭 필요한 항목 ${list.length} — ${list.join(' · ')}`, next.short ?? next.title); break;
           case 'filled': listLine('filled', 'all', '누락 보완', list => list.join(' · '), label); break;
           case 'merged': mergeLine(next); break;
           case 'branch': branchLine(next); break;
@@ -143,7 +146,7 @@ export function buildContextLog(events: readonly AnyEvent[], state: ProjectState
         const from = items.get(edge.from), to = items.get(edge.to);
         if (edge.kind !== 'conflicts' || !from || !to) break;
         const where = from.layer === to.layer ? `같은 ${layerName(from)} 단계에 서로 다른 전제` : '서로 다른 전제';
-        line('conflict', edge.edgeId, '충돌', () => `${itemLabel(from)} ↔ ${itemLabel(to)} — ${where}`);
+        line('conflict', edge.edgeId, '충돌', () => `${shortLabel(from)} ↔ ${shortLabel(to)} — ${where}`);
         break;
       }
       case 'context_branch_opened': {
@@ -158,7 +161,7 @@ export function buildContextLog(events: readonly AnyEvent[], state: ProjectState
         const option = branches.get(itemId)?.options.find(o => o.optionId === optionId);
         if (!option) break;
         branches.get(itemId)!.preview = optionId;
-        line('preview', `${itemId}:${optionId}`, '검토', () => `${optionId}(${option.title}) 적용 시 예상 — ${effects.join(' · ')}`);
+        line('preview', `${itemId}:${optionId}`, '검토', () => `${optionId}(${option.short ?? option.title}) 적용 시 예상 — ${effects.join(' · ')}`);
         break;
       }
       case 'context_branch_preview_cleared': {
@@ -177,7 +180,7 @@ export function buildContextLog(events: readonly AnyEvent[], state: ProjectState
         // 사람이 정한 순간: 결정권자 본인의 발언 시각.
         const said = p.sourceMessageIds.map(id => messages.get(id)).find(m => m?.authorId === p.decidedBy);
         const subject = keyOrTitle(items.get(p.itemId)), evidence = p.evidenceMemberIds.map(name);
-        line('resolve', p.itemId, '선택', () => `${subject} = ${p.optionId}(${option.title}) — ${evidence.length ? `근거: ${evidence.join(' · ')} · ` : ''}확정: ${name(p.decidedBy)}`, said?.at ?? e.at);
+        line('resolve', p.itemId, '선택', () => `${subject} = ${p.optionId}(${option.short ?? option.title}) — ${evidence.length ? `근거: ${evidence.join(' · ')} · ` : ''}확정: ${name(p.decidedBy)}`, said?.at ?? e.at);
         break;
       }
       case 'pool_search_recorded': {
@@ -186,7 +189,7 @@ export function buildContextLog(events: readonly AnyEvent[], state: ProjectState
         const invites = invited.get(p.searchId) ?? []; invited.set(p.searchId, invites);
         line('pool', p.searchId, '호출', () => {
           if (!invites.length) return `${subject} 결정 근거 부족 → 인력 pool 후보 ${p.candidateIds.length}명`;
-          const names = invites.map(i => { const c = wc.pool.candidates.get(i.candidateId); return c ? `${c.displayName}(${c.role})` : name(i.memberId); });
+          const names = invites.map(i => { const c = wc.pool.candidates.get(i.candidateId); return c ? `${c.displayName}(${c.short ?? c.role})` : name(i.memberId); });
           return `${subject} 결정 근거 부족 → 인력 pool ${names.join(' · ')} 호출${invites.every(i => joined.has(i.memberId)) ? ' · 합류' : ''}`;
         });
         break;
@@ -216,7 +219,7 @@ export function buildContextLog(events: readonly AnyEvent[], state: ProjectState
           beatCleared.line.dropped = true;
         }
         const entry: { line: Line; expanded?: string } = {
-          line: line('confirm', p.proposalId, '확정', () => `${walked}Proposal v${proposal.version}${entry.expanded ? ` → ${entry.expanded} 로 펼침` : ''} · 맥락 v${p.contextVersion}`),
+          line: line('confirm', p.proposalId, '확정', () => `${walked}Proposal v${proposal.version}${entry.expanded ? ` → ${entry.expanded} 로 펼침` : ''}`),
         };
         confirmLines.set(p.proposalId, entry);
         dropStatusLines(PROPOSAL_STATUSES);
@@ -236,7 +239,7 @@ export function buildContextLog(events: readonly AnyEvent[], state: ProjectState
         const p: P<'tool_handoff_sent'> = e.payload;
         if (!wc.tools.has(p.toolId)) break;
         handoffs.set(p.handoffId, p.toolId);
-        listLine(p.round > 1 ? 'resend' : 'handoff', String(p.round), p.round > 1 ? '재전달' : '전달', list => list.join(' · '), `${p.title} → ${toolName(p.toolId)}`);
+        listLine(p.round > 1 ? 'resend' : 'handoff', String(p.round), p.round > 1 ? '재전달' : '전달', list => list.join(' · '), `${p.short ?? p.title} → ${toolName(p.toolId)}`);
         break;
       }
       case 'preview_rendered': previews.set(e.payload.previewId, e.payload.spec); break;
@@ -255,8 +258,7 @@ export function buildContextLog(events: readonly AnyEvent[], state: ProjectState
         const kinds = [...new Set(p.changes.map(c => c.change))].map(c => CHANGE_KIND[c]);
         const changes = p.changes.flatMap(c => { const item = items.get(c.itemId); return item ? [`${item.key ? `${item.key} ` : ''}${item.title}(${CHANGE_MARK[c.change]})`] : []; });
         const staleEdges = beatStaleEdges, staleItems = p.staleItemIds.flatMap(id => items.has(id) ? [keyOrTitle(items.get(id))] : []);
-        const unaffected = p.unaffectedItemIds.flatMap(id => items.get(id)?.key ?? []);
-        line('change', p.changeSetId, kinds.join(' · ') || '변경', () => `${changes.join(', ')}${staleEdges ? ` → 연결 ${staleEdges}개 낡음` : staleItems.length ? ` → ${staleItems.join(' · ')} 낡음` : ''}${unaffected.length ? ` · ${unaffected.join(' ')} 영향 없음` : ''}`);
+        line('change', p.changeSetId, kinds.join(' · ') || '변경', () => `${changes.join(', ')}${staleEdges ? ` → 연결 ${staleEdges}개 낡음` : staleItems.length ? ` → ${staleItems.join(' · ')} 낡음` : ''}`);
         dropStatusLines(CHANGE_STATUSES);
         break;
       }

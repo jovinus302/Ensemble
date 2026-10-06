@@ -215,7 +215,7 @@ function applyOp(op: WorkContextOp, state: ProjectState, wc: WorkContextState, e
         if (!strs(h.itemIds) || !h.itemIds.every(id => wc.items.has(id))) return "넘길 항목을 찾지 못했습니다.";
       }
       if (op.preview) { const p = previewProblem(op.preview, wc); if (p) return p; emitPreview(emit, op.preview); }
-      for (const h of handoffs) emit("tool_handoff_sent", { handoffId: h.handoffId, toolId: h.toolId, itemIds: h.itemIds, title: h.title, round: h.round });
+      for (const h of handoffs) emit("tool_handoff_sent", { handoffId: h.handoffId, toolId: h.toolId, itemIds: h.itemIds, title: h.title, round: h.round, ...(typeof h.short === "string" && h.short.trim() ? { short: h.short } : {}) });
       return;
     }
     case "withdraw_preview":

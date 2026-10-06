@@ -23,7 +23,7 @@ export type WorkContextOp =
   /** confirmedBy must be the goal decider, speaking in sourceMessageIds. */
   | { type: "confirm_proposal"; proposalId: Id; contextVersion: string; confirmedBy: Id; sourceMessageIds: Id[] }
   | { type: "expand_proposal"; proposalId: Id; items: ContextItem[]; edges: ContextEdge[] }
-  | { type: "handoff_tools"; handoffs: { handoffId: Id; toolId: ProductionToolId; itemIds: Id[]; title: string; round: number }[]; preview?: PreviewDraft }
+  | { type: "handoff_tools"; handoffs: { handoffId: Id; toolId: ProductionToolId; itemIds: Id[]; title: string; round: number; short?: string }[]; preview?: PreviewDraft }
   | { type: "withdraw_preview"; previewId: Id }
   | { type: "propose_change"; changeSetId: Id; fromVersion: string; toVersion: string; changes: { itemId: Id; change: "added" | "excluded" | "updated" }[]; staleItemIds: Id[]; unaffectedItemIds: Id[]; sourceMessageIds: Id[] };
 export type WorkContextOpType = WorkContextOp["type"];

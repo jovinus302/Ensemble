@@ -41,7 +41,9 @@ test('all nine chat card kinds resolve from ledger ids, and a dangling reference
   // The Proposal card shows the chosen branch while the item is still a branch (deck: "… (B) 확정").
   const generated = cardOn(pagesViewModel('s04_proposal'), 'proposal')!.card;
   assert.ok(generated.kind === 'proposal');
-  assert.deepEqual(generated.proposal.decisions.map(d => [d.key, d.statusLabel]), [['D1', '통합'], ['D2', '확정']]);
+  // Deck: "결정 D1 · … 확정", "결정 D2 · … (B) 확정", "화면 · … 3 SCREENS", "누락 보완 · 온보딩 9시 설정 · 검증 지표 포함".
+  assert.deepEqual(generated.proposal.decisions.map(d => [d.key, d.statusLabel]), [['D1', '확정'], ['D2', '확정']]);
+  assert.deepEqual(cardTexts(generated).filter(t => /SCREENS|온보딩/.test(t)), ['3 SCREENS', '온보딩 9시 설정 · 검증 지표']);
   assert.match(generated.proposal.decisions[1]!.title, /가명화.*\(B\)$/);
 });
 

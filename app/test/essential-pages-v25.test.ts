@@ -94,14 +94,14 @@ test('the web view model shows the Work Context only where it exists and offers 
   const plain = buildViewModel(pagesEvents('seeded').filter(e => e.type !== 'context_session_started'), { me: M.planner, mode: 'scenario', busy: false });
   assert.equal(plain.workContext, undefined);
   const s03 = pagesViewModel('s03_detected').workContext!;
-  assert.deepEqual(s03.summary.map(s => `${s.label} ${s.count}`), ['연결 3', '충돌 1', '위반 1', '미정 1', '누락 4']);
+  assert.deepEqual(s03.summary.map(s => `${s.label} ${s.count}`), ['연결 2', '충돌 1', '위반 1', '미정 1', '누락 4']);
   const s04 = pagesViewModel('s04_preview_a');
   assert.deepEqual(s04.messages.flatMap(m => m.contextCard ? [m.contextCard.kind] : []), ['branch_options', 'pm_steps', 'pool_candidates', 'pm_steps', 'proposal', 'branch_preview']);
   const card = <K extends string>(kind: K) => s04.messages.find(m => m.contextCard?.kind === kind)?.contextCard;
   const pool = card('pool_candidates'), proposal = card('proposal');
   assert.ok(pool?.kind === 'pool_candidates' && proposal?.kind === 'proposal');
   assert.deepEqual(pool.candidates.map(c => [c.name, c.role, c.note, c.available, c.joined]), [['한지우', '개인정보·AI 정책', '유사 과제 3건', true, true], ['정유나', '내러티브 디자이너', '숏폼·동화 경험', true, true]]);
-  assert.deepEqual([proposal.proposal.decisions.map(d => d.key), proposal.proposal.screens.length, proposal.proposal.filledTitles.length], [['D1', 'D2'], 3, 3]);
+  assert.deepEqual([proposal.proposal.decisions.map(d => d.key), proposal.proposal.screens.length, proposal.proposal.filledTitles.length], [['D1', 'D2'], 3, 2]);
   assert.deepEqual(s04.members.filter(m => m.pool).map(m => m.displayName), ['한지우', '정유나']);
   assert.equal(s04.workContext!.comparePreview?.spec.hero.badge?.text, '실명');
   assert.deepEqual(pagesViewModel('s05_built').workContext!.handoffs.map(h => h.statusLabel), ['제작 완료', '제작 완료', '빌드 완료']);

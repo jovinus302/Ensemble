@@ -15,6 +15,7 @@ const upsert = (...items: ContextItem[]): WorkContextOp[] => items.map(i => ({ t
 const link = (...edges: ContextEdge[]): WorkContextOp[] => edges.map(e => ({ type: 'upsert_edge', edge: e }));
 const say = (text: string, kind: WorkContextSpeech['kind'], card?: WorkContextSpeech['card']): WorkContextSpeech => ({ text, kind, ...(card ? { card } : {}) });
 const withoutNote = ({ note: _note, ...rest }: ContextItem): ContextItem => rest;
+const withoutShort = ({ short: _short, ...rest }: ContextItem): ContextItem => rest;
 const turn = (ops: WorkContextOp[], speech: WorkContextSpeech[], reason: string): WorkContextToolOutput => ({ ops, speech, reason });
 
 export function fakeWorkContextTurn(facts: WorkContextFacts): WorkContextToolOutput {
@@ -41,22 +42,25 @@ export function fakeWorkContextTurn(facts: WorkContextFacts): WorkContextToolOut
 
   // ── Scene 03: read the context out of the conversation; ask once everything is on the table.
   if (authorId === decider && !facts.items.length && /9시|자동/.test(text))
-    return turn([...upsert(item(I.i1, 'intent', '저녁 9시 자동 도착', 'stated', authorId, [messageId], { key: 'I1' }), item(I.d1, 'decision', '생성 = 9시 자동', 'stated', authorId, [messageId], { key: 'D1' })), ...link(edge(I.i1, I.d1))], [], '의도와 결정을 항목으로 올린다');
+    return turn([...upsert(item(I.i1, 'intent', '저녁 9시 자동 도착', 'stated', authorId, [messageId], { key: 'I1' }), item(I.d1, 'decision', '생성 = 9시 자동', 'stated', authorId, [messageId], { key: 'D1', short: '9시 자동' })), ...link(edge(I.i1, I.d1))], [], '의도와 결정을 항목으로 올린다');
   if (has(I.d1) && !has(I.i2) && /버튼|원할 때/.test(text))
-    return turn([...upsert(item(I.i2, 'intent', '원할 때 만드는 생성 버튼', 'stated', authorId, [messageId], { key: 'I2' }), item(I.d2Manual, 'decision', '생성 = 버튼으로 수동', 'conflict', authorId, [messageId], { key: 'D2', note: 'D1과 충돌' })),
-      ...link(edge(I.i2, I.d2Manual), edge(I.d1, I.d2Manual, 'conflicts'))], [], '같은 결정 단계에 다른 전제가 나왔다');
+    // The conflict is named when the PM speaks (scene 03 end), so the LOG shows it at the detection moment.
+    return turn([...upsert(item(I.i2, 'intent', '원할 때 만드는 생성 버튼', 'stated', authorId, [messageId], { key: 'I2' }), item(I.d2Manual, 'decision', '생성 = 버튼으로 수동', 'stated', authorId, [messageId], { key: 'D2', short: '버튼 수동' })),
+      ...link(edge(I.i2, I.d2Manual))], [], '같은 결정 단계에 다른 전제가 나왔다');
   if (has(I.d1) && !has(I.fourDaily) && /4종|매일|비용/.test(text))
-    return turn(upsert(item(I.fourDaily, 'feature', '4종 매일 동시 생성', 'violation', authorId, [messageId], { note: '비용 한도' })), [], '기능이 비용 한도를 넘는다');
+    return turn(upsert(item(I.fourDaily, 'feature', '4종 매일 동시 생성', 'violation', authorId, [messageId], { note: '비용 한도', detail: '생성 비용·시간 한도 초과' })), [], '기능이 비용 한도를 넘는다');
   if (author?.kind === 'agent' && /fiction/.test(text) && !has(I.dataFiction))
     return turn(upsert(item(I.dataFiction, 'feature', 'data + fiction 섞어 생성', 'stated', authorId, [messageId])), [], 'Agent의 생성 방식을 기능으로 올린다');
   if (author?.kind === 'agent' && /미정/.test(text) && !has(I.threeTabs))
-    return turn(upsert(
-      item(I.threeTabs, 'screen', 'home · 채팅 · feed 3탭', 'undecided', authorId, [messageId], { note: '생성 버튼 위치' }),
-      item(I.fictionLevel, 'decision', 'fiction 수위 기준', 'missing', 'pm', []),
-      item(I.sharePrivacy, 'decision', 'feed 공유 시 개인정보 기준', 'missing', 'pm', []),
-      item(I.onboarding9, 'screen', '온보딩 · 9시 자동 설정', 'missing', 'pm', []),
-      item(I.metricMissing, 'metric', '무엇으로 확인하나?', 'missing', 'pm', []),
-    ), [say('지금 이 방에는 생성 방식이 자동과 수동으로 갈라져 있습니다. 그리고 아무도 말하지 않았지만, 이 구성이라면 꼭 있어야 할 항목 4개가 빠져 있습니다 — fiction 수위 기준, feed 공유 시 개인정보 기준, 9시 설정 화면, 검증 지표. 채워 넣고 순서대로 정리할까요?', 'ask')],
+    return turn([
+      ...(has(I.d2Manual) ? [...upsert({ ...itemOf(I.d2Manual)!, status: 'conflict', note: 'D1과 충돌' }), ...link(edge(I.d1, I.d2Manual, 'conflicts'))] : []),
+      ...upsert(
+        item(I.threeTabs, 'screen', 'home · 채팅 · feed 3탭', 'undecided', authorId, [messageId], { note: '생성 버튼 위치' }),
+        item(I.fictionLevel, 'decision', 'fiction 수위 기준', 'missing', 'pm', [], { short: 'fiction 수위 기준' }),
+        item(I.sharePrivacy, 'decision', 'feed 공유 시 개인정보 기준', 'missing', 'pm', [], { short: 'feed 공유 개인정보 기준' }),
+        item(I.onboarding9, 'screen', '온보딩 · 9시 자동 설정', 'missing', 'pm', [], { short: '9시 설정 화면' }),
+        item(I.metricMissing, 'metric', '무엇으로 확인하나?', 'missing', 'pm', [], { short: '지표' }),
+      )], [say('지금 이 방에는 생성 방식이 자동과 수동으로 갈라져 있습니다. 그리고 아무도 말하지 않았지만, 이 구성이라면 꼭 있어야 할 항목 4개가 빠져 있습니다 — fiction 수위 기준, feed 공유 시 개인정보 기준, 9시 설정 화면, 검증 지표. 채워 넣고 순서대로 정리할까요?', 'ask')],
     '충돌·위반·미정·누락을 아무도 모른 채 진행되고 있다');
 
   // ── Scene 04: organize, branch, pool, decision, Proposal, "A로 가면?".
@@ -75,14 +79,14 @@ export function fakeWorkContextTurn(facts: WorkContextFacts): WorkContextToolOut
         { ...itemOf(I.dataFiction)!, status: 'merged', sourceMessageIds: [], supersededBy: I.storyTemplates },
         item(I.uiGuide, 'contribution', 'UI Agent home · 생성 플로우 가이드', 'stated', itemOf(I.threeTabs)!.sourceMemberId, [], { derivedFrom: [I.threeTabs] }),
         { ...itemOf(I.threeTabs)!, status: 'merged', sourceMessageIds: [], note: '생성 버튼은 home', supersededBy: I.uiGuide },
-        item(I.uxOnboarding, 'contribution', '박도윤 · UX 온보딩 9시 설정 플로우', 'filled', itemOf(I.i2)!.sourceMemberId, [messageId], { derivedFrom: [I.onboarding9] }),
+        item(I.uxOnboarding, 'contribution', '박도윤 · UX 온보딩 9시 설정 플로우', 'filled', itemOf(I.i2)!.sourceMemberId, [messageId], { short: '온보딩 9시 설정', derivedFrom: [I.onboarding9] }),
         { ...itemOf(I.onboarding9)!, status: 'filled', sourceMessageIds: [messageId], supersededBy: I.uxOnboarding },
-        { ...itemOf(I.metricMissing)!, title: '검증 지표', status: 'filled', sourceMessageIds: [messageId] },
+        withoutShort({ ...itemOf(I.metricMissing)!, title: '검증 지표', status: 'filled', sourceMessageIds: [messageId] }),
       ),
       ...link(edge(I.i2, I.d1), edge(I.i3, I.d2), edge(I.d1, I.storyTemplates, 'derives'), edge(I.d1, I.uiGuide, 'derives'), edge(I.d1, I.uxOnboarding, 'derives'), edge(I.d2, I.storyTemplates, 'derives')),
       { type: 'open_branch', itemId: I.d2, question: 'fiction · 공유 기준을 어떻게 할까요?', sourceMessageIds: [messageId], options: [
-        { optionId: 'A', title: '실명·실제 장소 그대로 + fiction 자유', gains: ['몰입 ↑'], risks: ['feed 공유 시 제3자 개인정보 노출 위험'] },
-        { optionId: 'B', title: '인물·장소 자동 가명화 + fiction 수위 3단계', gains: ['공유 안전'], risks: ['수위는 사용자가 선택'] },
+        { optionId: 'A', title: '실명·실제 장소 그대로 + fiction 자유', short: '실명 그대로', gains: ['몰입 ↑'], risks: ['feed 공유 시 제3자 개인정보 노출 위험'] },
+        { optionId: 'B', title: '인물·장소 자동 가명화 + fiction 수위 3단계', short: '자동 가명화 · 3단계', gains: ['공유 안전'], risks: ['수위는 사용자가 선택'] },
       ] },
     ], [say('정리했습니다. 9시 자동 생성은 온보딩에서 설정하고 그날 data에 맞는 1종만 추천 생성, 생성 버튼은 home에 상시 둡니다. 빠져 있던 9시 설정 화면과 지표는 항목으로 채웠고, 남은 갈림길은 fiction · 공유 기준 하나입니다.', 'summary', { kind: 'branch_options', itemId: I.d2 })],
     '정리 요청을 받아 통합하고 남은 분기를 보여 준다');
@@ -99,7 +103,7 @@ export function fakeWorkContextTurn(facts: WorkContextFacts): WorkContextToolOut
       const experts = facts.items.filter(i => i.layer === 'contribution' && member(i.sourceMemberId)?.source === 'pool');
       return turn([
         { type: 'resolve_branch', itemId: I.d2, optionId: choice, decidedBy: authorId, evidenceMemberIds: experts.map(i => i.sourceMemberId), sourceMessageIds: [messageId, ...experts.flatMap(i => i.sourceMessageIds)] },
-        { type: 'generate_proposal', proposalId: X.proposal, version: 1, title: facts.context.title, decisionItemIds: [I.d1, I.d2], filledItemIds: [I.i3, I.uxOnboarding, I.metricMissing],
+        { type: 'generate_proposal', proposalId: X.proposal, version: 1, title: facts.context.title, decisionItemIds: [I.d1, I.d2], filledItemIds: [I.uxOnboarding, I.metricMissing],
           inputItemIds: [I.i1, I.i2, I.i3, ...experts.map(i => i.itemId)], screens: ['home', '생성 플로우', 'feed 공유'], sourceMessageIds: [messageId],
           preview: { previewId: X.previews.proposal, source: 'proposal', label: 'Proposal v1 GENERATED', caption: 'home · 생성 플로우 · feed 공유 · 5 inputs · 3 screens', refId: X.proposal, spec: PREVIEW_B } },
       ], [
@@ -128,7 +132,7 @@ export function fakeWorkContextTurn(facts: WorkContextFacts): WorkContextToolOut
   if (branch?.resolvedOptionId && authorId === decider) {
     const other = /([AB])로 가면/.exec(text)?.[1];
     if (other && other !== branch.resolvedOptionId && !branch.previewOptionId)
-      return turn([{ type: 'preview_branch', itemId: I.d2, optionId: other, effects: ['생성 템플릿 → 실명 기반', '가명화·마스킹 기준 → 공유 전 수동 검수 플로우', `${branch.resolvedOptionId} 유지 시 변경 없음`], sourceMessageIds: [messageId],
+      return turn([{ type: 'preview_branch', itemId: I.d2, optionId: other, effects: ['생성 템플릿 · 마스킹 기준 변경', '공유 전 검수', `${branch.resolvedOptionId} 유지 시 변경 없음`], sourceMessageIds: [messageId],
         preview: { previewId: X.previews.branchA, source: 'branch', label: `예상 · ${other} 적용 시 PREVIEW`, refId: I.d2, spec: PREVIEW_A } }],
       [say(`${other}로 바꾸면 생성 템플릿은 실명 기반으로, 가명화·마스킹 기준은 공유 전 수동 검수 플로우로 바뀝니다. 캔버스에 예상 경로를 올렸어요 — ${branch.resolvedOptionId}를 유지하면 바뀌는 건 없습니다.`, 'answer', { kind: 'branch_preview', itemId: I.d2, optionId: other })],
       '결정권자가 다른 선택지의 결과를 물었다');
@@ -183,9 +187,9 @@ function confirmTurn(facts: WorkContextFacts, messageId: string): WorkContextToo
     { type: 'expand_proposal', proposalId: X.proposal, items: expanded, edges: [edge(I.d1, I.f1, 'derives'), edge(I.d1, I.f2, 'derives'), edge(I.d1, I.f3, 'derives'), edge(I.d2, I.f4, 'derives'),
       edge(I.f1, I.s1, 'derives'), edge(I.f3, I.s1, 'derives'), edge(I.f2, I.s2, 'derives'), edge(I.f4, I.s2, 'derives'), edge(I.s1, I.v1, 'derives'), edge(I.s2, I.v2, 'derives')] },
     { type: 'handoff_tools', preview: { previewId: X.previews.design, source: 'design', label: 'PAGES · HOME · 예상 화면', refId: I.s1, spec: PREVIEW_B }, handoffs: [
-      { handoffId: X.handoffs.figma, toolId: 'figma', itemIds: [I.s1, I.s2], title: '화면 S1 · S2', round: 1 },
+      { handoffId: X.handoffs.figma, toolId: 'figma', itemIds: [I.s1, I.s2], title: '화면 S1 · S2', round: 1, short: 'S1 S2' },
       { handoffId: X.handoffs.prompt, toolId: 'prompt-studio', itemIds: [I.f1, I.f2, I.storyTemplates], title: '생성 템플릿', round: 1 },
-      { handoffId: X.handoffs.dev, toolId: 'dev-tools', itemIds: [I.f1, I.f2, I.f3, I.f4, I.s1, I.s2], title: '구현 · 통합 빌드', round: 1 },
+      { handoffId: X.handoffs.dev, toolId: 'dev-tools', itemIds: [I.f1, I.f2, I.f3, I.f4, I.s1, I.s2], title: '구현 · 통합 빌드', round: 1, short: '구현·통합' },
     ] },
     ...link(edge(I.s1, 'tool:figma', 'feeds'), edge(I.s2, 'tool:figma', 'feeds'), edge(I.storyTemplates, 'tool:prompt-studio', 'feeds'), edge('tool:figma', 'tool:dev-tools', 'feeds'), edge('tool:prompt-studio', 'tool:dev-tools', 'feeds')),
   ], [

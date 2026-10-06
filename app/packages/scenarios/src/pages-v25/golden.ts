@@ -49,22 +49,26 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
   mark('seeded');
   // ── Scene 03: people and agents talk; the PM reads the Work Context out of it (silent until the last line).
   const m1 = say(0);
-  upsert(item(I.i1, 'intent', '저녁 9시 자동 도착', 'stated', M.planner, [m1], { key: 'I1' }), item(I.d1, 'decision', '생성 = 9시 자동', 'stated', M.planner, [m1], { key: 'D1' }));
+  upsert(item(I.i1, 'intent', '저녁 9시 자동 도착', 'stated', M.planner, [m1], { key: 'I1' }), item(I.d1, 'decision', '생성 = 9시 자동', 'stated', M.planner, [m1], { key: 'D1', short: '9시 자동' }));
   link(edge(I.i1, I.d1));
   const m2 = say(1);
-  upsert(item(I.i2, 'intent', '원할 때 만드는 생성 버튼', 'stated', M.ux, [m2], { key: 'I2' }), item(I.d2Manual, 'decision', '생성 = 버튼으로 수동', 'conflict', M.ux, [m2], { key: 'D2', note: 'D1과 충돌' }));
-  link(edge(I.i2, I.d2Manual), edge(I.d1, I.d2Manual, 'conflicts'));
+  // The PM names the conflict only when it speaks (10:45, deck LOG), not at the utterance.
+  upsert(item(I.i2, 'intent', '원할 때 만드는 생성 버튼', 'stated', M.ux, [m2], { key: 'I2' }), item(I.d2Manual, 'decision', '생성 = 버튼으로 수동', 'stated', M.ux, [m2], { key: 'D2', short: '버튼 수동' }));
+  link(edge(I.i2, I.d2Manual));
   const m3 = say(2);
-  upsert(item(I.fourDaily, 'feature', '4종 매일 동시 생성', 'violation', M.dev, [m3], { note: '비용 한도' }));
+  upsert(item(I.fourDaily, 'feature', '4종 매일 동시 생성', 'violation', M.dev, [m3], { note: '비용 한도', detail: '생성 비용·시간 한도 초과' }));
   const m4 = say(3);
   upsert(item(I.dataFiction, 'feature', 'data + fiction 섞어 생성', 'stated', M.storyAgent, [m4]));
   const m5 = say(4);
+  clock = '10:45';
+  upsert(item(I.d2Manual, 'decision', '생성 = 버튼으로 수동', 'conflict', M.ux, [m2], { key: 'D2', short: '버튼 수동', note: 'D1과 충돌' }));
+  link(edge(I.d1, I.d2Manual, 'conflicts'));
   upsert(
     item(I.threeTabs, 'screen', 'home · 채팅 · feed 3탭', 'undecided', M.uiAgent, [m5], { note: '생성 버튼 위치' }),
-    item(I.fictionLevel, 'decision', 'fiction 수위 기준', 'missing', 'pm', []),
-    item(I.sharePrivacy, 'decision', 'feed 공유 시 개인정보 기준', 'missing', 'pm', []),
-    item(I.onboarding9, 'screen', '온보딩 · 9시 자동 설정', 'missing', 'pm', []),
-    item(I.metricMissing, 'metric', '무엇으로 확인하나?', 'missing', 'pm', []),
+    item(I.fictionLevel, 'decision', 'fiction 수위 기준', 'missing', 'pm', [], { short: 'fiction 수위 기준' }),
+    item(I.sharePrivacy, 'decision', 'feed 공유 시 개인정보 기준', 'missing', 'pm', [], { short: 'feed 공유 개인정보 기준' }),
+    item(I.onboarding9, 'screen', '온보딩 · 9시 자동 설정', 'missing', 'pm', [], { short: '9시 설정 화면' }),
+    item(I.metricMissing, 'metric', '무엇으로 확인하나?', 'missing', 'pm', [], { short: '지표' }),
   );
   speak('10:45', m1, '지금 이 방에는 생성 방식이 자동과 수동으로 갈라져 있습니다. 그리고 아무도 말하지 않았지만, 이 구성이라면 꼭 있어야 할 항목 4개가 빠져 있습니다 — fiction 수위 기준, feed 공유 시 개인정보 기준, 9시 설정 화면, 검증 지표. 채워 넣고 순서대로 정리할까요?',
     'ask', '충돌·위반·미정·누락을 아무도 모른 채 진행되고 있다');
@@ -77,23 +81,23 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
     item(I.i2, 'intent', '원할 때 생성 → home 버튼', 'stated', M.ux, [m2], { key: 'I2' }),
     item(I.i3, 'intent', 'fiction 수위 · 공유 기준', 'filled', 'pm', [m6], { key: 'I3' }),
     item(I.d1, 'decision', '9시 자동(추천 1종) + 생성 버튼', 'merged', M.planner, [m1, m2, m3, m6], { key: 'D1', derivedFrom: [I.d1, I.d2Manual, I.fourDaily] }),
-    item(I.d2Manual, 'decision', '생성 = 버튼으로 수동', 'merged', M.ux, [m2], { key: 'D2', supersededBy: I.d1 }),
-    item(I.fourDaily, 'feature', '4종 매일 동시 생성', 'merged', M.dev, [m3], { note: '추천 1종으로 해소', supersededBy: I.d1 }),
+    item(I.d2Manual, 'decision', '생성 = 버튼으로 수동', 'merged', M.ux, [m2], { key: 'D2', short: '버튼 수동', supersededBy: I.d1 }),
+    item(I.fourDaily, 'feature', '4종 매일 동시 생성', 'merged', M.dev, [m3], { note: '추천 1종으로 해소', detail: '생성 비용·시간 한도 초과', supersededBy: I.d1 }),
     item(I.d2, 'decision', 'fiction · 공유', 'branch', 'pm', [m6], { key: 'D2', derivedFrom: [I.fictionLevel, I.sharePrivacy] }),
-    item(I.fictionLevel, 'decision', 'fiction 수위 기준', 'filled', 'pm', [m6], { supersededBy: I.d2 }),
-    item(I.sharePrivacy, 'decision', 'feed 공유 시 개인정보 기준', 'filled', 'pm', [m6], { supersededBy: I.d2 }),
+    item(I.fictionLevel, 'decision', 'fiction 수위 기준', 'filled', 'pm', [m6], { short: 'fiction 수위 기준', supersededBy: I.d2 }),
+    item(I.sharePrivacy, 'decision', 'feed 공유 시 개인정보 기준', 'filled', 'pm', [m6], { short: 'feed 공유 개인정보 기준', supersededBy: I.d2 }),
     item(I.storyTemplates, 'contribution', 'Story Agent 포맷별 생성 템플릿', 'stated', M.storyAgent, [], { derivedFrom: [I.dataFiction] }),
     item(I.dataFiction, 'feature', 'data + fiction 섞어 생성', 'merged', M.storyAgent, [], { supersededBy: I.storyTemplates }),
     item(I.uiGuide, 'contribution', 'UI Agent home · 생성 플로우 가이드', 'stated', M.uiAgent, [], { derivedFrom: [I.threeTabs] }),
     item(I.threeTabs, 'screen', 'home · 채팅 · feed 3탭', 'merged', M.uiAgent, [], { note: '생성 버튼은 home', supersededBy: I.uiGuide }),
-    item(I.uxOnboarding, 'contribution', '박도윤 · UX 온보딩 9시 설정 플로우', 'filled', M.ux, [m6], { derivedFrom: [I.onboarding9] }),
-    item(I.onboarding9, 'screen', '온보딩 · 9시 자동 설정', 'filled', 'pm', [m6], { supersededBy: I.uxOnboarding }),
+    item(I.uxOnboarding, 'contribution', '박도윤 · UX 온보딩 9시 설정 플로우', 'filled', M.ux, [m6], { short: '온보딩 9시 설정', derivedFrom: [I.onboarding9] }),
+    item(I.onboarding9, 'screen', '온보딩 · 9시 자동 설정', 'filled', 'pm', [m6], { short: '9시 설정 화면', supersededBy: I.uxOnboarding }),
     item(I.metricMissing, 'metric', '검증 지표', 'filled', 'pm', [m6]),
   );
   link(edge(I.i2, I.d1), edge(I.i3, I.d2), edge(I.d1, I.storyTemplates, 'derives'), edge(I.d1, I.uiGuide, 'derives'), edge(I.d1, I.uxOnboarding, 'derives'), edge(I.d2, I.storyTemplates, 'derives'));
   emit('context_branch_opened', { itemId: I.d2, question: 'fiction · 공유 기준을 어떻게 할까요?', sourceMessageIds: [m6], options: [
-    { optionId: 'A', title: '실명·실제 장소 그대로 + fiction 자유', gains: ['몰입 ↑'], risks: ['feed 공유 시 제3자 개인정보 노출 위험'] },
-    { optionId: 'B', title: '인물·장소 자동 가명화 + fiction 수위 3단계', gains: ['공유 안전'], risks: ['수위는 사용자가 선택'] },
+    { optionId: 'A', title: '실명·실제 장소 그대로 + fiction 자유', short: '실명 그대로', gains: ['몰입 ↑'], risks: ['feed 공유 시 제3자 개인정보 노출 위험'] },
+    { optionId: 'B', title: '인물·장소 자동 가명화 + fiction 수위 3단계', short: '자동 가명화 · 3단계', gains: ['공유 안전'], risks: ['수위는 사용자가 선택'] },
   ] });
   speak('11:02', m6, '정리했습니다. 9시 자동 생성은 온보딩에서 설정하고 그날 data에 맞는 1종만 추천 생성, 생성 버튼은 home에 상시 둡니다. 빠져 있던 9시 설정 화면과 지표는 항목으로 채웠고, 남은 갈림길은 fiction · 공유 기준 하나입니다.',
     'summary', '정리 요청을 받아 통합하고 남은 분기를 보여 준다', { kind: 'branch_options', itemId: I.d2 });
@@ -124,7 +128,7 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
   clock = '11:13';
   emit('context_branch_resolved', { itemId: I.d2, optionId: 'B', decidedBy: M.planner, evidenceMemberIds: [M.policy, M.narrative], sourceMessageIds: [m12, m10, m11] });
   emit('preview_rendered', { previewId: X.previews.proposal, source: 'proposal', label: 'Proposal v1 GENERATED', caption: 'home · 생성 플로우 · feed 공유 · 5 inputs · 3 screens', refId: X.proposal, spec: PREVIEW_B });
-  emit('proposal_generated', { proposalId: X.proposal, version: 1, title: 'Pages · 모바일 App. v1', decisionItemIds: [I.d1, I.d2], filledItemIds: [I.i3, I.uxOnboarding, I.metricMissing],
+  emit('proposal_generated', { proposalId: X.proposal, version: 1, title: 'Pages · 모바일 App. v1', decisionItemIds: [I.d1, I.d2], filledItemIds: [I.uxOnboarding, I.metricMissing],
     inputItemIds: [I.i1, I.i2, I.i3, I.policyInput, I.narrativeInput], screens: ['home', '생성 플로우', 'feed 공유'], previewId: X.previews.proposal, sourceMessageIds: [m12] });
   speak('11:13', m12, 'B 확정으로 남은 갈림길이 없습니다.',
     'summary', '분기가 사람의 결정으로 닫혀 제안할 수 있다', { kind: 'pm_steps', label: '생성 중', steps: ['결정 D1 · D2 확인', '누락 보완 확인', 'Proposal 구성'] });
@@ -134,7 +138,7 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
   const m13 = say(12);
   clock = '11:22';
   emit('preview_rendered', { previewId: X.previews.branchA, source: 'branch', label: '예상 · A 적용 시 PREVIEW', refId: I.d2, spec: PREVIEW_A });
-  emit('context_branch_previewed', { itemId: I.d2, optionId: 'A', effects: ['생성 템플릿 → 실명 기반', '가명화·마스킹 기준 → 공유 전 수동 검수 플로우', 'B 유지 시 변경 없음'], previewId: X.previews.branchA, sourceMessageIds: [m13] });
+  emit('context_branch_previewed', { itemId: I.d2, optionId: 'A', effects: ['생성 템플릿 · 마스킹 기준 변경', '공유 전 검수', 'B 유지 시 변경 없음'], previewId: X.previews.branchA, sourceMessageIds: [m13] });
   speak('11:22', m13, 'A로 바꾸면 생성 템플릿은 실명 기반으로, 가명화·마스킹 기준은 공유 전 수동 검수 플로우로 바뀝니다. 캔버스에 예상 경로를 올렸어요 — B를 유지하면 바뀌는 건 없습니다.',
     'answer', '결정권자가 다른 선택지의 결과를 물었다', { kind: 'branch_preview', itemId: I.d2, optionId: 'A' });
   mark('s04_preview_a');
@@ -167,9 +171,9 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
 
   clock = '11:25';
   emit('preview_rendered', { previewId: X.previews.design, source: 'design', label: 'PAGES · HOME · 예상 화면', refId: I.s1, spec: PREVIEW_B });
-  emit('tool_handoff_sent', { handoffId: X.handoffs.figma, toolId: 'figma', itemIds: [I.s1, I.s2], title: '화면 S1 · S2', round: 1 });
+  emit('tool_handoff_sent', { handoffId: X.handoffs.figma, toolId: 'figma', itemIds: [I.s1, I.s2], title: '화면 S1 · S2', round: 1, short: 'S1 S2' });
   emit('tool_handoff_sent', { handoffId: X.handoffs.prompt, toolId: 'prompt-studio', itemIds: [I.f1, I.f2, I.storyTemplates], title: '생성 템플릿', round: 1 });
-  emit('tool_handoff_sent', { handoffId: X.handoffs.dev, toolId: 'dev-tools', itemIds: [I.f1, I.f2, I.f3, I.f4, I.s1, I.s2], title: '구현 · 통합 빌드', round: 1 });
+  emit('tool_handoff_sent', { handoffId: X.handoffs.dev, toolId: 'dev-tools', itemIds: [I.f1, I.f2, I.f3, I.f4, I.s1, I.s2], title: '구현 · 통합 빌드', round: 1, short: '구현·통합' });
   link(edge(I.s1, 'tool:figma', 'feeds'), edge(I.s2, 'tool:figma', 'feeds'), edge(I.storyTemplates, 'tool:prompt-studio', 'feeds'), edge('tool:figma', 'tool:dev-tools', 'feeds'), edge('tool:prompt-studio', 'tool:dev-tools', 'feeds'));
   speak('11:25', m14, '화면 S1 · S2로 예상 화면을 만들고, 확정된 구성을 참여자가 연결해 둔 제작 도구로 넘깁니다. 결과는 개발 도구에서 하나로 합쳐집니다.',
     'fact', '확정된 구성을 연결된 제작 도구로 넘긴다', { kind: 'tool_handoffs', handoffIds: [X.handoffs.figma, X.handoffs.prompt, X.handoffs.dev] });
