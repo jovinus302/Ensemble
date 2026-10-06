@@ -1,0 +1,2110 @@
+{
+  "provenance": "Authored contract examples transcribed from golden ledger; NOT recorded live model output.",
+  "outputs": [
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "i1",
+            "layer": "intent",
+            "title": "저녁 9시 자동 도착",
+            "status": "stated",
+            "sourceMemberId": "seoyeon",
+            "sourceMessageIds": [
+              "pv25:m:0"
+            ],
+            "key": "I1"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d1",
+            "layer": "decision",
+            "title": "생성 = 9시 자동",
+            "status": "stated",
+            "sourceMemberId": "seoyeon",
+            "sourceMessageIds": [
+              "pv25:m:0"
+            ],
+            "key": "D1"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "i1->d1",
+            "from": "i1",
+            "to": "d1",
+            "kind": "supports"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "i2",
+            "layer": "intent",
+            "title": "원할 때 만드는 생성 버튼",
+            "status": "stated",
+            "sourceMemberId": "doyun",
+            "sourceMessageIds": [
+              "pv25:m:1"
+            ],
+            "key": "I2"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d2-manual",
+            "layer": "decision",
+            "title": "생성 = 버튼으로 수동",
+            "status": "conflict",
+            "sourceMemberId": "doyun",
+            "sourceMessageIds": [
+              "pv25:m:1"
+            ],
+            "key": "D2",
+            "note": "D1과 충돌"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "i2->d2-manual",
+            "from": "i2",
+            "to": "d2-manual",
+            "kind": "supports"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "d1->d2-manual",
+            "from": "d1",
+            "to": "d2-manual",
+            "kind": "conflicts"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "f-four-daily",
+            "layer": "feature",
+            "title": "4종 매일 동시 생성",
+            "status": "violation",
+            "sourceMemberId": "hajun",
+            "sourceMessageIds": [
+              "pv25:m:2"
+            ],
+            "note": "비용 한도"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "f-data-fiction",
+            "layer": "feature",
+            "title": "data + fiction 섞어 생성",
+            "status": "stated",
+            "sourceMemberId": "story-agent",
+            "sourceMessageIds": [
+              "pv25:m:3"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "s-three-tabs",
+            "layer": "screen",
+            "title": "home · 채팅 · feed 3탭",
+            "status": "undecided",
+            "sourceMemberId": "ui-agent",
+            "sourceMessageIds": [
+              "pv25:m:4"
+            ],
+            "note": "생성 버튼 위치"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d-fiction-level",
+            "layer": "decision",
+            "title": "fiction 수위 기준",
+            "status": "missing",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": []
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d-share-privacy",
+            "layer": "decision",
+            "title": "feed 공유 시 개인정보 기준",
+            "status": "missing",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": []
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "s-onboarding-9",
+            "layer": "screen",
+            "title": "온보딩 · 9시 자동 설정",
+            "status": "missing",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": []
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "v-what",
+            "layer": "metric",
+            "title": "무엇으로 확인하나?",
+            "status": "missing",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": []
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "i2",
+            "layer": "intent",
+            "title": "원할 때 생성 → home 버튼",
+            "status": "stated",
+            "sourceMemberId": "doyun",
+            "sourceMessageIds": [
+              "pv25:m:1"
+            ],
+            "key": "I2"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "i3",
+            "layer": "intent",
+            "title": "fiction 수위 · 공유 기준",
+            "status": "filled",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:5"
+            ],
+            "key": "I3"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d1",
+            "layer": "decision",
+            "title": "9시 자동(추천 1종) + 생성 버튼",
+            "status": "merged",
+            "sourceMemberId": "seoyeon",
+            "sourceMessageIds": [
+              "pv25:m:0",
+              "pv25:m:1",
+              "pv25:m:2",
+              "pv25:m:5"
+            ],
+            "key": "D1",
+            "derivedFrom": [
+              "d1",
+              "d2-manual",
+              "f-four-daily"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d2-manual",
+            "layer": "decision",
+            "title": "생성 = 버튼으로 수동",
+            "status": "merged",
+            "sourceMemberId": "doyun",
+            "sourceMessageIds": [
+              "pv25:m:1"
+            ],
+            "key": "D2",
+            "supersededBy": "d1"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "f-four-daily",
+            "layer": "feature",
+            "title": "4종 매일 동시 생성",
+            "status": "merged",
+            "sourceMemberId": "hajun",
+            "sourceMessageIds": [
+              "pv25:m:2"
+            ],
+            "note": "추천 1종으로 해소",
+            "supersededBy": "d1"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d2-fiction",
+            "layer": "decision",
+            "title": "fiction · 공유",
+            "status": "branch",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:5"
+            ],
+            "key": "D2",
+            "derivedFrom": [
+              "d-fiction-level",
+              "d-share-privacy"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d-fiction-level",
+            "layer": "decision",
+            "title": "fiction 수위 기준",
+            "status": "filled",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:5"
+            ],
+            "supersededBy": "d2-fiction"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d-share-privacy",
+            "layer": "decision",
+            "title": "feed 공유 시 개인정보 기준",
+            "status": "filled",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:5"
+            ],
+            "supersededBy": "d2-fiction"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "c-story",
+            "layer": "contribution",
+            "title": "Story Agent 포맷별 생성 템플릿",
+            "status": "stated",
+            "sourceMemberId": "story-agent",
+            "sourceMessageIds": [],
+            "derivedFrom": [
+              "f-data-fiction"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "f-data-fiction",
+            "layer": "feature",
+            "title": "data + fiction 섞어 생성",
+            "status": "merged",
+            "sourceMemberId": "story-agent",
+            "sourceMessageIds": [],
+            "supersededBy": "c-story"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "c-ui",
+            "layer": "contribution",
+            "title": "UI Agent home · 생성 플로우 가이드",
+            "status": "stated",
+            "sourceMemberId": "ui-agent",
+            "sourceMessageIds": [],
+            "derivedFrom": [
+              "s-three-tabs"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "s-three-tabs",
+            "layer": "screen",
+            "title": "home · 채팅 · feed 3탭",
+            "status": "merged",
+            "sourceMemberId": "ui-agent",
+            "sourceMessageIds": [],
+            "note": "생성 버튼은 home",
+            "supersededBy": "c-ui"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "c-doyun",
+            "layer": "contribution",
+            "title": "박도윤 · UX 온보딩 9시 설정 플로우",
+            "status": "filled",
+            "sourceMemberId": "doyun",
+            "sourceMessageIds": [
+              "pv25:m:5"
+            ],
+            "derivedFrom": [
+              "s-onboarding-9"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "s-onboarding-9",
+            "layer": "screen",
+            "title": "온보딩 · 9시 자동 설정",
+            "status": "filled",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:5"
+            ],
+            "supersededBy": "c-doyun"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "v-what",
+            "layer": "metric",
+            "title": "검증 지표",
+            "status": "filled",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:5"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "i2->d1",
+            "from": "i2",
+            "to": "d1",
+            "kind": "supports"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "i3->d2-fiction",
+            "from": "i3",
+            "to": "d2-fiction",
+            "kind": "supports"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "d1->c-story",
+            "from": "d1",
+            "to": "c-story",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "d1->c-ui",
+            "from": "d1",
+            "to": "c-ui",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "d1->c-doyun",
+            "from": "d1",
+            "to": "c-doyun",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "d2-fiction->c-story",
+            "from": "d2-fiction",
+            "to": "c-story",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "open_branch",
+          "itemId": "d2-fiction",
+          "question": "fiction · 공유 기준을 어떻게 할까요?",
+          "sourceMessageIds": [
+            "pv25:m:5"
+          ],
+          "options": [
+            {
+              "optionId": "A",
+              "title": "실명·실제 장소 그대로 + fiction 자유",
+              "gains": [
+                "몰입 ↑"
+              ],
+              "risks": [
+                "feed 공유 시 제3자 개인정보 노출 위험"
+              ]
+            },
+            {
+              "optionId": "B",
+              "title": "인물·장소 자동 가명화 + fiction 수위 3단계",
+              "gains": [
+                "공유 안전"
+              ],
+              "risks": [
+                "수위는 사용자가 선택"
+              ]
+            }
+          ]
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "search_pool",
+          "searchId": "pool-search-d2",
+          "forItemId": "d2-fiction",
+          "reason": "지금 멤버로는 D2 분기를 결정할 근거가 부족하다",
+          "steps": [
+            "결정 근거 확인",
+            "멤버 역량 확인",
+            "가능 인력 검색"
+          ],
+          "candidateIds": [
+            "pool-jiwoo",
+            "pool-yuna"
+          ]
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "c-jiwoo",
+            "layer": "contribution",
+            "title": "한지우 · 정책 분기 판단 참여 → B 가명화·마스킹 기준",
+            "status": "stated",
+            "sourceMemberId": "jiwoo",
+            "sourceMessageIds": [
+              "pv25:m:9"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "c-jiwoo->d2-fiction",
+            "from": "c-jiwoo",
+            "to": "d2-fiction",
+            "kind": "supports"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "c-yuna",
+            "layer": "contribution",
+            "title": "정유나 · 내러티브 분기 판단 참여 → B fiction 수위 3단계",
+            "status": "stated",
+            "sourceMemberId": "yuna",
+            "sourceMessageIds": [
+              "pv25:m:10"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "c-yuna->d2-fiction",
+            "from": "c-yuna",
+            "to": "d2-fiction",
+            "kind": "supports"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "resolve_branch",
+          "itemId": "d2-fiction",
+          "optionId": "B",
+          "decidedBy": "seoyeon",
+          "evidenceMemberIds": [
+            "jiwoo",
+            "yuna"
+          ],
+          "sourceMessageIds": [
+            "pv25:m:11",
+            "pv25:m:9",
+            "pv25:m:10"
+          ]
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "generate_proposal",
+          "proposalId": "proposal-v1",
+          "version": 1,
+          "title": "Pages · 모바일 App. v1",
+          "decisionItemIds": [
+            "d1",
+            "d2-fiction"
+          ],
+          "filledItemIds": [
+            "i3",
+            "c-doyun",
+            "v-what"
+          ],
+          "inputItemIds": [
+            "i1",
+            "i2",
+            "i3",
+            "c-jiwoo",
+            "c-yuna"
+          ],
+          "screens": [
+            "home",
+            "생성 플로우",
+            "feed 공유"
+          ],
+          "sourceMessageIds": [
+            "pv25:m:11"
+          ],
+          "preview": {
+            "previewId": "preview-proposal-v1",
+            "source": "proposal",
+            "label": "Proposal v1 GENERATED",
+            "caption": "home · 생성 플로우 · feed 공유 · 5 inputs · 3 screens",
+            "refId": "proposal-v1",
+            "spec": {
+              "appName": "Pages",
+              "dateLabel": "10월 2일 금요일",
+              "versions": [
+                "v1.0",
+                "v1.1"
+              ],
+              "primaryAction": "지금 만들기",
+              "formatAction": "생성",
+              "history": [
+                {
+                  "date": "10.1",
+                  "title": "회의 세 번, 커피 네 잔",
+                  "format": "에세이"
+                },
+                {
+                  "date": "9.30",
+                  "title": "한강 러닝 12초",
+                  "format": "숏폼"
+                }
+              ],
+              "tabs": [
+                "home",
+                "채팅",
+                "feed"
+              ],
+              "activeVersion": "v1.0",
+              "formats": [
+                "숏폼",
+                "동화",
+                "노래",
+                "에세이"
+              ],
+              "hero": {
+                "kicker": "오늘의 Page · 21:00 도착",
+                "format": "동화",
+                "badge": {
+                  "text": "fiction 포함",
+                  "tone": "fiction"
+                },
+                "title": "퇴근길, 비를 피한 고양이",
+                "meta": "3분 · 오늘의 data로 만든 이야기",
+                "sources": "걸음 8,214 · 사진 3장 · 일정 2건에서"
+              }
+            }
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "preview_branch",
+          "itemId": "d2-fiction",
+          "optionId": "A",
+          "effects": [
+            "생성 템플릿 → 실명 기반",
+            "가명화·마스킹 기준 → 공유 전 수동 검수 플로우",
+            "B 유지 시 변경 없음"
+          ],
+          "sourceMessageIds": [
+            "pv25:m:12"
+          ],
+          "preview": {
+            "previewId": "preview-branch-a",
+            "source": "branch",
+            "label": "예상 · A 적용 시 PREVIEW",
+            "refId": "d2-fiction",
+            "spec": {
+              "appName": "Pages",
+              "dateLabel": "10월 2일 금요일",
+              "versions": [
+                "v1.0",
+                "v1.1"
+              ],
+              "primaryAction": "지금 만들기",
+              "formatAction": "생성",
+              "history": [
+                {
+                  "date": "10.1",
+                  "title": "회의 세 번, 커피 네 잔",
+                  "format": "에세이"
+                },
+                {
+                  "date": "9.30",
+                  "title": "한강 러닝 12초",
+                  "format": "숏폼"
+                }
+              ],
+              "tabs": [
+                "home",
+                "채팅",
+                "feed"
+              ],
+              "activeVersion": "v1.0",
+              "formats": [
+                "숏폼",
+                "동화",
+                "노래",
+                "에세이"
+              ],
+              "hero": {
+                "kicker": "오늘의 Page · 21:00 도착",
+                "format": "동화",
+                "badge": {
+                  "text": "실명",
+                  "tone": "real"
+                },
+                "title": "퇴근길, 민수와 비를 피한 날",
+                "meta": "3분 · 오늘의 data로 만든 이야기",
+                "sources": "걸음 8,214 · 사진 3장 · 일정 2건에서"
+              },
+              "notice": {
+                "text": "feed 공유 · 검수 대기 2건",
+                "tone": "warn"
+              },
+              "annotations": [
+                {
+                  "text": "실명 그대로 · 공유 전 검수",
+                  "tone": "warn"
+                },
+                {
+                  "text": "검수 대기 · 제3자 노출 위험",
+                  "tone": "warn"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "clear_branch_preview",
+          "itemId": "d2-fiction",
+          "optionId": "A"
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "withdraw_preview",
+          "previewId": "preview-branch-a"
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "confirm_proposal",
+          "proposalId": "proposal-v1",
+          "contextVersion": "1.0",
+          "confirmedBy": "seoyeon",
+          "sourceMessageIds": [
+            "pv25:m:13"
+          ]
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d1",
+            "layer": "decision",
+            "title": "9시 자동(추천 1종) + 생성 버튼",
+            "status": "confirmed",
+            "sourceMemberId": "seoyeon",
+            "sourceMessageIds": [
+              "pv25:m:0",
+              "pv25:m:1",
+              "pv25:m:2",
+              "pv25:m:5"
+            ],
+            "key": "D1",
+            "derivedFrom": [
+              "d1",
+              "d2-manual",
+              "f-four-daily"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d2-fiction",
+            "layer": "decision",
+            "title": "자동 가명화 · fiction 3단계 (B)",
+            "status": "confirmed",
+            "sourceMemberId": "seoyeon",
+            "sourceMessageIds": [
+              "pv25:m:11"
+            ],
+            "key": "D2",
+            "derivedFrom": [
+              "d-fiction-level",
+              "d-share-privacy"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "f1",
+            "layer": "feature",
+            "title": "숏폼 · 동화 · 에세이 생성",
+            "status": "confirmed",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:13"
+            ],
+            "key": "F1",
+            "derivedFrom": [
+              "d1"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "f2",
+            "layer": "feature",
+            "title": "노래 생성",
+            "status": "confirmed",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:13"
+            ],
+            "key": "F2",
+            "derivedFrom": [
+              "d1"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "f3",
+            "layer": "feature",
+            "title": "9시 자동 생성 설정",
+            "status": "confirmed",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:13"
+            ],
+            "key": "F3",
+            "derivedFrom": [
+              "d1",
+              "c-doyun"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "f4",
+            "layer": "feature",
+            "title": "feed 공유 · 가명화",
+            "status": "confirmed",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:13"
+            ],
+            "key": "F4",
+            "derivedFrom": [
+              "d2-fiction"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "s1",
+            "layer": "screen",
+            "title": "[화면] home · 최근 / 지난 생성물",
+            "status": "confirmed",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:13"
+            ],
+            "key": "S1",
+            "derivedFrom": [
+              "f1",
+              "f3"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "s2",
+            "layer": "screen",
+            "title": "[화면] 생성 · 채팅 · feed",
+            "status": "confirmed",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:13"
+            ],
+            "key": "S2",
+            "derivedFrom": [
+              "f1",
+              "f2",
+              "f4"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "v1",
+            "layer": "metric",
+            "title": "[지표] 9시 생성물 열람률",
+            "status": "verify_pending",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:13"
+            ],
+            "key": "V1",
+            "derivedFrom": [
+              "v-what"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "v2",
+            "layer": "metric",
+            "title": "[지표] feed 공유율",
+            "status": "verify_pending",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:13"
+            ],
+            "key": "V2",
+            "derivedFrom": [
+              "v-what"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "d1->f1",
+            "from": "d1",
+            "to": "f1",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "d1->f2",
+            "from": "d1",
+            "to": "f2",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "d1->f3",
+            "from": "d1",
+            "to": "f3",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "d2-fiction->f4",
+            "from": "d2-fiction",
+            "to": "f4",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "f1->s1",
+            "from": "f1",
+            "to": "s1",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "f3->s1",
+            "from": "f3",
+            "to": "s1",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "f2->s2",
+            "from": "f2",
+            "to": "s2",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "f4->s2",
+            "from": "f4",
+            "to": "s2",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "s1->v1",
+            "from": "s1",
+            "to": "v1",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "s2->v2",
+            "from": "s2",
+            "to": "v2",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "expand_proposal",
+          "proposalId": "proposal-v1",
+          "items": [
+            {
+              "itemId": "d1",
+              "layer": "decision",
+              "title": "9시 자동(추천 1종) + 생성 버튼",
+              "status": "confirmed",
+              "sourceMemberId": "seoyeon",
+              "sourceMessageIds": [
+                "pv25:m:0",
+                "pv25:m:1",
+                "pv25:m:2",
+                "pv25:m:5"
+              ],
+              "key": "D1",
+              "derivedFrom": [
+                "d1",
+                "d2-manual",
+                "f-four-daily"
+              ]
+            },
+            {
+              "itemId": "d2-fiction",
+              "layer": "decision",
+              "title": "자동 가명화 · fiction 3단계 (B)",
+              "status": "confirmed",
+              "sourceMemberId": "seoyeon",
+              "sourceMessageIds": [
+                "pv25:m:11"
+              ],
+              "key": "D2",
+              "derivedFrom": [
+                "d-fiction-level",
+                "d-share-privacy"
+              ]
+            },
+            {
+              "itemId": "f1",
+              "layer": "feature",
+              "title": "숏폼 · 동화 · 에세이 생성",
+              "status": "confirmed",
+              "sourceMemberId": "pm",
+              "sourceMessageIds": [
+                "pv25:m:13"
+              ],
+              "key": "F1",
+              "derivedFrom": [
+                "d1"
+              ]
+            },
+            {
+              "itemId": "f2",
+              "layer": "feature",
+              "title": "노래 생성",
+              "status": "confirmed",
+              "sourceMemberId": "pm",
+              "sourceMessageIds": [
+                "pv25:m:13"
+              ],
+              "key": "F2",
+              "derivedFrom": [
+                "d1"
+              ]
+            },
+            {
+              "itemId": "f3",
+              "layer": "feature",
+              "title": "9시 자동 생성 설정",
+              "status": "confirmed",
+              "sourceMemberId": "pm",
+              "sourceMessageIds": [
+                "pv25:m:13"
+              ],
+              "key": "F3",
+              "derivedFrom": [
+                "d1",
+                "c-doyun"
+              ]
+            },
+            {
+              "itemId": "f4",
+              "layer": "feature",
+              "title": "feed 공유 · 가명화",
+              "status": "confirmed",
+              "sourceMemberId": "pm",
+              "sourceMessageIds": [
+                "pv25:m:13"
+              ],
+              "key": "F4",
+              "derivedFrom": [
+                "d2-fiction"
+              ]
+            },
+            {
+              "itemId": "s1",
+              "layer": "screen",
+              "title": "[화면] home · 최근 / 지난 생성물",
+              "status": "confirmed",
+              "sourceMemberId": "pm",
+              "sourceMessageIds": [
+                "pv25:m:13"
+              ],
+              "key": "S1",
+              "derivedFrom": [
+                "f1",
+                "f3"
+              ]
+            },
+            {
+              "itemId": "s2",
+              "layer": "screen",
+              "title": "[화면] 생성 · 채팅 · feed",
+              "status": "confirmed",
+              "sourceMemberId": "pm",
+              "sourceMessageIds": [
+                "pv25:m:13"
+              ],
+              "key": "S2",
+              "derivedFrom": [
+                "f1",
+                "f2",
+                "f4"
+              ]
+            },
+            {
+              "itemId": "v1",
+              "layer": "metric",
+              "title": "[지표] 9시 생성물 열람률",
+              "status": "verify_pending",
+              "sourceMemberId": "pm",
+              "sourceMessageIds": [
+                "pv25:m:13"
+              ],
+              "key": "V1",
+              "derivedFrom": [
+                "v-what"
+              ]
+            },
+            {
+              "itemId": "v2",
+              "layer": "metric",
+              "title": "[지표] feed 공유율",
+              "status": "verify_pending",
+              "sourceMemberId": "pm",
+              "sourceMessageIds": [
+                "pv25:m:13"
+              ],
+              "key": "V2",
+              "derivedFrom": [
+                "v-what"
+              ]
+            }
+          ],
+          "edges": []
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "handoff_tools",
+          "handoffs": [
+            {
+              "handoffId": "handoff-figma-1",
+              "toolId": "figma",
+              "itemIds": [
+                "s1",
+                "s2"
+              ],
+              "title": "화면 S1 · S2",
+              "round": 1
+            }
+          ]
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "handoff_tools",
+          "handoffs": [
+            {
+              "handoffId": "handoff-prompt-1",
+              "toolId": "prompt-studio",
+              "itemIds": [
+                "f1",
+                "f2",
+                "c-story"
+              ],
+              "title": "생성 템플릿",
+              "round": 1
+            }
+          ]
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "handoff_tools",
+          "handoffs": [
+            {
+              "handoffId": "handoff-dev-1",
+              "toolId": "dev-tools",
+              "itemIds": [
+                "f1",
+                "f2",
+                "f3",
+                "f4",
+                "s1",
+                "s2"
+              ],
+              "title": "구현 · 통합 빌드",
+              "round": 1
+            }
+          ]
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "s1->tool:figma",
+            "from": "s1",
+            "to": "tool:figma",
+            "kind": "feeds"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "s2->tool:figma",
+            "from": "s2",
+            "to": "tool:figma",
+            "kind": "feeds"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "c-story->tool:prompt-studio",
+            "from": "c-story",
+            "to": "tool:prompt-studio",
+            "kind": "feeds"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "tool:figma->tool:dev-tools",
+            "from": "tool:figma",
+            "to": "tool:dev-tools",
+            "kind": "feeds"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "tool:prompt-studio->tool:dev-tools",
+            "from": "tool:prompt-studio",
+            "to": "tool:dev-tools",
+            "kind": "feeds"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "f5",
+            "layer": "feature",
+            "title": "fiction 포함 라벨",
+            "status": "added",
+            "sourceMemberId": "seoyeon",
+            "sourceMessageIds": [
+              "pv25:m:15"
+            ],
+            "key": "F5"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "f2",
+            "layer": "feature",
+            "title": "노래 생성",
+            "status": "excluded",
+            "sourceMemberId": "seoyeon",
+            "sourceMessageIds": [
+              "pv25:m:15"
+            ],
+            "key": "F2",
+            "derivedFrom": [
+              "d1"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "s1",
+            "layer": "screen",
+            "title": "[화면] home · 생성물",
+            "status": "stale",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:15"
+            ],
+            "key": "S1",
+            "derivedFrom": [
+              "f1",
+              "f3"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "s2",
+            "layer": "screen",
+            "title": "[화면] 채팅 · feed",
+            "status": "stale",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:15"
+            ],
+            "key": "S2",
+            "derivedFrom": [
+              "f1",
+              "f2",
+              "f4"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d1",
+            "layer": "decision",
+            "title": "9시 자동(추천 1종) + 생성 버튼",
+            "status": "kept",
+            "sourceMemberId": "seoyeon",
+            "sourceMessageIds": [
+              "pv25:m:0",
+              "pv25:m:1",
+              "pv25:m:2",
+              "pv25:m:5"
+            ],
+            "key": "D1",
+            "derivedFrom": [
+              "d1",
+              "d2-manual",
+              "f-four-daily"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "d2-fiction",
+            "layer": "decision",
+            "title": "자동 가명화 · fiction 3단계 (B)",
+            "status": "kept",
+            "sourceMemberId": "seoyeon",
+            "sourceMessageIds": [
+              "pv25:m:11"
+            ],
+            "key": "D2",
+            "derivedFrom": [
+              "d-fiction-level",
+              "d-share-privacy"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "f5->s2",
+            "from": "f5",
+            "to": "s2",
+            "kind": "derives"
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "f2->s2",
+            "from": "f2",
+            "to": "s2",
+            "kind": "derives",
+            "stale": true
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_edge",
+          "edge": {
+            "edgeId": "f1->s1",
+            "from": "f1",
+            "to": "s1",
+            "kind": "derives",
+            "stale": true
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "propose_change",
+          "changeSetId": "change-v1.1",
+          "fromVersion": "1.0",
+          "toVersion": "1.1",
+          "changes": [
+            {
+              "itemId": "f5",
+              "change": "added"
+            },
+            {
+              "itemId": "f2",
+              "change": "excluded"
+            }
+          ],
+          "staleItemIds": [
+            "s1",
+            "s2",
+            "c-story"
+          ],
+          "unaffectedItemIds": [
+            "d1",
+            "d2-fiction"
+          ],
+          "sourceMessageIds": [
+            "pv25:m:15"
+          ]
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "handoff_tools",
+          "handoffs": [
+            {
+              "handoffId": "handoff-figma-2",
+              "toolId": "figma",
+              "itemIds": [
+                "s1",
+                "s2"
+              ],
+              "title": "S1 · S2 변경 2건",
+              "round": 2
+            }
+          ]
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "handoff_tools",
+          "handoffs": [
+            {
+              "handoffId": "handoff-prompt-2",
+              "toolId": "prompt-studio",
+              "itemIds": [
+                "f2"
+              ],
+              "title": "노래 템플릿 제외",
+              "round": 2
+            }
+          ]
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "handoff_tools",
+          "handoffs": [
+            {
+              "handoffId": "handoff-dev-2",
+              "toolId": "dev-tools",
+              "itemIds": [
+                "f5",
+                "s1",
+                "s2"
+              ],
+              "title": "F5 구현 · 재빌드",
+              "round": 2
+            }
+          ]
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "s1",
+            "layer": "screen",
+            "title": "[화면] home · 생성물",
+            "status": "updated",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:15"
+            ],
+            "key": "S1",
+            "derivedFrom": [
+              "f1",
+              "f3"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    },
+    {
+      "ops": [
+        {
+          "type": "upsert_item",
+          "item": {
+            "itemId": "s2",
+            "layer": "screen",
+            "title": "[화면] 채팅 · feed",
+            "status": "updated",
+            "sourceMemberId": "pm",
+            "sourceMessageIds": [
+              "pv25:m:15"
+            ],
+            "key": "S2",
+            "derivedFrom": [
+              "f1",
+              "f4",
+              "f5"
+            ]
+          }
+        }
+      ],
+      "speech": [],
+      "reason": "?? ?? ??"
+    }
+  ],
+  "cards": [
+    {
+      "kind": "branch_options",
+      "itemId": "d2-fiction"
+    },
+    {
+      "kind": "pm_steps",
+      "label": "판단 중",
+      "steps": [
+        "결정 근거 확인",
+        "멤버 역량 확인",
+        "가능 인력 검색"
+      ],
+      "searchId": "pool-search-d2"
+    },
+    {
+      "kind": "pm_steps",
+      "label": "생성 중",
+      "steps": [
+        "결정 D1 · D2 확인",
+        "누락 보완 확인",
+        "Proposal 구성"
+      ],
+      "proposalId": "proposal-v1"
+    },
+    {
+      "kind": "branch_preview",
+      "itemId": "d2-fiction",
+      "optionId": "A"
+    },
+    {
+      "kind": "expansion",
+      "proposalId": "proposal-v1"
+    },
+    {
+      "kind": "tool_handoffs",
+      "handoffIds": [
+        "handoff-figma-1",
+        "handoff-prompt-1",
+        "handoff-dev-1"
+      ]
+    },
+    {
+      "kind": "build",
+      "buildId": "build-v1.0"
+    },
+    {
+      "kind": "change_set",
+      "changeSetId": "change-v1.1"
+    },
+    {
+      "kind": "tool_handoffs",
+      "handoffIds": [
+        "handoff-figma-2",
+        "handoff-prompt-2",
+        "handoff-dev-2"
+      ]
+    },
+    {
+      "kind": "build",
+      "buildId": "build-v1.1"
+    }
+  ]
+}
