@@ -1,10 +1,11 @@
 // Pages v2.5 WORK CONTEXT canvas + LOG (workstream B): what the canvas draws at each golden checkpoint.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PAGES_IDS, PAGES_ITEMS as I, PAGES_MEMBERS, PAGES_POOL, type PagesCheckpoint } from '@ensemble/scenarios';
+import { PAGES_IDS, PAGES_ITEMS as I, PAGES_MEMBERS, PAGES_NOW, PAGES_POOL, type PagesCheckpoint } from '@ensemble/scenarios';
 import { canvasLayout } from '../apps/web/components/context/canvas/layout.ts';
 import { formatTime } from '../apps/web/components/format.ts';
-import { pagesViewModel } from './pages-v25-fixture.ts';
+import { buildViewModel } from '../apps/web/lib/build-view-model.ts';
+import { pagesEvents, pagesViewModel } from './pages-v25-fixture.ts';
 
 const view = (checkpoint: PagesCheckpoint) => {
   const wc = pagesViewModel(checkpoint).workContext!;
@@ -63,7 +64,14 @@ test('the canvas draws the deck columns, nodes, edges and status chips at each c
   ({ wc, layout } = view('s06_built'));
   assert.deepEqual([wc.versionLabel, wc.stageLabel], ['v1.1', 'Pages v1.1 · 상세 조율']);
   assert.deepEqual([I.s1, I.s2].map(id => itemNodes(layout).find(n => n.id === id)?.item.statusLabel), ['갱신', '갱신']);
-  assert.ok(layout.columns.find(c => c.id === 'tools')!.nodes.every(n => n.kind === 'tool' && n.tool.resent && n.tool.done));
+  const resent = layout.columns.find(c => c.id === 'tools')!.nodes.flatMap(n => n.kind === 'tool' ? [n.tool] : []);
+  assert.deepEqual(resent.map(t => [t.resent, t.done, t.note]), [[true, true, 'S1 · S2 변경 2건 → 개발 도구'], [true, true, '노래 템플릿 제외 → 개발 도구'], [true, true, '통합 빌드 v1.1']]);
+  // Mid-round (between golden checkpoints): the integration build shows as working, its memo not repeated.
+  const all = pagesEvents('s06_built');
+  const cut = all.findIndex(e => e.type === 'tool_progress_reported' && (e.payload as { handoffId: string; status: string }).handoffId === PAGES_IDS.handoffs.dev2) + 1;
+  const mid = canvasLayout(buildViewModel(all.slice(0, cut), { me: PAGES_MEMBERS.planner, mode: 'scenario', busy: false, now: PAGES_NOW }).workContext!);
+  const dev = mid.columns.find(c => c.id === 'tools')!.nodes.flatMap(n => n.kind === 'tool' && n.tool.toolId === 'dev-tools' ? [n.tool] : [])[0]!;
+  assert.deepEqual([dev.statusLabel, dev.working, dev.done, dev.resent, dev.note], ['통합 빌드 중', true, false, true, undefined]);
 });
 
 test('absorbed items leave the canvas but stay in the LOG, and no internal id is shown', () => {

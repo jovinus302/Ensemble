@@ -82,10 +82,11 @@ function BranchBox({ item, branch }: { item: VmContextItem; branch: VmContextBra
 function ToolChip({ tool }: { tool: CanvasToolNode }) {
   const status = [tool.statusLabel, tool.resent ? "재전달" : undefined].filter(Boolean).join(" · ");
   return (
-    <div className="cv-node cv-tool" data-node={tool.id} data-tone={tool.done ? "ok" : "info"}>
+    <div className="cv-node cv-tool" data-node={tool.id} data-tone={tool.done ? "ok" : "info"} data-working={tool.working || undefined}>
       <span className="cv-node-label">
         <span className="cv-node-kind"><span className="cv-dot" aria-hidden="true" />{tool.name}</span>
         {tool.title && <span className="cv-node-title">{tool.title}</span>}
+        {tool.note && <span className="cv-node-note">{tool.note}</span>}
       </span>
       {status && <span className="cv-node-tags"><span className="cv-tag" data-tone={tool.done ? "ok" : "info"}>{status}</span></span>}
       {tool.ownerInitial && <span className="cv-avatar" data-kind="human" title={tool.ownerName} aria-label={`연결한 사람 ${tool.ownerName}`}>{tool.ownerInitial}</span>}

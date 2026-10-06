@@ -6,7 +6,7 @@ import type { ContextItemStatus, ContextLayer, ProductionToolId } from "@ensembl
 import type { VmContextBranch, VmContextEdge, VmContextItem, VmToolHandoff, VmWorkContext } from "../../../lib/work-context-view-model";
 
 export type CanvasMode = "context" | "flow";
-export interface CanvasToolNode { id: string; toolId: string; name: string; title?: string; statusLabel?: string; ownerName?: string; ownerInitial?: string; resent: boolean; done: boolean }
+export interface CanvasToolNode { id: string; toolId: string; name: string; title?: string; statusLabel?: string; note?: string; ownerName?: string; ownerInitial?: string; resent: boolean; working: boolean; done: boolean }
 export type CanvasNode =
   | { kind: "item"; id: string; item: VmContextItem; branch?: VmContextBranch }
   | { kind: "tool"; id: string; tool: CanvasToolNode };
@@ -33,8 +33,10 @@ function toolNodes(context: VmWorkContext, edges: VmContextEdge[]): CanvasToolNo
   for (const e of edges) for (const end of [e.from, e.to]) if (end.startsWith(TOOL_PREFIX)) ids.add(end.slice(TOOL_PREFIX.length));
   return [...ids].map(toolId => {
     const h = latest.get(toolId);
-    return { id: `${TOOL_PREFIX}${toolId}`, toolId, name: h?.toolName ?? TOOL_NAMES[toolId as ProductionToolId] ?? "제작 도구", resent: (h?.round ?? 1) > 1, done: h?.status === "done",
-      ...(h ? { title: h.title, statusLabel: h.statusLabel, ownerName: h.ownerName, ownerInitial: h.ownerInitial } : {}) };
+    return { id: `${TOOL_PREFIX}${toolId}`, toolId, name: h?.toolName ?? TOOL_NAMES[toolId as ProductionToolId] ?? "제작 도구", resent: (h?.round ?? 1) > 1, working: h?.status === "in_progress", done: h?.status === "done",
+      ...(h ? { title: h.title, statusLabel: h.statusLabel, ownerName: h.ownerName, ownerInitial: h.ownerInitial } : {}),
+      // 진행 메모("통합 빌드 v1.1"). 상태 라벨과 같으면 한 번만 보인다.
+      ...(h?.note && h.note !== h.statusLabel ? { note: h.note } : {}) };
   });
 }
 
