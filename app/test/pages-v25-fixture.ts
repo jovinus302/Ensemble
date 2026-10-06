@@ -1,8 +1,9 @@
-// Pages v2.5 화면 테스트용: golden ledger의 체크포인트를 실제 buildViewModel로 그린 화면 모델.
+// Pages v2.5: golden ledger checkpoints as stamped ledger events and as the real web view model.
+// Shared by the essential test and by the UI workstreams' checks (not a test file itself).
 import type { LedgerEvent } from '@ensemble/core';
 import { PAGES_MEMBERS, PAGES_NOW, pagesV25Ledger, type PagesCheckpoint } from '@ensemble/scenarios';
-import { buildViewModel } from '../../lib/build-view-model';
-import type { ViewModel } from '../../lib/view-model';
+import { buildViewModel } from '../apps/web/lib/build-view-model.ts';
+import type { ViewModel } from '../apps/web/lib/view-model.ts';
 
 const ctx = { projectId: 'pages', targetProductId: 'pages' };
 
