@@ -1,33 +1,45 @@
 "use client";
-// 작업 흐름 B 소유: WORK CONTEXT 캔버스(레이어 열·연결선·분기)와 LOG. 기반 커밋은 목록형 최소 화면이다.
+// 작업 흐름 B 소유: WORK CONTEXT 캔버스(레이어 열·연결선·분기)와 LOG.
+import { useMemo } from "react";
 import type { VmWorkContext } from "../../lib/work-context-view-model";
+import { CanvasGraph } from "./canvas/CanvasGraph";
+import { CompactItem } from "./canvas/CanvasNode";
+import { ContextLog } from "./canvas/ContextLog";
+import { canvasLayout } from "./canvas/layout";
 
 export function ContextPane({ context }: { context: VmWorkContext }) {
+  const layout = useMemo(() => canvasLayout(context), [context]);
+  const foldedSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of layout.folded) { const label = item.layerLabel.replace(/[[\]]/g, ""); counts.set(label, (counts.get(label) ?? 0) + 1); }
+    return [...counts].map(([label, n]) => `${label} ${n}`).join(" · ");
+  }, [layout.folded]);
   return (
     <aside className="context-pane" aria-label="WORK CONTEXT">
-      <header className="context-head">
-        <h2 className="context-title">WORK CONTEXT</h2>
-        <span className="chip chip-plain num">{context.versionLabel}</span>
-        {context.stageLabel && <span className="muted small">{context.stageLabel}</span>}
-        <ul className="context-summary">
-          {context.summary.map(s => <li key={s.label} data-tone={s.tone}>{s.label}{s.count !== undefined && <> <span className="num">{s.count}</span></>}</li>)}
+      <header className="cv-head">
+        <div className="cv-title-row">
+          <h2 className="cv-title">WORK CONTEXT</h2>
+          <span className="chip chip-plain num">{context.versionLabel}</span>
+          {context.stageLabel && <span className="cv-stage">{context.stageLabel}</span>}
+        </div>
+        <ul className="cv-summary" aria-label="요약">
+          {context.summary.map(s => (
+            <li key={s.label} className="cv-chip" data-tone={s.tone}>
+              <span className="cv-dot" aria-hidden="true" />{s.label}{s.count !== undefined && <span className="num">{s.count}</span>}
+            </li>
+          ))}
         </ul>
       </header>
-      <ul className="context-items">
-        {context.items.map(item => (
-          <li key={item.id} className="context-item" data-layer={item.layer} data-tone={item.tone}>
-            {item.key && <span className="context-key">{item.key}</span>}
-            <span className="context-item-title">{item.title}</span>
-            {item.statusLabel && <span className="context-status">{item.statusLabel}</span>}
-            {item.note && <span className="muted small">{item.note}</span>}
-            <span className="context-source" title={item.source.name}>{item.source.initial}</span>
-          </li>
-        ))}
-      </ul>
-      <section className="context-log" aria-label="LOG">
-        <h3 className="context-log-title">LOG</h3>
-        <ol>{context.log.map(line => <li key={line.id}><time className="num">{line.at}</time> {line.kindLabel} · {line.text}</li>)}</ol>
-      </section>
+      {layout.columns.length === 0
+        ? <p className="cv-empty muted">아직 대화에서 읽어 낸 맥락이 없습니다. 대화가 이어지면 PM이 의도·결정·기능·화면을 여기에 올립니다.</p>
+        : <CanvasGraph columns={layout.columns} edges={layout.edges} />}
+      {layout.folded.length > 0 && (
+        <details className="cv-folded">
+          <summary>정렬한 맥락 · {foldedSummary}</summary>
+          <ul className="cv-folded-nodes">{layout.folded.map(item => <li key={item.id}><CompactItem item={item} /></li>)}</ul>
+        </details>
+      )}
+      <ContextLog lines={context.log} />
     </aside>
   );
 }
