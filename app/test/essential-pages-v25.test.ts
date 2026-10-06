@@ -83,7 +83,7 @@ test('the Pages v2.5 golden ledger reproduces scenes 03–06 from people-only in
     }
   };
   const messageIds = new Set(final.messages.map(m => m.messageId));
-  assert.equal(wc.cards.size, 10);
+  assert.equal(wc.cards.size, 12);
   for (const [messageId, card] of wc.cards) assert.ok(messageIds.has(messageId) && exists(card), `${card.kind} on ${messageId}`);
   for (const item of wc.items.values()) for (const id of [...(item.derivedFrom ?? []), ...(item.supersededBy ? [item.supersededBy] : [])]) assert.ok(wc.items.has(id), id);
   for (const e of wc.edges.values()) for (const end of [e.from, e.to]) assert.ok(wc.items.has(end) || end.startsWith('tool:'), end);
@@ -96,7 +96,12 @@ test('the web view model shows the Work Context only where it exists and offers 
   const s03 = pagesViewModel('s03_detected').workContext!;
   assert.deepEqual(s03.summary.map(s => `${s.label} ${s.count}`), ['연결 3', '충돌 1', '위반 1', '미정 1', '누락 4']);
   const s04 = pagesViewModel('s04_preview_a');
-  assert.deepEqual(s04.messages.flatMap(m => m.contextCard ? [m.contextCard.kind] : []), ['branch_options', 'pm_steps', 'pm_steps', 'branch_preview']);
+  assert.deepEqual(s04.messages.flatMap(m => m.contextCard ? [m.contextCard.kind] : []), ['branch_options', 'pm_steps', 'pool_candidates', 'pm_steps', 'proposal', 'branch_preview']);
+  const card = <K extends string>(kind: K) => s04.messages.find(m => m.contextCard?.kind === kind)?.contextCard;
+  const pool = card('pool_candidates'), proposal = card('proposal');
+  assert.ok(pool?.kind === 'pool_candidates' && proposal?.kind === 'proposal');
+  assert.deepEqual(pool.candidates.map(c => [c.name, c.role, c.note, c.available, c.joined]), [['한지우', '개인정보·AI 정책', '유사 과제 3건', true, true], ['정유나', '내러티브 디자이너', '숏폼·동화 경험', true, true]]);
+  assert.deepEqual([proposal.proposal.decisions.map(d => d.key), proposal.proposal.screens.length, proposal.proposal.filledTitles.length], [['D1', 'D2'], 3, 3]);
   assert.deepEqual(s04.members.filter(m => m.pool).map(m => m.displayName), ['한지우', '정유나']);
   assert.equal(s04.workContext!.comparePreview?.spec.hero.badge?.text, '실명');
   assert.deepEqual(pagesViewModel('s05_built').workContext!.handoffs.map(h => h.statusLabel), ['제작 완료', '제작 완료', '빌드 완료']);
@@ -109,4 +114,6 @@ test('the web view model shows the Work Context only where it exists and offers 
   const v11 = pagesViewModel('s06_built').workContext!.preview!;
   assert.equal(v11.label, 'v1.1 빌드');
   assert.equal(v11.spec.formats.includes('노래'), false);
+  assert.equal(v11.spec.hero.badge?.text, 'fiction 포함', 'the deck shows the fiction badge from v1.1 on');
+  assert.equal(pagesViewModel('s05_built').workContext!.preview!.spec.hero.badge, undefined);
 });

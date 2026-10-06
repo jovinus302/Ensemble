@@ -112,9 +112,9 @@ coordinator 결정(2026-10-06):
 | F03-4 | Story Agent 메시지 | [기능] data + fiction 섞어 생성 | 침묵 |
 | F03-5 | UI Agent 메시지 `/미정/` | [화면] 3탭(undecided "생성 버튼 위치") + 누락 4 | 10:45 ask(카드 없음) |
 | F04-1 | PM ask 뒤 결정권자 `/네\|정리/`, 감지 항목 남음 | I2 갱신·I3(filled)·D1 merged(+흡수 supersededBy)·D2 branch·참여 항목 3·연결, `open_branch(A,B)` | summary + `branch_options` |
-| F04-2 | 분기 열림, 분기 뒤 pool 아닌 사람 3명이 모두 말했고 아무도 A/B를 고르지 않음 | `search_pool`(분기 주제어 개인정보·fiction과 expertise가 겹치고 available인 후보 = 한지우·정유나) | fact + `pm_steps(판단 중, searchId)` |
+| F04-2 | 분기 열림, 분기 뒤 pool 아닌 사람 3명이 모두 말했고 아무도 A/B를 고르지 않음 | `search_pool`(분기 주제어 개인정보·fiction과 expertise가 겹치고 available인 후보 = 한지우·정유나) | fact 2개: `pm_steps(판단 중)` → `pool_candidates(searchId)` |
 | F04-3 | pool 멤버 메시지 `/\b[AB]\b/` | 참여 항목(c-jiwoo/c-yuna) + →D2 | 침묵 |
-| F04-4 | 결정권자 `/([AB])로? 확정/` | `resolve_branch`(evidence = 분기에 의견 낸 pool 멤버), `generate_proposal` + 미리보기 B | summary + `pm_steps(생성 중, proposalId)` |
+| F04-4 | 결정권자 `/([AB])로? 확정/` | `resolve_branch`(evidence = 분기에 의견 낸 pool 멤버), `generate_proposal` + 미리보기 B | summary 2개: `pm_steps(생성 중)` → `proposal` |
 | F04-5 | 결정권자 `/([AB])로 가면/`, 고른 것과 다른 선택지 | `preview_branch(A)` + 미리보기 A | answer + `branch_preview` |
 | F05-1 | 결정권자 `/유지\|확정\|진행/`, Proposal generated | `clear_branch_preview`, `withdraw_preview(A)`, `confirm_proposal(1.0)`, `expand_proposal(D1 D2 F1–F4 S1 S2 V1 V2)` / `handoff_tools`(3) + 예상 화면 | 2개: summary + `expansion`, fact + `tool_handoffs` |
 | F05-2 | trigger `build_produced` 1.0 | — | fact + `build` |
