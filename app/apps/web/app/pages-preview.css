@@ -91,6 +91,7 @@
 .ctx-route-text { min-width: 0; font: var(--ens-type-body-sm); overflow-wrap: anywhere; }
 .ctx-route-text strong { font-weight: 600; }
 .ctx-owner { font-style: normal; color: var(--ens-on-surface-variant); }
+.ctx-memo { display: block; color: var(--ens-on-surface-variant); }
 .ctx-route li > .ctx-chip { flex: none; }
 .ctx-stale { font: var(--ens-type-body-sm); color: var(--ens-on-surface-variant); overflow-wrap: anywhere; }
 .ctx-actions { display: flex; flex-wrap: wrap; gap: var(--ens-space-2); }

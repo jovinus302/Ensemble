@@ -12,6 +12,7 @@ export function HandoffRows({ handoffs, mode }: { handoffs: VmToolHandoff[]; mod
             <span className="ctx-route-text">
               <strong>{row.lead}</strong> {mode === "build" ? `· ${row.text}` : row.text}
               {row.owner && <em className="ctx-owner"> {row.owner}</em>}
+              {row.memo && <span className="ctx-memo">{row.memo}</span>}
             </span>
             <span className="ctx-chip ctx-progress" data-tone={row.status.tone}>
               {row.working && <span className="ctx-spin" aria-hidden />}{row.status.text}

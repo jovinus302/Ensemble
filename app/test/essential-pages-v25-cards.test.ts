@@ -7,7 +7,7 @@ import { PAGES_IDS as X, PAGES_ITEMS as I, PAGES_LINES, PAGES_MEMBERS as M, PAGE
 import { buildViewModel } from '../apps/web/lib/build-view-model.ts';
 import type { ViewModel } from '../apps/web/lib/view-model.ts';
 import type { VmContextCard } from '../apps/web/lib/work-context-view-model.ts';
-import { cardTexts, changeSetView, memberSummary, poolRow } from '../apps/web/components/context/cards/card-view.ts';
+import { cardTexts, changeSetView, handoffRow, memberSummary, poolRow } from '../apps/web/components/context/cards/card-view.ts';
 import { pagesEvents, pagesViewModel } from './pages-v25-fixture.ts';
 
 const CHECKPOINTS: PagesCheckpoint[] = ['seeded', 's03_detected', 's04_aligned', 's04_pool_invited', 's04_pool_joined', 's04_proposal', 's04_preview_a',
@@ -65,6 +65,19 @@ test('a card keeps its place while its progress label follows the ledger', () =>
   const round2 = cardOn(buildViewModel(resent, { me: M.planner, mode: 'scenario', busy: false }), 'tool_handoffs', 1)!.card;
   assert.ok(round2.kind === 'tool_handoffs');
   assert.deepEqual(round2.handoffs.map(h => h.statusLabel), ['재전달', '재전달', '재전달']);
+  // Mid-build (both rounds): design tools done with a memo, dev tools building; the memo equal to the label shows once.
+  const devBuilding = (round: 0 | 1) => {
+    const at = events.flatMap((e, i) => e.type === 'tool_progress_reported' && (e.payload as { status: string; note?: string }).note === '통합 빌드 중' ? [i] : [])[round]!;
+    const c = cardOn(buildViewModel(events.slice(0, at + 1), { me: M.planner, mode: 'scenario', busy: false }), 'tool_handoffs', round)!;
+    assert.ok(c.card.kind === 'tool_handoffs');
+    return { messageId: c.messageId, rows: c.card.handoffs.map(h => { const r = handoffRow(h, 'handoff'); return [r.status.text, r.memo ?? '', r.working]; }) };
+  };
+  assert.equal(devBuilding(0).messageId, sent.messageId);
+  assert.deepEqual(devBuilding(0).rows, [['제작 완료', '화면 S1 · S2 → 개발 도구', false], ['제작 완료', '생성 템플릿 → 개발 도구', false], ['통합 빌드 중', '', true]]);
+  assert.deepEqual(devBuilding(1).rows, [['제작 완료', 'S1 · S2 변경 2건 → 개발 도구', false], ['제작 완료', '노래 템플릿 제외 → 개발 도구', false], ['통합 빌드 중', '', true]]);
+  const final = cardOn(pagesViewModel('s06_built'), 'build', 1)!.card;
+  assert.ok(final.kind === 'build');
+  assert.deepEqual(final.handoffs.map(h => handoffRow(h, 'build').text), ['S1 · S2 변경 2건 → 개발 도구', '노래 템플릿 제외 → 개발 도구', '통합 빌드 v1.1']);
 });
 
 test('the change card offers apply / revert to the decision owner only, and only while it is open', () => {

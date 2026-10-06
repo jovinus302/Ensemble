@@ -81,13 +81,15 @@ export function expansionGroups(items: VmContextItem[]): { label: string; keys: 
 const HANDOFF_TONE: Record<VmToolHandoff["status"], VmContextTone> = { delivered: "info", in_progress: "undecided", done: "ok" };
 /**
  * 제작 도구 한 줄. 전달 카드는 "화면 S1 · S2 → Figma · 박도윤 연결", 빌드 카드는 "Figma · 화면 S1 · S2 → 개발 도구".
- * 라벨(전달됨 → 제작 중 → 제작 완료)은 서버가 지금 상태로 풀어 준 값이다.
+ * 라벨(전달됨 → 제작 중 → 제작 완료)은 서버가 지금 상태로 풀어 준 값이다. 도구가 남긴 메모(note)는 전달 카드에서 한 줄 더,
+ * 빌드 카드에서는 줄 본문으로 보인다. 라벨과 같은 메모("통합 빌드 중")는 두 번 보이지 않는다.
  */
-export function handoffRow(h: VmToolHandoff, mode: "handoff" | "build"): { lead: string; text: string; owner?: string; status: ToneText; working: boolean } {
+export function handoffRow(h: VmToolHandoff, mode: "handoff" | "build"): { lead: string; text: string; owner?: string; memo?: string; status: ToneText; working: boolean } {
   const status = { text: h.statusLabel, tone: HANDOFF_TONE[h.status] };
+  const memo = h.note && h.note !== h.statusLabel ? h.note : undefined;
   return mode === "handoff"
-    ? { lead: h.title, text: `→ ${h.toolName}`, ...(h.ownerName ? { owner: `${h.ownerName} 연결` } : {}), status, working: h.status === "in_progress" }
-    : { lead: h.toolName, text: h.note ?? h.title, status, working: h.status === "in_progress" };
+    ? { lead: h.title, text: `→ ${h.toolName}`, ...(h.ownerName ? { owner: `${h.ownerName} 연결` } : {}), ...(memo ? { memo } : {}), status, working: h.status === "in_progress" }
+    : { lead: h.toolName, text: memo ?? h.title, status, working: h.status === "in_progress" };
 }
 
 /** 빌드 카드 머리: 도구 단계 칩과 빌드 버전. */
@@ -149,7 +151,7 @@ export function cardTexts(card: VmContextCard): string[] {
     case "expansion":
       return expansionGroups(card.items).flatMap(g => [g.label, ...g.keys.flatMap(k => [k.key, k.title])]);
     case "tool_handoffs":
-      return card.handoffs.flatMap(h => { const r = handoffRow(h, "handoff"); return [r.lead, r.text, r.owner ?? "", r.status.text, h.ownerInitial]; });
+      return card.handoffs.flatMap(h => { const r = handoffRow(h, "handoff"); return [r.lead, r.text, r.owner ?? "", r.memo ?? "", r.status.text, h.ownerInitial]; });
     case "build": {
       const v = buildView(card);
       return [v.label, v.version, ...v.steps, ...card.handoffs.flatMap(h => { const r = handoffRow(h, "build"); return [r.lead, r.text, r.status.text]; })];
