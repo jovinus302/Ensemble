@@ -5,6 +5,8 @@ import type { ContinueTaskInput, Report, SessionConnector, SessionEvent, TaskIns
 import type { LlmProvider, LlmRequest, LlmResponse } from '@ensemble/llm';
 import { followUpTitle, quoteInText, quoteRelevant } from '@ensemble/orchestrator';
 import type { RevisionGenerator } from '@ensemble/scenarios';
+import { WORK_CONTEXT_TOOL, type WorkContextFacts } from '@ensemble/core';
+import { fakeWorkContextTurn } from './fake-work-context-pm';
 
 const research = `# 조사 보고서
 시연용 가상 자료입니다. 실제 웹 조사나 고객 검증을 수행한 결과가 아닙니다.
@@ -254,6 +256,7 @@ export class FakePmLlm implements LlmProvider {
       case 'route_message': return { kind: 'chat' };
       case 'recommend_answer': return this.recommend(this.facts(request));
       case 'record_handoff_review': return this.review(request.messages[0]?.content ?? '');
+      case WORK_CONTEXT_TOOL: return fakeWorkContextTurn(this.facts(request) as unknown as WorkContextFacts) as unknown as Record<string, unknown>;
       default: return undefined;
     }
   }

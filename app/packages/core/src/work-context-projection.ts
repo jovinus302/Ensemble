@@ -102,3 +102,6 @@ export function currentPreview(wc: WorkContextState, source?: PreviewSource): Pr
   for (const entry of wc.previews.values()) if (!entry.withdrawn && (!source || entry.preview.source === source) && (!best || entry.seq > best.seq)) best = entry;
   return best;
 }
+
+// The PM-answer validator lives beside the projection it checks against (A-owned; exported through this module).
+export * from './work-context-apply.ts';
