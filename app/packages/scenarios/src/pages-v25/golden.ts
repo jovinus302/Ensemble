@@ -31,11 +31,17 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
   };
   let speeches = 0;
   /** pm_considered + pm_spoke (+ card), like the PM's own write path. */
+  let consideration = '', said = 0;
   const speak = (at: string, triggerId: string, text: string, kind: Payload<'pm_spoke'>['kind'], reason: string, card?: ContextCard) => {
     clock = at;
-    const considerationId = `pv25:consider:${++speeches}`, messageId = `pv25:pm:${speeches}`;
-    emit('pm_considered', { considerationId, triggerId, whoseAction: M.planner, alreadyKnows: 'no', evidence: [triggerId], decision: 'speak', reason, openTopics: [] });
-    emit('pm_spoke', { considerationId, messageId, text, kind });
+    consideration = `pv25:consider:${++speeches}`; said = 0;
+    emit('pm_considered', { considerationId: consideration, triggerId, whoseAction: M.planner, alreadyKnows: 'no', evidence: [triggerId], decision: 'speak', reason, openTopics: [] });
+    return speakMore(text, kind, card);
+  };
+  /** A second message of the same PM turn (the deck's card after the text). */
+  const speakMore = (text: string, kind: Payload<'pm_spoke'>['kind'], card?: ContextCard) => {
+    const messageId = `${consideration.replace('consider', 'pm')}:${said++}`;
+    emit('pm_spoke', { considerationId: consideration, messageId, text, kind });
     if (card) emit('context_card_posted', { messageId, card });
     return messageId;
   };
@@ -98,8 +104,9 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
   emit('pool_search_recorded', { searchId: X.search, forItemId: I.d2, reason: '지금 멤버로는 D2 분기를 결정할 근거가 부족하다', steps: ['결정 근거 확인', '멤버 역량 확인', '가능 인력 검색'], candidateIds: [P.policy, P.narrative] });
   emit('pool_member_invited', { searchId: X.search, candidateId: P.policy, memberId: M.policy });
   emit('pool_member_invited', { searchId: X.search, candidateId: P.narrative, memberId: M.narrative });
-  speak('11:07', m9, '지금 멤버로는 이 분기를 결정할 근거가 부족합니다. 인력 pool에서 필요한 전문가 두 분을 찾아 호출했습니다.',
-    'fact', '사람 셋 모두 근거가 없다고 했고 팀에 정책·내러티브 역량이 없다', { kind: 'pm_steps', label: '판단 중', steps: ['결정 근거 확인', '멤버 역량 확인', '가능 인력 검색'], searchId: X.search });
+  speak('11:07', m9, '지금 멤버로는 이 분기를 결정할 근거가 부족합니다.',
+    'fact', '사람 셋 모두 근거가 없다고 했고 팀에 정책·내러티브 역량이 없다', { kind: 'pm_steps', label: '판단 중', steps: ['결정 근거 확인', '멤버 역량 확인', '가능 인력 검색'] });
+  speakMore('인력 pool에서 필요한 전문가 두 분을 찾아 호출했습니다.', 'fact', { kind: 'pool_candidates', searchId: X.search });
   mark('s04_pool_invited');
 
   clock = '11:09';
@@ -119,8 +126,9 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
   emit('preview_rendered', { previewId: X.previews.proposal, source: 'proposal', label: 'Proposal v1 GENERATED', caption: 'home · 생성 플로우 · feed 공유 · 5 inputs · 3 screens', refId: X.proposal, spec: PREVIEW_B });
   emit('proposal_generated', { proposalId: X.proposal, version: 1, title: 'Pages · 모바일 App. v1', decisionItemIds: [I.d1, I.d2], filledItemIds: [I.i3, I.uxOnboarding, I.metricMissing],
     inputItemIds: [I.i1, I.i2, I.i3, I.policyInput, I.narrativeInput], screens: ['home', '생성 플로우', 'feed 공유'], previewId: X.previews.proposal, sourceMessageIds: [m12] });
-  speak('11:13', m12, 'B 확정으로 남은 갈림길이 없습니다. 이제 제안이 가능해져 Proposal v1을 생성했습니다.',
-    'summary', '분기가 사람의 결정으로 닫혀 제안할 수 있다', { kind: 'pm_steps', label: '생성 중', steps: ['결정 D1 · D2 확인', '누락 보완 확인', 'Proposal 구성'], proposalId: X.proposal });
+  speak('11:13', m12, 'B 확정으로 남은 갈림길이 없습니다.',
+    'summary', '분기가 사람의 결정으로 닫혀 제안할 수 있다', { kind: 'pm_steps', label: '생성 중', steps: ['결정 D1 · D2 확인', '누락 보완 확인', 'Proposal 구성'] });
+  speakMore('이제 제안이 가능해져 Proposal v1을 생성했습니다.', 'summary', { kind: 'proposal', proposalId: X.proposal });
   mark('s04_proposal');
 
   const m13 = say(12);

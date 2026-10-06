@@ -102,7 +102,10 @@ export function fakeWorkContextTurn(facts: WorkContextFacts): WorkContextToolOut
         { type: 'generate_proposal', proposalId: X.proposal, version: 1, title: facts.context.title, decisionItemIds: [I.d1, I.d2], filledItemIds: [I.i3, I.uxOnboarding, I.metricMissing],
           inputItemIds: [I.i1, I.i2, I.i3, ...experts.map(i => i.itemId)], screens: ['home', '생성 플로우', 'feed 공유'], sourceMessageIds: [messageId],
           preview: { previewId: X.previews.proposal, source: 'proposal', label: 'Proposal v1 GENERATED', caption: 'home · 생성 플로우 · feed 공유 · 5 inputs · 3 screens', refId: X.proposal, spec: PREVIEW_B } },
-      ], [say(`${choice} 확정으로 남은 갈림길이 없습니다. 이제 제안이 가능해져 Proposal v1을 생성했습니다.`, 'summary', { kind: 'pm_steps', label: '생성 중', steps: ['결정 D1 · D2 확인', '누락 보완 확인', 'Proposal 구성'], proposalId: X.proposal })],
+      ], [
+        say(`${choice} 확정으로 남은 갈림길이 없습니다.`, 'summary', { kind: 'pm_steps', label: '생성 중', steps: ['결정 D1 · D2 확인', '누락 보완 확인', 'Proposal 구성'] }),
+        say('이제 제안이 가능해져 Proposal v1을 생성했습니다.', 'summary', { kind: 'proposal', proposalId: X.proposal }),
+      ],
       '분기가 사람의 결정으로 닫혀 제안할 수 있다');
     }
     // Every person on the team (not the pool) has spoken since the branch opened and nobody chose: evidence is missing.
@@ -114,7 +117,10 @@ export function fakeWorkContextTurn(facts: WorkContextFacts): WorkContextToolOut
       const candidates = facts.pool.candidates.filter(c => c.availability === 'available' && c.expertise.some(e => topics.some(t => e.includes(t))));
       const steps = ['결정 근거 확인', '멤버 역량 확인', '가능 인력 검색'];
       return turn([{ type: 'search_pool', searchId: X.search, forItemId: I.d2, reason: '지금 멤버로는 D2 분기를 결정할 근거가 부족하다', steps, candidateIds: candidates.map(c => c.candidateId) }],
-        [say(`지금 멤버로는 이 분기를 결정할 근거가 부족합니다. 인력 pool에서 필요한 전문가 ${candidates.length === 2 ? '두' : candidates.length} 분을 찾아 호출했습니다.`, 'fact', { kind: 'pm_steps', label: '판단 중', steps, searchId: X.search })],
+        [
+          say('지금 멤버로는 이 분기를 결정할 근거가 부족합니다.', 'fact', { kind: 'pm_steps', label: '판단 중', steps }),
+          say(`인력 pool에서 필요한 전문가 ${candidates.length === 2 ? '두' : candidates.length} 분을 찾아 호출했습니다.`, 'fact', { kind: 'pool_candidates', searchId: X.search }),
+        ],
         '사람 셋 모두 근거가 없다고 했고 팀에 정책·내러티브 역량이 없다');
     }
     return SILENT;

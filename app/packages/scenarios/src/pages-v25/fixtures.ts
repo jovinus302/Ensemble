@@ -51,10 +51,10 @@ const history = [{ date: '10.1', title: '회의 세 번, 커피 네 잔', format
 const base = {
   appName: 'Pages', dateLabel: '10월 2일 금요일', versions: ['v1.0', 'v1.1'], primaryAction: '지금 만들기', formatAction: '생성', history, tabs: ['home', '채팅', 'feed'],
 };
-/** B: automatic pseudonyms + fiction in three levels (Proposal v1, the S1·S2 design and build v1.0). */
+/** B: automatic pseudonyms + fiction in three levels (Proposal v1, the S1·S2 design and build v1.0). The deck shows no fiction badge until v1.1. */
 export const PREVIEW_B: AppPreviewSpec = {
   ...base, activeVersion: 'v1.0', formats: ['숏폼', '동화', '노래', '에세이'],
-  hero: { kicker: '오늘의 Page · 21:00 도착', format: '동화', badge: { text: 'fiction 포함', tone: 'fiction' }, title: '퇴근길, 비를 피한 고양이', meta: '3분 · 오늘의 data로 만든 이야기', sources: '걸음 8,214 · 사진 3장 · 일정 2건에서' },
+  hero: { kicker: '오늘의 Page · 21:00 도착', format: '동화', title: '퇴근길, 비를 피한 고양이', meta: '3분 · 오늘의 data로 만든 이야기', sources: '걸음 8,214 · 사진 3장 · 일정 2건에서' },
 };
 /** A: real names and places — the predicted path the PM puts on the canvas for "A로 가면?". */
 export const PREVIEW_A: AppPreviewSpec = {
@@ -66,5 +66,6 @@ export const PREVIEW_A: AppPreviewSpec = {
 /** v1.1: the "fiction 포함" label on feed cards (F5) and no song format (F2 off). */
 export const PREVIEW_V11: AppPreviewSpec = {
   ...PREVIEW_B, activeVersion: 'v1.1', formats: ['숏폼', '동화', '에세이'],
+  hero: { ...PREVIEW_B.hero, badge: { text: 'fiction 포함', tone: 'fiction' } },
   annotations: [{ text: 'fiction이 섞인 이야기예요', tone: 'info' }],
 };
