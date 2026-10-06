@@ -1,3 +1,5 @@
+// Real-model evidence: PENDING. Coordinator accepted authored offline contract examples
+// for this dispatch; these are not recorded model responses or proof of model behavior.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
