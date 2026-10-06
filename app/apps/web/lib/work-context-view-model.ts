@@ -1,4 +1,4 @@
-// 서버-화면 공통 계약(Pages v2.5 WORK CONTEXT). docs/design/pages-v25-runtime-demo.md §6.
+// 서버-화면 공통 계약(Pages v2.5 WORK CONTEXT). docs/pages-v25-runtime-demo.md §6.
 // 서버가 작업 기록(@ensemble/core의 WorkContextState)에서 이 형태를 만들고, 화면은 이 형태만 보고 그린다.
 // 모양을 바꿀 때는 coordinator를 거친다(작업 흐름 B·C가 함께 쓴다).
 import type { AppPreviewSpec, ContextEdgeKind, ContextItemStatus, ContextLayer, PreviewSource, ProductionToolId, ToolHandoffStatus } from "@ensemble/core";

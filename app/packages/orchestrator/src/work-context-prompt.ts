@@ -1,4 +1,4 @@
-// Workstream D owns this file: the real-model side of `update_work_context` (docs/design/pages-v25-runtime-demo.md §5).
+// Workstream D owns this file: the real-model side of `update_work_context` (docs/pages-v25-runtime-demo.md §5).
 // The foundation commit ships a working minimum so the PM loop (workstream A) can call a model today;
 // D tightens the schema and the prompt without changing the WorkContextToolOutput shape in @ensemble/core.
 import { CONTEXT_LAYERS, WORK_CONTEXT_TOOL, type WorkContextFacts } from '@ensemble/core';

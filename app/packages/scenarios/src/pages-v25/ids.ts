@@ -1,4 +1,4 @@
-// Stable ids of the Pages v2.5 scenario (docs/design/pages-v25-runtime-demo.md). The fake PM, the golden ledger,
+// Stable ids of the Pages v2.5 scenario (docs/pages-v25-runtime-demo.md). The fake PM, the golden ledger,
 // the script and the UI tests all use these, so a scene always reproduces the same records.
 
 export const PAGES_SCENARIO_KEY = 'pages-v25';

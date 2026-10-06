@@ -2,7 +2,7 @@
 
 Run `npm test` from `app/` on Node 24+. The command uses Node's built-in test runner with a 10-second timeout and the existing `tsx` dependency. No test framework, browser driver, snapshots, paid model, provider login, or benchmark runner is added. Run `npm run typecheck` and `npm run build` separately; the test files are included in type checking.
 
-Inventory checked on **2026-10-05, main `605521b`**: **18 scenarios in four files**. Keep this a risk-based list; do not grow it into a helper-by-helper or visual snapshot suite.
+Inventory checked on **2026-10-06, branch `jovinus302/pages-v25` on main `7095f0b`**: **21 scenarios in five files**. Keep this a risk-based list; do not grow it into a helper-by-helper or visual snapshot suite.
 
 | File | Cases | Scope |
 |---|---|---|
@@ -10,6 +10,7 @@ Inventory checked on **2026-10-05, main `605521b`**: **18 scenarios in four file
 | [essential-pm-coordination.test.ts](../../app/test/essential-pm-coordination.test.ts) | 2 | Fixed demo discussion, scope/schedule gates and limited revisions |
 | [essential-marketing-campaign.test.ts](../../app/test/essential-marketing-campaign.test.ts) | 6 | Scenario references, five-stage story, copy density, navigation, selection and upstream trace |
 | [essential-design-to-code.test.ts](../../app/test/essential-design-to-code.test.ts) | 4 | Two-person consent, sharing, QA repair, human review, stale results and interrupted callbacks |
+| [essential-pages-v25.test.ts](../../app/test/essential-pages-v25.test.ts) | 3 | Pages v2.5 Work Context contract: human-only settlement, golden scenes 03–06 and script, view model exposure |
 
 | Scenario | Why it is essential |
 |---|---|
@@ -21,6 +22,7 @@ Inventory checked on **2026-10-05, main `605521b`**: **18 scenarios in four file
 | Identical task/decision IDs in shared storage remain project-local | One project's decisions must not affect another project. |
 | Scripted demo compares examples before human judgment and coordinates scope/schedule before execution | Preference, conditional requests and deferred timing must not silently authorize work. |
 | Scripted demo handoff, scoped revision and interrupted callback handling | Replay/reset must not let old timers finish a new presentation or widen the fixed change request. |
+| Only a human settles a Work Context branch, proposal or change set; the Pages golden ledger keeps every card and reference resolvable | The PM and agents must not decide for people, and a scripted demo must not show records that point nowhere ([design](../pages-v25-runtime-demo.md)). |
 
 `app/test/essential-runtime.test.ts` exercises real `ProjectManager` decision/recovery entrypoints and `SessionRunner`, backed by the real in-memory ledger/projection. Only the external connector is a tiny in-process fake; the model provider throws if called. Requests and the initial plan are seeded, so this does not validate model reasoning or question generation. Shutdown coverage concerns late transport events after stopping, not cancellation of an already-running validator.
 

@@ -1,4 +1,4 @@
-// Work Context contract (Pages v2.5, docs/design/pages-v25-runtime-demo.md §3).
+// Work Context contract (Pages v2.5, docs/pages-v25-runtime-demo.md §3).
 // A channel's WORK CONTEXT is a graph of items the PM reads out of the conversation (intent → decision →
 // feature → screen → metric), plus branches, a member pool, proposals, production-tool handoffs and app previews.
 // Shared by every workstream: change a shape here only through the coordinator.

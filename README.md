@@ -95,7 +95,7 @@ npm run build
 npm run start -w @ensemble/web
 ```
 
-`npm test`는 Node 내장 테스트 러너와 `tsx`로 [app/test](app/test/)의 핵심 회귀 시나리오를 실행합니다. 현재 4개 파일에 18개 테스트가 있으며, 런타임의 결정 권한·중복 실행·종료·프로젝트 격리와 세 시연의 상태 전이를 다룹니다. 외부 provider 호출은 하지 않으며 모델의 판단 품질이나 브라우저 렌더링을 검증하는 테스트는 아닙니다. 파일별 검사 범위와 한계는 [필수 테스트 안내](docs/qa/essential-regressions.md)에 있습니다.
+`npm test`는 Node 내장 테스트 러너와 `tsx`로 [app/test](app/test/)의 핵심 회귀 시나리오를 실행합니다. 현재 5개 파일에 21개 테스트가 있으며, 런타임의 결정 권한·중복 실행·종료·프로젝트 격리, 세 시연의 상태 전이, Pages v2.5 WORK CONTEXT 계약을 다룹니다. 외부 provider 호출은 하지 않으며 모델의 판단 품질이나 브라우저 렌더링을 검증하는 테스트는 아닙니다. 파일별 검사 범위와 한계는 [필수 테스트 안내](docs/qa/essential-regressions.md)에 있습니다.
 
 이어지는 명령은 타입 검사와 웹 빌드이며, 마지막 명령은 빌드 후 서버를 실행합니다. 위 런타임 환경 설정을 동일하게 적용해야 합니다. 과거 테스트·벤치마크 증거는 현재 트리에서 제거했으며, 과거 테스트 수치는 현재 검증 결과가 아닙니다. `live:pm`과 `demo:full`은 실제 provider를 호출할 수 있는 관찰 스크립트입니다. `demo:full`의 실행기는 [app/demo/runtime/run.ts](app/demo/runtime/run.ts)로 이동했습니다. 특정 로컬 환경 파일 경로가 들어 있으므로 일반 설치 확인 명령으로 사용하지 않습니다. 실행 조건은 [런타임 시연 안내](app/demo/runtime/README.md)를 참고하세요.
 

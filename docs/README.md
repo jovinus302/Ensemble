@@ -12,6 +12,7 @@
 | 결정 이유와 미확정 기본값 | [결정 기록](pm-agent-decisions.md) | 실제 결정과 구현 가정 구분 |
 | 현재 검사 실행 | [QA 안내](qa/README.md), [핵심 회귀 검사](qa/essential-regressions.md) | 실행 가능한 검사의 범위 |
 | 시연 선택·실행 | [데모 안내](../app/demo/README.md) | 스크립트 시연과 런타임 시연 구분 |
+| 구현 전 설계 | [Pages v2.5 런타임 데모](pages-v25-runtime-demo.md) | WORK CONTEXT 원장 계약·fake PM·화면·작업 분할(기반 계약만 구현됨) |
 | 참고 자료 | [Argo 구조 조사](argo/structure.md), [PM·Agent 팀 발표](presentations/ensemble-pm-agent-team.pptx) | 과거 조사·제품 설명 자료, 구현 명세 아님 |
 
 ## 앱과 데모
