@@ -36,7 +36,8 @@ export function App() {
   const [openTask, setOpenTask] = useState<string | null>(null);
   const [jumpTo, setJumpTo] = useState<string | null>(null);
   const [freeForm, setFreeForm] = useState(false);
-  const [scenarioKey, setScenarioKey] = useState<string>(SCENARIOS[0].key);
+  /** null: follow the running scenario (so a reload shows the active script). */
+  const [scenarioChoice, setScenarioKey] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ action: Pending; message: string } | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
   const [stepping, setStepping] = useState(false);
@@ -68,6 +69,8 @@ export function App() {
   }
 
   const humans = vm.members.filter(m => m.kind === "human");
+  const runningKey = vm.mode === "scenario" ? SCENARIOS.find(x => vm.scenario?.name.startsWith(x.key))?.key : undefined;
+  const scenarioKey = scenarioChoice ?? runningKey ?? SCENARIOS[0].key;
   const meMember = vm.members.find(m => m.id === vm.me);
   const needsStart = (vm.mode === "free" && !vm.project.goal) || freeForm;
   // 서버가 최종 판단(409 project_exists)하지만, 지울 것이 보이면 먼저 묻는다.
