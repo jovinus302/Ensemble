@@ -1,0 +1,4 @@
+/* 작업 흐름 C 소유: 채팅 카드·모바일 미리보기. --ens-* 토큰만 쓴다(DESIGN.md). */
+.preview-pane { display: flex; flex-direction: column; gap: var(--ens-space-3); min-width: 0; overflow: auto; }
+.phone-screen { border: 1px solid var(--ens-outline-variant); border-radius: var(--ens-radius-lg); padding: var(--ens-space-3); background: var(--ens-surface); }
+.ctx-card { list-style: none; margin: var(--ens-space-2) 0 0; padding: 0; }

@@ -1,9 +1,12 @@
 // 서버-화면 공통 계약: 서버가 작업 기록에서 이 형태를 만들고, 화면은 이 형태만 보고 그린다.
 // M8 이후 추가된 필드는 모두 선택 사항이다. 서버가 아직 채우지 않아도 화면은 깨지지 않아야 한다.
+import type { VmContextCard, VmWorkContext } from "./work-context-view-model";
 
 export type MemberKind = "human" | "agent" | "pm";
 /** weeklyHours: 기본 주간 가용 시간, weeklyHoursThisWeek: 이번 주(서울 기준 월요일 시작)에만 적용되는 예외. */
-export interface VmMember { id: string; kind: MemberKind; displayName: string; role?: string; weeklyHours?: number; weeklyHoursThisWeek?: number; busy?: boolean }
+export interface VmMember { id: string; kind: MemberKind; displayName: string; role?: string; weeklyHours?: number; weeklyHoursThisWeek?: number; busy?: boolean;
+  /** 인력 pool에서 합류한 멤버(Pages v2.5). */
+  pool?: boolean }
 export interface VmAttachment { id: string; name: string; url: string }
 /** 채널에 한 줄로 남기는 결정 기록(예: "계획 v1 승인 — 사용자, 22:26"). */
 export type VmRecord = { kind: "plan_decision"; planVersion: number; approved: boolean; byName: string };
@@ -19,6 +22,8 @@ export interface VmMessage {
   taskIds?: string[];
   /** 화면 전용: 서버 기록 전(보내는 중) 내 메시지. 서버는 채우지 않는다. */
   local?: "sending";
+  /** WORK CONTEXT 카드(분기·pool·Proposal·제작 도구·변경). work-context-view-model.ts. */
+  contextCard?: VmContextCard;
 }
 export interface VmPlanTask {
   exclusions?: string[]; limits?: string[];
@@ -153,6 +158,8 @@ export interface ViewModel {
   decisionCards?: VmDecisionCard[];
   /** 작업 패널(작업 트리·팀). */
   work?: VmWork;
+  /** WORK CONTEXT(Pages v2.5). 있으면 화면이 채팅 | 맥락 캔버스·LOG | 모바일 미리보기로 바뀐다. */
+  workContext?: VmWorkContext;
   roadmap: VmRoadmap;
   pmLog: VmPmJudgement[];           // PM의 말하기/침묵 판단 기록(토글로 보기)
   scenario?: { name: string; nextLine?: { authorName: string; text: string; hasAttachment: boolean }; done: boolean };

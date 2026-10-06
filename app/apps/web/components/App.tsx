@@ -16,9 +16,13 @@ import { useViewModel } from "./use-view-model";
 import { WorkItemDetail } from "./WorkItemDetail";
 import { WorkPanel, type PanelTab } from "./WorkPanel";
 import { decisionTotal, stallGuidance } from "./work-view";
+import { ContextPane } from "./context/ContextPane";
+import { PreviewPane } from "./context/PreviewPane";
 
 const REPLACE_WARNING = "진행 중인 프로젝트는 보관되고 화면에서 사라집니다.";
-type Pending = { kind: "scenario" } | { kind: "free"; goal: string; deadline?: string };
+type Pending = { kind: "scenario"; name: string } | { kind: "free"; goal: string; deadline?: string };
+/** 시나리오 버튼이 시작하는 대본. 키는 서버 `scenario/start`의 name이다. */
+const SCENARIOS = [{ key: "scene-1-3", label: "고객 인터뷰 · 장면 1–3" }, { key: "pages-v25", label: "Pages v2.5 · WORK CONTEXT" }] as const;
 /** 좁은 화면의 탭. 넓은 화면은 채널과 작업 패널을 함께 보이므로 이 값은 CSS가 좁은 화면에서만 쓴다. */
 type MobileView = "channel" | "work" | "decisions";
 
@@ -32,6 +36,7 @@ export function App() {
   const [openTask, setOpenTask] = useState<string | null>(null);
   const [jumpTo, setJumpTo] = useState<string | null>(null);
   const [freeForm, setFreeForm] = useState(false);
+  const [scenarioKey, setScenarioKey] = useState<string>(SCENARIOS[0].key);
   const [confirm, setConfirm] = useState<{ action: Pending; message: string } | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
   const [stepping, setStepping] = useState(false);
@@ -71,7 +76,7 @@ export function App() {
   /** 전환을 실행한다. 서버가 진행 중 프로젝트를 알려 오면 확인 대화상자를 연다. */
   const run = async (action: Pending, confirmReplace: boolean) => {
     const result = action.kind === "scenario"
-      ? await actions.startScenario("scene-1-3", confirmReplace)
+      ? await actions.startScenario(action.name, confirmReplace)
       : await actions.startFree(action.goal, action.deadline, confirmReplace);
     if (!result.ok && result.code === "project_exists" && !confirmReplace) { setConfirm({ action, message: result.message }); return; }
     if (result.ok && action.kind === "free") setFreeForm(false);
@@ -127,9 +132,15 @@ export function App() {
         <div id="topbar-controls" className={`topbar-controls${controlsOpen ? ' expanded' : ''}`}>
           <button type="button" className="btn-tonal" onClick={() => setArchiveOpen(true)}>보관함</button>
           <div className="segmented" role="group" aria-label="모드">
-            <button type="button" aria-pressed={vm.mode === "scenario" && !freeForm} disabled={pending} title={pending ? "요청을 처리하는 중이에요" : undefined} onClick={() => { setFreeForm(false); void request({ kind: "scenario" }); }}>시나리오</button>
+            <button type="button" aria-pressed={vm.mode === "scenario" && !freeForm} disabled={pending} title={pending ? "요청을 처리하는 중이에요" : undefined} onClick={() => { setFreeForm(false); void request({ kind: "scenario", name: scenarioKey }); }}>시나리오</button>
             <button type="button" aria-pressed={vm.mode === "free" || freeForm} disabled={pending} title={pending ? "요청을 처리하는 중이에요" : undefined} onClick={() => setFreeForm(true)}>자유형식</button>
           </div>
+          <label className="me-select">
+            <span className="muted small">대본</span>
+            <select value={scenarioKey} onChange={e => setScenarioKey(e.target.value)} aria-label="시나리오 종류">
+              {SCENARIOS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+            </select>
+          </label>
           <label className="me-select">
             <span className="muted small">나</span>
             <select value={vm.me} onChange={e => actions.switchMe(e.target.value)} aria-label="현재 사용자">
@@ -155,20 +166,24 @@ export function App() {
       ) : (
         <>
         <nav className="mobile-tabs" aria-label="보기">
-          {([["channel", "채널"], ["work", "작업"], ["decisions", "내 결정"]] as const).map(([key, label]) => (
+          {([["channel", "채널"], ["work", vm.workContext ? "맥락" : "작업"], ["decisions", "내 결정"]] as const).map(([key, label]) => (
             <button key={key} type="button" aria-pressed={mobileView === key} onClick={() => showMobile(key)}>
               {label}{key === "decisions" && decisionCount > 0 && <span className="tab-count num">{decisionCount}</span>}
             </button>
           ))}
         </nav>
-        <div className="workspace" data-view={mobileView === "channel" ? "channel" : "panel"}>
-          <WorkPanel vm={vm} tab={panelTab} onTab={t => { setPanelTab(t); if (mobileView !== "channel") setMobileView(t === "decisions" ? "decisions" : "work"); }}
+        <div className={`workspace${vm.workContext ? " workspace-context" : ""}`} data-view={mobileView === "channel" ? "channel" : "panel"}>
+          {/* Pages v2.5: 채팅 | WORK CONTEXT 캔버스·LOG | 모바일 미리보기. 작업 패널 대신 맥락 화면을 그린다. */}
+          {vm.workContext ? <>
+            <ContextPane context={vm.workContext} />
+            <PreviewPane context={vm.workContext} />
+          </> : <WorkPanel vm={vm} tab={panelTab} onTab={t => { setPanelTab(t); if (mobileView !== "channel") setMobileView(t === "decisions" ? "decisions" : "work"); }}
             onOpenTask={setOpenTask} onDecide={actions.decideCard} onDecideRequest={actions.decide}
-            onSetAvailability={actions.setAvailability} onResolve={actions.resolveTask} />
+            onSetAvailability={actions.setAvailability} onResolve={actions.resolveTask} />}
 
           <main className="channel">
             <div className="channel-head">
-              <h1 className="channel-name"># 프로젝트</h1>
+              <h1 className="channel-name"># {vm.workContext?.channelName ?? "프로젝트"}</h1>
               <MemberList members={vm.members} me={vm.me} />
             </div>
 
@@ -177,7 +192,7 @@ export function App() {
                 if (m.cardId && linkedCards.has(m.cardId)) return <DecisionCard key={m.id} card={visibleCards.get(m.cardId)!} members={vm.members} onDecide={actions.decideCard} onDecideRequest={actions.decide} />;
                 const prev = vm.messages[i - 1];
                 const grouped = !!prev && !(prev.cardId && linkedCards.has(prev.cardId)) && prev.authorId === m.authorId && prev.kind === m.kind && m.kind !== "system" && !prev.local === !m.local;
-                return <MessageItem key={m.id} message={m} author={vm.members.find(x => x.id === m.authorId)} grouped={grouped} workTitles={workTitles} onOpenTask={setOpenTask} />;
+                return <MessageItem key={m.id} message={m} author={vm.members.find(x => x.id === m.authorId)} grouped={grouped} workTitles={workTitles} onOpenTask={setOpenTask} onResolveChange={actions.resolveContextChange} />;
               })}
               {vm.cards.filter(c => !linkedCards.has(c.id)).map(c => <DecisionCard key={c.id} card={c} onDecide={actions.decideCard} />)}
               {(vm.decisionCards ?? []).filter(c => !linkedCards.has(c.id)).map(c => <DecisionCard key={c.id} card={c} members={vm.members} onDecide={actions.decideCard} onDecideRequest={actions.decide} />)}

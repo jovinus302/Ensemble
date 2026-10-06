@@ -2,6 +2,7 @@ import { project, forecast, forecastFromState, availabilityWeek, bundleDecisions
   type AnyEvent, type DecisionEffect, type EventPayloads, type LedgerEvent, type PlanOp, type Priority, type ProjectState, type RoutingReason, type TaskActivity, type TaskState, type TaskStatus } from '@ensemble/core';
 import type { ViewModel, VmActivity, VmActivityItem, VmMessage, VmCard, VmDecisionCard, VmPmJudgement, VmPlanTask, VmTaskDetail, VmWork, VmWorkItem, VmWorkStatus, VmWorkTeamRow } from './view-model';
 import { taskResolutions } from './task-resolution';
+import { buildWorkContext } from './build-work-context';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -232,7 +233,9 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
   const { label, humanize, isMessage, version, taskTitle } = labels;
   const taskIds = knownTaskIds(typed, state);
   const dayIso = (day: number) => new Date(now.getTime() + day * DAY_MS).toISOString();
-  const messages = buildMessages(typed, state, name, labels, taskIds).filter(m => !isTaskThread(m.threadId));
+  const channelMessages = buildMessages(typed, state, name, labels, taskIds).filter(m => !isTaskThread(m.threadId));
+  const context = buildWorkContext(state, name, options.me, channelMessages);
+  const messages = context?.messages ?? channelMessages;
   const work = workBuilder(events, typed, state, name, labels, taskIds);
   const read = readers(typed, state, labels, taskIds);
   const week = availabilityWeek(now);
@@ -277,8 +280,8 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
 
   const thisWeek = (id: string) => { const h = state.availabilityOverrides?.get(id)?.get(week); return h === undefined ? {} : { weeklyHoursThisWeek: h }; };
   return { mode: options.mode, project: { goal: state.goal?.text, deadline: state.goal?.deadline, ...projectTitle(state.goal?.text) }, me: options.me,
-    members: [...[...state.members.values()].map(m => ({ id: m.memberId, kind: m.kind, displayName: m.displayName, role: m.role, weeklyHours: state.availability.get(m.memberId), ...thisWeek(m.memberId), busy: state.activeTurn.has(m.memberId) })), { id: 'pm', kind: 'pm', displayName: 'PM' }],
-    messages, cards, decisionCards: work.decisionCards(options.me),
+    members: [...[...state.members.values()].map(m => ({ id: m.memberId, kind: m.kind, displayName: m.displayName, role: m.role, weeklyHours: state.availability.get(m.memberId), ...thisWeek(m.memberId), busy: state.activeTurn.has(m.memberId), ...(m.source === 'pool' ? { pool: true } : {}) })), { id: 'pm', kind: 'pm', displayName: 'PM' }],
+    messages, cards, ...(context ? { workContext: context.view } : {}), decisionCards: work.decisionCards(options.me),
     // No plan yet means no work projection: the panel then keeps showing the roadmap (WorkPanel fallback).
     ...(state.plan ? { work: work.view(options.me) } : {}), busy: options.busy, ...(options.scenario ? { scenario: options.scenario } : {}), ...(options.activity ? { activity: options.activity } : {}),
     roadmap: { planVersion: state.plan?.version ?? null, ...(options.mode === 'scenario' ? { clockLabel: '시연 시계' } : {}),

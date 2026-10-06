@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { VmMember, VmMessage } from "../lib/view-model";
 import { attachmentAction, formatTime, initial } from "./format";
+import { ContextMessageCard } from "./context/ContextMessageCard";
 
 // Agent voice는 1~8 중 id 해시로 고른다(그린은 PM 전용).
 function voiceOf(id: string): number {
@@ -41,9 +42,11 @@ export function WorkChips({ taskIds, workTitles, onOpenTask }: { taskIds?: strin
   );
 }
 
-export function MessageItem({ message, author, grouped, workTitles, onOpenTask }: {
+export function MessageItem({ message, author, grouped, workTitles, onOpenTask, onResolveChange }: {
   message: VmMessage; author: VmMember | undefined; grouped: boolean;
   workTitles?: ReadonlyMap<string, string>; onOpenTask?: (taskId: string) => void;
+  /** WORK CONTEXT 변경 카드의 "변경 적용 / 되돌리기". */
+  onResolveChange?: (changeSetId: string, outcome: "applied" | "reverted") => void;
 }) {
   const [showWhy, setShowWhy] = useState(false);
 
@@ -80,6 +83,7 @@ export function MessageItem({ message, author, grouped, workTitles, onOpenTask }
           {message.pm && <span className="pm-kind">{PM_KIND[message.pm.kind] ?? message.pm.kind}</span>}
           {message.text}
         </div>
+        {message.contextCard && <ContextMessageCard card={message.contextCard} onResolveChange={onResolveChange} />}
         <WorkChips taskIds={message.taskIds} workTitles={workTitles} onOpenTask={onOpenTask} />
         {message.attachments.length > 0 && (
           <ul className="attachments">

@@ -21,6 +21,8 @@ export const API = {
   scenarioNext: "/api/scenario/next",
   scenarioRetry: "/api/scenario/retry",
   scenarioSkip: "/api/scenario/skip",
+  /** WORK CONTEXT 변경 묶음 적용·되돌리기(Pages v2.5). */
+  contextChange: (id: string) => `/api/context/changes/${encodeURIComponent(id)}`,
 } as const;
 
 const ME_KEY = "ensemble.me";
@@ -51,6 +53,8 @@ export interface ViewModelActions {
   /** confirmReplace 없이 진행 중 프로젝트가 있으면 code "project_exists"로 실패한다(오류 배너 없이). */
   startFree(goal: string, deadline?: string, confirmReplace?: boolean): Promise<ActionResult>;
   startScenario(name: string, confirmReplace?: boolean): Promise<ActionResult>;
+  /** WORK CONTEXT 변경 카드에 답한다(`POST context/changes/:id`). */
+  resolveContextChange(changeSetId: string, outcome: "applied" | "reverted"): Promise<ActionResult>;
   switchMe(memberId: string): void;
   dismissError(): void;
 }
@@ -271,6 +275,7 @@ export function useViewModel(): UseViewModelResult {
     scenarioSkip: () => post(API.scenarioSkip, {}),
     startFree: (goal, deadline, confirmReplace) => post(API.freeStart, { goal, deadline, ...(confirmReplace ? { confirmReplace: true } : {}) }, ["project_exists"]),
     startScenario: (name, confirmReplace) => post(API.scenarioStart, { name, ...(confirmReplace ? { confirmReplace: true } : {}) }, ["project_exists"]),
+    resolveContextChange: (changeSetId, outcome) => post(API.contextChange(changeSetId), { outcome }),
     switchMe: memberId => {
       setMe(memberId); setError(null);
       try { window.localStorage.setItem(ME_KEY, memberId); } catch { /* 저장소를 못 쓰면 이번 탭에서만 유지 */ }
