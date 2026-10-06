@@ -60,7 +60,7 @@ coordinator 결정(2026-10-06):
 
 ### 3.1 데이터
 
-- `ContextItem { itemId, key?, layer, title, status, note?, sourceMemberId, sourceMessageIds, derivedFrom?, supersededBy? }` — `layer`: intent·decision·feature·screen·metric·contribution. `sourceMemberId: "pm"`이면 PM이 채운 항목(덱의 E).
+- `ContextItem { itemId, key?, layer, title, status, note?, short?, detail?, sourceMemberId, sourceMessageIds, derivedFrom?, supersededBy? }` — `layer`: intent·decision·feature·screen·metric·contribution. `sourceMemberId: "pm"`이면 PM이 채운 항목(덱의 E). `short`("9시 설정 화면")·`detail`("생성 비용·시간 한도 초과")은 LOG·카드 요약용이며 캔버스는 `title`·`note`를 쓴다(통합 2에서 추가, 선택 필드). `BranchOption.short`("실명 그대로"), `PoolCandidate.short`("정책"), `tool_handoff_sent.short`("S1 S2")도 같은 용도다.
 - `ContextEdge { edgeId, from, to, kind: supports|conflicts|derives|feeds, stale? }` — 끝점은 항목 id 또는 `tool:<toolId>`.
 - `BranchOption { optionId("A"/"B"), title, gains[], risks[] }`, `PoolCandidate`, `ProductionToolId = figma|prompt-studio|dev-tools`, `AppPreviewSpec`(앱 이름·날짜·버전 칩·hero 카드·notice·포맷·지난 생성물·탭·annotations), `ContextCard`(채팅 카드, id만 담는다).
 
@@ -136,6 +136,8 @@ coordinator 결정(2026-10-06):
 
 - `ViewModel.workContext?: VmWorkContext` — 있으면 화면이 **채팅 | WORK CONTEXT 캔버스 + LOG | 모바일 미리보기** 3열(`.workspace-context`, `app/globals.css`). 없으면 기존 2단(채널 + 작업 패널, work-model §6) 그대로.
 - `VmWorkContext`: `code·title·channelName·versionLabel("v1.0 → v1.1")·stageLabel·summary(연결·충돌·위반·미정·누락 …)·items(supersededBy 제외)·edges·branches·log·preview·comparePreview(분기 A)·handoffs·proposal·changeSet·pool`.
+- 요약의 **연결 수** = 보이는 항목 사이의 실선(충돌·낡음 선 제외) + 가장 최근 Proposal의 구성 연결(`inputItemIds`). 덱 장면 03의 "연결 2", 장면 04 끝의 "연결 14"를 재현한다(`linkCount`, `lib/build-context-canvas.ts`). 장면 04 칩 문구는 덱처럼 "분기 1 (B 선택) · pool 2 합류 · Proposal v1 · 예상 (A)".
+- **LOG**(`lib/context-log.ts`)는 원장 이벤트 시각(감지는 PM이 기록한 시각, 사람의 선택은 그 발언 시각)으로 최신이 위다. 감지 줄은 짧은 이름을 쓰고 미정은 LOG에 올리지 않는다(덱). 장면 03–05의 golden LOG는 덱 문장과 글자 그대로 같다.
 - `VmMessage.contextCard?: VmContextCard` — 서버가 현재 상태로 풀어 준다(도구 진행이 같은 카드에서 바뀐다). `VmMember.pool?: true`.
 - 조립: `buildViewModel`(`lib/build-view-model.ts`) → `buildWorkContext`(`lib/build-work-context.ts`, 접합부) → `buildContextCanvas`(B) + `buildContextCards`(C).
 - 동작: 변경 카드 버튼 → `actions.resolveContextChange(id, outcome)`(`components/use-view-model.ts`) → `POST /api/context/changes/:id { me, outcome }`(라우트는 A).
@@ -162,10 +164,12 @@ coordinator 결정(2026-10-06):
 | 기반(통과) | golden이 장면 03–06을 재현, 대본 = 사람 + Q1 예외 2줄(actor `system:scenario`), 카드·참조 무결성 | 같은 파일 |
 | 기반(통과) | 화면 모델: WORK CONTEXT가 있을 때만 노출, 카드 해석, pool 배지, A/B 비교, 변경 버튼은 결정권자만, v1.1 노래 없음 | 같은 파일 (`test/pages-v25-fixture.ts` 사용) |
 | A | fake 런타임(`WebRuntime` + `FakePmLlm` + fake 통합)으로 `pages-v25`를 끝까지 재생 → 정규화한 WorkContext = golden `s06_built`; op 검증이 권한·pool·도구·같은 round 중복을 거절; 기존 `scene-1-3` 시작 경로 유지 | `test/essential-pages-v25-runtime.test.ts`(신규, 2~3 사례) |
-| B·C | 새 자동 검사 파일 없음. `npm run typecheck`·`npm run build` + [QA 안내](qa/README.md)의 실제 앱 브라우저 확인(PM·Agent fake, 별도 `ENSEMBLE_DATA_DIR`)으로 체크포인트 화면 확인. 위험 사례가 필요하면 coordinator 승인 후 추가 | — |
-| D | 녹화한 모델 출력 fixture가 A의 검증을 통과(1 사례). live 실행은 수동, 기본 검사 아님 | `test/essential-pages-v25-model.test.ts`(신규), `packages/orchestrator/scripts/live-pages-v25.ts`(신규) |
+| B | 체크포인트별 열·노드·연결·상태 칩(연결 2·14 포함), 흡수 항목 숨김·LOG 보존, 덱 LOG 문장(장면 03–05 글자 그대로), 내부 id 비노출 | `test/essential-pages-v25-canvas.test.ts`(3 사례) |
+| C | 카드 9종(golden 12장), 진행 라벨 제자리 갱신, 결정권자 전용 변경 카드, POOL 배지, A/B·v1.0/v1.1 미리보기(배지는 v1.1부터), 내부 id 비노출 | `test/essential-pages-v25-cards.test.ts`(6 사례) |
+| D | 도구 스키마·facts, 계약 예시(녹화한 모델 출력 아님, PENDING) 92개가 golden 시점에 A의 검증을 통과하고 golden PM 기록을 재현. live 실행은 수동 | `test/essential-pages-v25-model.test.ts`(4 사례), `packages/orchestrator/scripts/live-pages-v25.ts` |
+| 브라우저 | fake 런타임으로 03→06 재생, 장면 끝마다 캔버스·LOG·카드·미리보기 확인, 1600/1024/390 가로 스크롤 없음 | 수동(통합 2 스모크) |
 
-기준선(2026-10-06): 리베이스 후 이 브랜치에서 `npm test` 21/21(기존 18 + 신규 3), `npm run typecheck`·`npm run build` 통과. 리베이스 전 vitest 시절의 무작위 5초 타임아웃은 `main`이 그 테스트들을 제거하면서 사라졌다.
+기준선(2026-10-06, 통합 2): `npm test` 36/36(9개 파일), `npm run typecheck`·`npm run build` 통과. 리베이스 전 vitest 시절의 무작위 5초 타임아웃은 `main`이 그 테스트들을 제거하면서 사라졌다.
 
 ## 9. 작업 분할 — 병렬 4개, 파일 소유 겹치지 않음
 

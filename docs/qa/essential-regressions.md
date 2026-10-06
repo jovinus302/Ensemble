@@ -2,7 +2,7 @@
 
 Run `npm test` from `app/` on Node 24+. The command uses Node's built-in test runner with a 10-second timeout and the existing `tsx` dependency. No test framework, browser driver, snapshots, paid model, provider login, or benchmark runner is added. Run `npm run typecheck` and `npm run build` separately; the test files are included in type checking.
 
-Inventory checked on **2026-10-06, branch `jovinus302/pages-v25` on main `7095f0b`**: **33 scenarios in eight files**. Keep this a risk-based list; do not grow it into a helper-by-helper or visual snapshot suite.
+Inventory checked on **2026-10-06, branch `jovinus302/pages-v25` on main `7095f0b`**: **36 scenarios in nine files**. Keep this a risk-based list; do not grow it into a helper-by-helper or visual snapshot suite.
 
 | File | Cases | Scope |
 |---|---|---|
@@ -13,6 +13,7 @@ Inventory checked on **2026-10-06, branch `jovinus302/pages-v25` on main `7095f0
 | [essential-pages-v25.test.ts](../../app/test/essential-pages-v25.test.ts) | 3 | Pages v2.5 Work Context contract: human-only settlement, golden scenes 03–06 and script, view model exposure |
 | [essential-pages-v25-runtime.test.ts](../../app/test/essential-pages-v25-runtime.test.ts) | 2 | Real `WebRuntime` replay of `pages-v25` with the fake PM and simulated pool/tools; PM-answer validation |
 | [essential-pages-v25-cards.test.ts](../../app/test/essential-pages-v25-cards.test.ts) | 6 | Pages chat cards, POOL members and mobile previews from golden checkpoints; decider-only change card; no internal ids in visible text |
+| [essential-pages-v25-canvas.test.ts](../../app/test/essential-pages-v25-canvas.test.ts) | 3 | Pages WORK CONTEXT canvas columns, edges and summary chips (deck "연결 2"/"연결 14"); absorbed items hidden but logged; deck LOG lines for scenes 03–05 |
 | [essential-pages-v25-model.test.ts](../../app/test/essential-pages-v25-model.test.ts) | 4 | Real-model tool schema and facts; authored contract examples (not recorded model output) replayed through the stateful validator |
 
 | Scenario | Why it is essential |

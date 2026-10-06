@@ -127,8 +127,8 @@ test('the LOG reads newest first in the deck sentence format', () => {
   ]);
   const final = view('s06_built').wc.log;
   assert.deepEqual(final.slice(0, 5).map(logLine), [
-    '16:14 빌드 완료 · Figma · 프롬프트 스튜디오 결과 → 개발 도구에서 통합 — Pages v1.1',
     '16:14 갱신 · S1 [화면] home · 생성물 · S2 [화면] 채팅 · feed',
+    '16:14 빌드 완료 · Figma · 프롬프트 스튜디오 결과 → 개발 도구에서 통합 — Pages v1.1',
     '16:13 재전달 · S1 · S2 변경 2건 → Figma · 노래 템플릿 제외 → 프롬프트 스튜디오 · F5 구현 · 재빌드 → 개발 도구',
     '16:13 적용 · v1.0 → v1.1 변경 적용 — 김서연',
     // Scene 06 keeps the ledger's own lines (the deck summarizes them differently); the change line matches the deck.

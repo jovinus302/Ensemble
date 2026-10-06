@@ -228,9 +228,10 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
   emit('tool_progress_reported', { handoffId: X.handoffs.prompt2, status: 'done', note: '노래 템플릿 제외 → 개발 도구' }, tools);
   emit('tool_progress_reported', { handoffId: X.handoffs.dev2, status: 'in_progress', note: '통합 빌드 중' }, tools);
   emit('tool_progress_reported', { handoffId: X.handoffs.dev2, status: 'done', note: '통합 빌드 v1.1' }, tools);
-  upsert(item(I.s1, 'screen', '[화면] home · 생성물', 'updated', 'pm', [m16], { key: 'S1', derivedFrom: [I.f1, I.f3] }), item(I.s2, 'screen', '[화면] 채팅 · feed', 'updated', 'pm', [m16], { key: 'S2', derivedFrom: [I.f1, I.f4, I.f5] }));
   emit('preview_rendered', { previewId: X.previews.build11, source: 'build', label: 'v1.1 빌드', refId: X.build11, spec: PREVIEW_V11 }, tools);
   emit('build_produced', { buildId: X.build11, version: '1.1', handoffIds: [X.handoffs.figma2, X.handoffs.prompt2, X.handoffs.dev2], previewId: X.previews.build11 }, tools);
+  // The PM's turn after the build: the screens are now updated (same order as the runtime: build, then the PM).
+  upsert(item(I.s1, 'screen', '[화면] home · 생성물', 'updated', 'pm', [m16], { key: 'S1', derivedFrom: [I.f1, I.f3] }), item(I.s2, 'screen', '[화면] 채팅 · feed', 'updated', 'pm', [m16], { key: 'S2', derivedFrom: [I.f1, I.f4, I.f5] }));
   speak('16:14', X.build11, '후속 항목을 다시 이었습니다. 개발 도구에서 다시 빌드된 화면 v1.1 — 카드에 fiction 포함 라벨이 붙고, 포맷에서 노래가 빠졌습니다. 결정 D1·D2는 바뀌지 않았습니다.',
     'fact', '재빌드가 끝났다', { kind: 'build', buildId: X.build11 });
   mark('s06_built');
