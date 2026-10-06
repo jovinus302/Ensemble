@@ -3,15 +3,15 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { workContextFacts, project, type WorkContextOpType } from '@ensemble/core';
+import { isDeepStrictEqual } from 'node:util';
+import { applyWorkContextOutput, workContextFacts, project, WORK_CONTEXT_EVENT_TYPES, type LedgerEvent, type WorkContextOpType } from '@ensemble/core';
 import { strictSchema, dropStrictNulls } from '@ensemble/llm';
 import { workContextTool, workContextUserMessage } from '../packages/orchestrator/src/work-context-prompt.ts';
 import { pagesEvents } from './pages-v25-fixture.ts';
 
 type Schema = { type?: string; const?: unknown; enum?: unknown[]; oneOf?: Schema[]; properties?: Record<string, Schema>; required?: string[]; additionalProperties?: boolean; items?: Schema; maxItems?: number; minLength?: number };
-// Local schema check while workstream A's stateful validator is developed in parallel.
-// TODO(integration): ALSO replay fixtures through work-context-apply.ts with the matching
-// pre-op ledger state. Schema validity is not evidence of human authority or reference validity.
+// Schema validity is not evidence of human authority or reference validity: the last test replays every
+// example through the stateful validator (core work-context-apply.ts) at its point in the golden ledger.
 function valid(value: unknown, schema: Schema): boolean {
   if (schema.oneOf) return schema.oneOf.filter(s => valid(value, s)).length === 1;
   if ('const' in schema && value !== schema.const) return false;
@@ -74,4 +74,30 @@ test('Pages facts preserve human evidence, PM speech and source preview without 
   assert.ok(facts.messages.some(m => m.authorId === 'pm'));
   assert.ok(facts.basePreview?.spec.hero);
   assert.deepEqual(JSON.parse(workContextUserMessage(facts)).facts, facts);
+});
+
+test('every contract example passes the stateful validator at its point in the golden ledger and reproduces the golden PM records', () => {
+  const context = { projectId: 'pages', targetProductId: 'pages' };
+  const golden = pagesEvents('s06_built');
+  const workContext = new Set<string>(WORK_CONTEXT_EVENT_TYPES);
+  // PM-written Work Context records are what the examples must reproduce; everything else (people, tools, PM speech) replays as is.
+  const reproduced = (e: LedgerEvent) => e.actor.kind === 'pm' && workContext.has(e.type) && e.type !== 'context_card_posted';
+  const ledger: LedgerEvent[] = [];
+  const push = (e: Omit<LedgerEvent, 'id' | 'seq' | 'at'> & { at?: string }) => ledger.push({ ...e, id: `r${ledger.length}`, seq: ledger.length + 1, at: e.at ?? golden[0]!.at } as LedgerEvent);
+  const produced: { type: string; payload: unknown }[] = [];
+  let next = 0;
+  for (const event of golden) {
+    if (!reproduced(event)) { push(event); continue; }
+    const same = (p: { type: string; payload: unknown }) => p.type === event.type && isDeepStrictEqual(p.payload, event.payload);
+    while (!produced.some(same)) {
+      const output = fixture.outputs[next];
+      assert.ok(output, `no example reproduces golden ${event.type} ${JSON.stringify(event.payload).slice(0, 120)}`);
+      const result = applyWorkContextOutput(ledger, output, { context, trigger: { kind: 'message', messageId: 'replay' }, considerationId: `replay-${next}` });
+      assert.deepEqual(result.problems, [], `example ${next} (${output.ops.map(op => op.type).join(',')})`);
+      for (const e of result.append) if (e.type !== 'pm_considered') { push(e); produced.push({ type: e.type, payload: e.payload }); }
+      next++;
+    }
+    produced.splice(produced.findIndex(same), 1);
+  }
+  assert.equal(next, fixture.outputs.length, 'every example is used');
 });
