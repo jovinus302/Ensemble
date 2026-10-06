@@ -28,3 +28,4 @@ export { SCENE_NOW, sceneTasks, sceneEvents, scene1, scene2, scene3 } from './sc
 export * from './script.ts';
 export * from './continuous.ts';
 export * from './revision.ts';
+export * from './pages-v25/index.ts';

@@ -3,6 +3,8 @@ import type { AnyEvent, EventPayloads, TaskSpec, ValidationEvidence } from "./ev
 import { isAutomationAction } from './action-limit.ts';
 import { applyWorkEvent, emptyTaskMeta, isParentTask, rollupParents, type TaskMeta } from './work.ts';
 import { applyDecisionEvent, decisionApproved, type DecisionRequestState } from './decision-requests.ts';
+import { applyWorkContextEvent, isWorkContextEvent } from './work-context-projection.ts';
+import type { WorkContextState } from './work-context.ts';
 
 export type UpdateStatus = "sent" | "acknowledged" | "rejected";
 export interface TaskUpdate { updateId: Id; toVersion: number; status: UpdateStatus; droppedItems: string[] }
@@ -52,6 +54,8 @@ export interface ProjectState {
   /** `${changeId}:${recipientId}` pairs already notified. */
   notified: Set<string>;
   decisionRequests: Map<Id, DecisionRequestState>;
+  /** Set from `context_session_started` on (Pages v2.5); absent for projects without a Work Context. */
+  workContext?: WorkContextState;
 }
 export function isStaleResult(task: TaskState, resultId: Id): boolean {
   const result = task.results.find((item) => item.resultId === resultId);
@@ -95,6 +99,7 @@ export function project(events: readonly LedgerEvent[]): ProjectState {
       if (conclusion) conclusion.forEach(id => concludedMessages.add(id));
     }
     if (isAutomationAction(event)) state.automation.actionsSinceResume++;
+    if (isWorkContextEvent(event)) applyWorkContextEvent(state, event);
     switch (event.type) {
       case "member_joined": state.members.set(event.payload.memberId, event.payload); break;
       case "goal_set":

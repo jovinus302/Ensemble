@@ -1,5 +1,6 @@
 import type { Id, LedgerEvent } from "./ledger.ts";
 import type { PlanOp } from "./plan-ops.ts";
+import type { WorkContextEventPayloads } from "./work-context.ts";
 export type ChangeKind = "reorder" | "split_task" | "reassign_agent" | "scope_reduce" | "scope_add" | "deadline_change" | "goal_change" | "human_commitment";
 export interface TaskSpec {
   id: Id; title: string; assignee: Id; dependsOn: Id[]; handoffConditions: string[];
@@ -57,9 +58,11 @@ export type ValidationStatus = 'awaiting' | 'not_run' | 'environment_blocked' | 
 export interface ValidationEvidence extends ValidationBinding {
   attemptId: Id; status: ValidationStatus; checks: ValidationCheck[]; summary: string;
 }
-export interface EventPayloads {
+/** Work Context payloads (work-context.ts) are part of the same ledger. */
+export interface EventPayloads extends WorkContextEventPayloads {
   judgement_failed: { triggerId: Id; stage: "interpretation" | "judgement"; reason: string };
-  member_joined: { memberId: Id; kind: "human" | "agent"; displayName: string; role?: string };
+  /** source "pool": invited from the member pool (work-context.ts), candidateId names the pool entry. */
+  member_joined: { memberId: Id; kind: "human" | "agent"; displayName: string; role?: string; source?: "pool"; candidateId?: Id };
   goal_set: { text: string; deadline?: string; decider: Id; delegation: { pmMayApply: ChangeKind[] } };
   /** sourceMessageIds: the conversation the draft came from (the decider's goal message). Optional for older ledgers. */
   plan_proposed: { proposalId: Id; version: number; tasks: TaskSpec[]; estimates: { taskId: Id; hours: { min: number; max: number } }[]; reason: string; forMemberId: Id; sourceMessageIds?: Id[] };
