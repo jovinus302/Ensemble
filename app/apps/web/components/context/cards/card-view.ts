@@ -87,8 +87,10 @@ const HANDOFF_TONE: Record<VmToolHandoff["status"], VmContextTone> = { delivered
 export function handoffRow(h: VmToolHandoff, mode: "handoff" | "build"): { lead: string; text: string; owner?: string; memo?: string; status: ToneText; working: boolean } {
   const status = { text: h.statusLabel, tone: HANDOFF_TONE[h.status] };
   const memo = h.note && h.note !== h.statusLabel ? h.note : undefined;
+  // 전달 카드 줄은 이미 제목을 보이므로 "제목 → 개발 도구" 메모는 "결과 → 개발 도구"로 줄인다.
+  const shortMemo = memo?.startsWith(`${h.title} →`) ? `결과 ${memo.slice(h.title.length).trim()}` : memo;
   return mode === "handoff"
-    ? { lead: h.title, text: `→ ${h.toolName}`, ...(h.ownerName ? { owner: `${h.ownerName} 연결` } : {}), ...(memo ? { memo } : {}), status, working: h.status === "in_progress" }
+    ? { lead: h.title, text: `→ ${h.toolName}`, ...(h.ownerName ? { owner: `${h.ownerName} 연결` } : {}), ...(shortMemo ? { memo: shortMemo } : {}), status, working: h.status === "in_progress" }
     : { lead: h.toolName, text: memo ?? h.title, status, working: h.status === "in_progress" };
 }
 

@@ -73,8 +73,8 @@ test('a card keeps its place while its progress label follows the ledger', () =>
     return { messageId: c.messageId, rows: c.card.handoffs.map(h => { const r = handoffRow(h, 'handoff'); return [r.status.text, r.memo ?? '', r.working]; }) };
   };
   assert.equal(devBuilding(0).messageId, sent.messageId);
-  assert.deepEqual(devBuilding(0).rows, [['제작 완료', '화면 S1 · S2 → 개발 도구', false], ['제작 완료', '생성 템플릿 → 개발 도구', false], ['통합 빌드 중', '', true]]);
-  assert.deepEqual(devBuilding(1).rows, [['제작 완료', 'S1 · S2 변경 2건 → 개발 도구', false], ['제작 완료', '노래 템플릿 제외 → 개발 도구', false], ['통합 빌드 중', '', true]]);
+  assert.deepEqual(devBuilding(0).rows, [['제작 완료', '결과 → 개발 도구', false], ['제작 완료', '결과 → 개발 도구', false], ['통합 빌드 중', '', true]]);
+  assert.deepEqual(devBuilding(1).rows, [['제작 완료', '결과 → 개발 도구', false], ['제작 완료', '결과 → 개발 도구', false], ['통합 빌드 중', '', true]]);
   const final = cardOn(pagesViewModel('s06_built'), 'build', 1)!.card;
   assert.ok(final.kind === 'build');
   assert.deepEqual(final.handoffs.map(h => handoffRow(h, 'build').text), ['S1 · S2 변경 2건 → 개발 도구', '노래 템플릿 제외 → 개발 도구', '통합 빌드 v1.1']);
