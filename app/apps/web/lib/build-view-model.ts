@@ -234,7 +234,7 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
   const taskIds = knownTaskIds(typed, state);
   const dayIso = (day: number) => new Date(now.getTime() + day * DAY_MS).toISOString();
   const channelMessages = buildMessages(typed, state, name, labels, taskIds).filter(m => !isTaskThread(m.threadId));
-  const context = buildWorkContext(state, name, options.me, channelMessages);
+  const context = buildWorkContext(state, name, options.me, channelMessages, typed);
   const messages = context?.messages ?? channelMessages;
   const work = workBuilder(events, typed, state, name, labels, taskIds);
   const read = readers(typed, state, labels, taskIds);
