@@ -7,8 +7,9 @@ import { loadEnv, modelFor, pmRuntimeFromEnv, type LlmProvider } from '@ensemble
 import { ClaudeSessionConnector, CodexSessionConnector, CodexLlmProvider, codexSettingsFromEnv, type SessionConnector } from '@ensemble/agents';
 import { DecisionRequestError, ProjectManager, TaskResolutionError, type FreeStartResult } from '@ensemble/orchestrator';
 import { DEFAULT_DIGEST_SETTINGS, DEFAULT_PM_MAY_APPLY, project, taskThreadId, type AnyEvent, type DecisionAnswer, type EventPayloads, type LedgerEvent, type ProjectState } from '@ensemble/core';
-import { continuousScenario, advanceScript, createRevisionGenerator, sceneEvents, SCENE_NOW, type ScriptProgress, type Condition, type RevisionGenerator } from '@ensemble/scenarios';
+import { continuousScenario, advanceScript, advancePagesScript, createRevisionGenerator, sceneEvents, SCENE_NOW, PAGES_COMPLETION, PAGES_NOW, PAGES_SCENARIO_KEY, PAGES_STEPS, pagesSeedEvents, type ScriptProgress, type Condition, type RevisionGenerator } from '@ensemble/scenarios';
 import { FakeConnector, FakePmLlm } from './fake-connector';
+import { SimulatedIntegrations } from './fake-integrations';
 import { buildTaskDetail, buildViewModel, projectTitle } from './build-view-model';
 import { taskResolutions, type ResolutionAction } from './task-resolution';
 import { stallGuidance } from '../components/work-view';
@@ -19,6 +20,9 @@ export const SWEEP_INTERVAL_MS = 5 * 60_000;
 /** Fake agents in a free project take this long per turn, so a person can watch work run and comment on it (ENSEMBLE_FAKE_AGENT_DELAY_MS overrides). */
 export const FREE_FAKE_AGENT_DELAY_MS = 30_000;
 const SCENARIO_FAKE_AGENT_DELAY_MS = 2000;
+/** One step of a simulated pool join or production tool (Pages v2.5). */
+const SIMULATED_STEP_MS = 2000;
+type ScriptLine = { scene?: number; as: string; text: string; attachments?: readonly unknown[] };
 /** Q4 switch: ENSEMBLE_DIGEST=off turns the daily digest off (on by default). */
 export function digestEnabledFromEnv(env: NodeJS.ProcessEnv = process.env): boolean { return !/^(?:0|false|off|no)$/i.test(env.ENSEMBLE_DIGEST?.trim() ?? ''); }
 
@@ -30,7 +34,8 @@ export function shortTitle(text: string, max = 40) {
   return (space > 0 ? title.slice(0, space) : title.slice(0, max - 1)) + '…';
 }
 
-interface Metadata { projectId: string; mode: 'free' | 'scenario'; scene: 1 | 2 | 3; step: number; script?: ScriptProgress; archivedProjectIds?: string[]; archives?: { id: string; archivedAt: string; mode: 'free' | 'scenario' }[] }
+/** scenario: the running script's key (absent in old metadata = the continuous scene 1–3 script); scene: its scene number. */
+interface Metadata { projectId: string; mode: 'free' | 'scenario'; scenario?: string; scene: number; step: number; script?: ScriptProgress; archivedProjectIds?: string[]; archives?: { id: string; archivedAt: string; mode: 'free' | 'scenario' }[] }
 export interface Upload { name: string; mimeType: string; contentBase64: string }
 export class RuntimeError extends Error {
   constructor(readonly code: string, message: string, readonly status = 409) { super(message); }
@@ -100,6 +105,7 @@ export class WebRuntime {
   private replacing = false;
   private recovering = false;
   private scenarioFlight?: Promise<void>;
+  private integrations?: SimulatedIntegrations;
   private scenarioAbort?: AbortController;
   private waiting?: { condition: Condition; since: number; seq: number; quietSince: number; stalled: boolean };
   private activitySince = new Date().toISOString();
@@ -115,7 +121,7 @@ export class WebRuntime {
    * `timers: false` leaves the sweep/digest timer off (callers run `tick` themselves); `fakeAgentDelayMs` sets the fake agents' turn length in
    * free projects; `digest` is the Q4 on/off switch.
    */
-  constructor(private readonly options: { dataDir?: string; store?: LedgerStore; llm?: LlmProvider; connector?: SessionConnector; generateRevision?: RevisionGenerator; timers?: boolean; fakeAgentDelayMs?: number; digest?: boolean } = {}) {
+  constructor(private readonly options: { dataDir?: string; store?: LedgerStore; llm?: LlmProvider; connector?: SessionConnector; generateRevision?: RevisionGenerator; timers?: boolean; fakeAgentDelayMs?: number; digest?: boolean; integrationDelayMs?: number } = {}) {
     loadEnv();
     this.dataDir = options.dataDir ?? process.env.ENSEMBLE_DATA_DIR ?? path.join(appRoot(), 'data');
     this.metaFile = path.join(this.dataDir, 'runtime.json');
@@ -188,6 +194,10 @@ export class WebRuntime {
       ? new CodexLlmProvider({ timeoutMs, effort: process.env.ENSEMBLE_PM_EFFORT?.trim() || 'low', onTiming: timing => console.info('[ensemble:pm-model]', JSON.stringify(timing)) })
       : pmRuntimeFromEnv().llm);
     this.pmModel = modelFor('pm', pmRuntime === 'codex' ? 'codex' : 'anthropic');
+    // Pages v2.5: the member pool and production tools are simulated in every PM runtime (no external service).
+    this.integrations?.stop();
+    const integrations = this.integrations = new SimulatedIntegrations({ store: this.store, context: () => this.context(), delayMs: this.options.integrationDelayMs ?? SIMULATED_STEP_MS,
+      consider: trigger => this.pm.considerWorkContext(trigger) });
     // Agent results arrive as attachments recorded from the agent's workspace; the PM reads them from the ledger.
     this.pm = new ProjectManager({ ...this.context(), store: this.store, llm: this.pmLlm, model: this.pmModel,
       onTiming: timing => console.info('[ensemble:pm-queue]', JSON.stringify(timing)),
@@ -200,12 +210,14 @@ export class WebRuntime {
         async taskId => project(await this.store.read({ projectId: this.meta.projectId })).tasks.get(taskId)?.spec,
         { askQuestions: () => this.meta.mode === 'free' }) }),
       digestSettings: { ...DEFAULT_DIGEST_SETTINGS, enabled: this.digestEnabled },
+      onWorkContextEvents: events => integrations.observe(events),
       // Live scenario inputs and PM/agent replies share the store's wall clock.
       clock: () => new Date(),
     });
   }
   private async seed(decider: string, scenario: boolean) {
     const ctx = this.context();
+    if (scenario && this.pages) { await this.store.append(pagesSeedEvents(ctx)); return; }
     if (scenario) {
       const events = sceneEvents(1, ctx).filter(e => !['plan_committed', 'estimate_updated', 'availability_updated'].includes(e.type) && !(e.type === 'member_joined' && (e.payload as { memberId: string }).memberId === 'reviewer'));
       for (const e of events) if (e.type === 'member_joined') {
@@ -222,12 +234,21 @@ export class WebRuntime {
       { ...base, type: 'goal_set', payload: { text: '새 프로젝트', decider, delegation: { pmMayApply: [...DEFAULT_PM_MAY_APPLY] } } },
     ]);
   }
+  private get pages() { return this.meta.mode === 'scenario' && this.meta.scenario === PAGES_SCENARIO_KEY; }
+  /** The running script: Pages v2.5, or the continuous scene 1–3 script. */
+  private script(): { key: string; steps: readonly ScriptLine[]; completion: Condition } {
+    return this.pages ? { key: PAGES_SCENARIO_KEY, steps: PAGES_STEPS, completion: PAGES_COMPLETION } : continuousScenario;
+  }
+  /** "장면 3" for the continuous script, "장면 03"–"장면 06" for the Pages deck. */
+  private sceneName(scene: number | undefined) {
+    return this.pages ? `${PAGES_SCENARIO_KEY} · 장면 ${String(scene ?? 6).padStart(2, '0')}` : `${continuousScenario.key} · 장면 ${scene ?? 3}`;
+  }
   async state(me = 'owner') {
     await this.ready;
     const events = await this.store.read({ projectId: this.meta.projectId });
     const state = project(events);
     if (state.members.get(me)?.kind !== 'human') me = state.goal?.decider ?? 'owner';
-    const next = continuousScenario.steps[this.meta.script?.step ?? this.meta.step];
+    const next = this.script().steps[this.meta.script?.step ?? this.meta.step];
     const stopped = this.meta.script?.stopped;
     const resolutions = taskResolutions(events, me).map(r => ({ ...r, actions: this.pendingResolutions.has(r.taskId) ? [] : r.actions }));
     const activity = this.activity(events);
@@ -237,8 +258,8 @@ export class WebRuntime {
     if (activity.stalled) activity.stalled = { ...activity.stalled, tasks: resolutions };
     // 멈춤 안내는 화면에 실제로 보이는 버튼(다시 시도·건너뛰기·작업별 처리)만 말한다.
     const stoppedText = activity.stalled ? stallGuidance(activity.stalled, true) : '대본 진행이 멈췄습니다. 상태를 확인해 주세요.';
-    const view = buildViewModel(events, { me, mode: this.meta.mode, busy: this.busy || !!this.scenarioFlight || this.pendingMessages > 0, now: this.meta.mode === 'scenario' ? SCENE_NOW : new Date(),
-      ...(this.meta.mode === 'scenario' ? { scenario: { name: `${continuousScenario.key} · 장면 ${next?.scene ?? 3}`, done: !stopped && !next,
+    const view = buildViewModel(events, { me, mode: this.meta.mode, busy: this.busy || !!this.scenarioFlight || this.pendingMessages > 0, now: this.meta.mode === 'scenario' ? (this.pages ? PAGES_NOW : SCENE_NOW) : new Date(),
+      ...(this.meta.mode === 'scenario' ? { scenario: { name: this.sceneName(next?.scene), done: !stopped && !next,
         ...(stopped ? { nextLine: { authorName: '시나리오 중단', text: stoppedText, hasAttachment: false } } : next ? { nextLine: { authorName: state.members.get(next.as)?.displayName ?? next.as, text: next.text, hasAttachment: !!next.attachments?.length } } : {}) } } : {}),
     });
     const goal = state.goal?.text?.replace(/^시연용 가상 자료입니다\.?\s*/, '') ?? '새 프로젝트';
@@ -322,6 +343,7 @@ export class WebRuntime {
       this.scenarioAbort?.abort(); await this.scenarioFlight.catch(() => undefined);
     }
     await this.intake;
+    this.integrations?.stop();
     await this.pm.stop();
     this.resolutionErrors.clear(); this.pendingResolutions.clear();
     (this.meta.archives ??= []).push({ id: this.meta.projectId, archivedAt: new Date().toISOString(), mode: this.meta.mode });
@@ -342,11 +364,12 @@ export class WebRuntime {
     } finally { this.replacing = false; }
   }
   async startScenario(name: string, confirmReplace = false) {
-    if (name !== continuousScenario.key && name !== 'scene-1-3') throw new Error('Unknown scenario');
+    if (name !== continuousScenario.key && name !== 'scene-1-3' && name !== PAGES_SCENARIO_KEY) throw new RuntimeError('unknown_scenario', '알 수 없는 시나리오입니다.', 400);
     this.replacing = true;
     try {
       const archivedProjectIds = await this.replace(confirmReplace);
-      this.meta = { projectId: randomUUID(), mode: 'scenario', scene: 1, step: 0, script: { step: 0, anchors: {} }, archivedProjectIds, archives: this.meta.archives };
+      const pages = name === PAGES_SCENARIO_KEY;
+      this.meta = { projectId: randomUUID(), mode: 'scenario', scenario: pages ? PAGES_SCENARIO_KEY : continuousScenario.key, scene: pages ? PAGES_STEPS[0]!.scene : 1, step: 0, script: { step: 0, anchors: {} }, archivedProjectIds, archives: this.meta.archives };
       await this.seed('owner', true); this.createPm(); await this.save();
     } finally { this.replacing = false; }
   }
@@ -369,26 +392,34 @@ export class WebRuntime {
     // Old metadata cannot safely resume the former scene-switching script.
     if (!this.meta.script) throw new Error('Restart the scenario to use the continuous script');
     this.scenarioAbort = new AbortController();
+    const script = this.script();
+    const waitOptions = { signal: this.scenarioAbort.signal, onReady: () => { this.waiting = undefined; this.changed(); }, onWaiting: (condition: Condition, events: readonly LedgerEvent[]) => {
+      this.waiting ??= { condition, since: Date.now(), quietSince: Date.now(), seq: project(events).lastSeq, stalled: false };
+      const wasStalled = this.waiting.stalled;
+      this.activity(events);
+      if (wasStalled !== this.waiting.stalled) this.changed();
+    } };
+    const read = () => this.store.read({ projectId: this.meta.projectId });
+    const recordStop = async (reason: string) => { await this.store.append([{ ...this.context(), actor: { kind: 'system', id: 'scenario' }, type: 'scenario_stopped', payload: { scenario: script.key, step: this.meta.script!.step, reason } }]); };
     try {
-      await advanceScript({ pm: this.pm,
-        waitOptions: { signal: this.scenarioAbort.signal, onReady: () => { this.waiting = undefined; this.changed(); }, onWaiting: (condition, events) => {
-          this.waiting ??= { condition, since: Date.now(), quietSince: Date.now(), seq: project(events).lastSeq, stalled: false };
-          const wasStalled = this.waiting.stalled;
-          this.activity(events);
-          if (wasStalled !== this.waiting.stalled) this.changed();
-        } },
+      if (this.pages) {
+        await advancePagesScript({ waitOptions, read, recordStop,
+          // People speak through the normal message path; the two scene-03 agent premises are the documented script exception.
+          say: async step => { this.waiting = undefined; const pm = this.pm; await (project(await read()).members.get(step.as)?.kind === 'agent' ? pm.postScriptedLine(step.as, step.text) : pm.postMessage(step.as, step.text)); },
+          applyChange: async step => { this.waiting = undefined; await this.pm.resolveContextChange(step.changeSetId!, step.as, 'applied'); },
+        }, PAGES_STEPS, this.meta.script, PAGES_COMPLETION);
+      } else await advanceScript({ pm: this.pm, waitOptions,
         recordHuman: async (authorId, text, step) => {
           this.waiting = undefined;
           const messageId = `script:${this.meta.projectId}:${step}:human`;
           await this.store.append([{ ...this.context(), actor: { kind: 'human', id: authorId }, type: 'message_recorded', idempotencyKey: messageId, payload: { messageId, authorId, text, attachmentIds: [] } }]);
         },
         generateRevision: input => (this.options?.generateRevision ?? createRevisionGenerator(this.pmLlm, this.pmModel))(input),
-        read: () => this.store.read({ projectId: this.meta.projectId }),
-        recordStop: async reason => { await this.store.append([{ ...this.context(), actor: { kind: 'system', id: 'scenario' }, type: 'scenario_stopped', payload: { scenario: continuousScenario.key, step: this.meta.script!.step, reason } }]); },
+        read, recordStop,
       }, continuousScenario.steps, this.meta.script, continuousScenario.completion);
     } finally {
       this.meta.step = this.meta.script.step;
-      this.meta.scene = continuousScenario.steps[this.meta.step]?.scene ?? 3;
+      this.meta.scene = script.steps[this.meta.step]?.scene ?? this.meta.scene;
       await this.save(); this.changed(); await this.persistAttachments();
     }
   }
@@ -405,10 +436,20 @@ export class WebRuntime {
       if (skip) this.meta.script.step++;
       delete this.meta.script.stopped;
       this.meta.step = this.meta.script.step;
-      this.meta.scene = continuousScenario.steps[this.meta.step]?.scene ?? 3;
+      this.meta.scene = this.script().steps[this.meta.step]?.scene ?? this.meta.scene;
       this.waiting = undefined; await this.save(); this.changed();
       if (!skip) void this.scenarioNext().catch(() => console.info('[ensemble] 대본 재시도 중단: 상태에서 이유를 확인하세요.'));
     } finally { this.recovering = false; }
+  }
+  /** 변경 적용 / 되돌리기 on a Work Context change card (`POST context/changes/:id`): the decider only, once. */
+  async resolveContextChange(changeSetId: string, me: string, outcome: 'applied' | 'reverted') {
+    await this.ready;
+    if (this.replacing) throw new RuntimeError('project_switching', '프로젝트를 전환 중입니다. 잠시 후 다시 시도해 주세요.');
+    try { await this.run(() => this.pm.resolveContextChange(changeSetId, me, outcome)); }
+    catch (error) {
+      if (error instanceof TaskResolutionError) throw new RuntimeError(error.code === 'not_found' ? 'change_not_found' : error.code, error.message, error.status);
+      throw error;
+    }
   }
   async message(authorId: string, text: string, attachments: Upload[] = []) {
     if (this.replacing) throw new RuntimeError('project_switching', '프로젝트를 전환 중입니다. 입력을 유지하고 잠시 후 다시 보내 주세요.');
@@ -546,6 +587,7 @@ export class WebRuntime {
     if (!this.options?.llm) await this.pmLlm?.close?.();
     await this.scenarioFlight?.catch(() => undefined);
     await this.intake;
+    this.integrations?.stop();
     await this.pm.stop(); this.store.close(); this.listeners.clear();
   }
 }

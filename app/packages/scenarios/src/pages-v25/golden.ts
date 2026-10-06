@@ -209,7 +209,13 @@ export function pagesV25Ledger(context: EventContext): { events: NewLedgerEvent[
     { kind: 'tool_handoffs', handoffIds: [X.handoffs.figma2, X.handoffs.prompt2, X.handoffs.dev2] });
   say(16);
   clock = '16:14';
-  for (const handoffId of [X.handoffs.figma2, X.handoffs.prompt2, X.handoffs.dev2]) emit('tool_progress_reported', { handoffId, status: 'done' }, tools);
+  // The simulated tools report every round the same way (apps/web/lib/fake-integrations.ts).
+  emit('tool_progress_reported', { handoffId: X.handoffs.figma2, status: 'in_progress' }, tools);
+  emit('tool_progress_reported', { handoffId: X.handoffs.prompt2, status: 'in_progress' }, tools);
+  emit('tool_progress_reported', { handoffId: X.handoffs.figma2, status: 'done', note: 'S1 · S2 변경 2건 → 개발 도구' }, tools);
+  emit('tool_progress_reported', { handoffId: X.handoffs.prompt2, status: 'done', note: '노래 템플릿 제외 → 개발 도구' }, tools);
+  emit('tool_progress_reported', { handoffId: X.handoffs.dev2, status: 'in_progress', note: '통합 빌드 중' }, tools);
+  emit('tool_progress_reported', { handoffId: X.handoffs.dev2, status: 'done', note: '통합 빌드 v1.1' }, tools);
   upsert(item(I.s1, 'screen', '[화면] home · 생성물', 'updated', 'pm', [m16], { key: 'S1', derivedFrom: [I.f1, I.f3] }), item(I.s2, 'screen', '[화면] 채팅 · feed', 'updated', 'pm', [m16], { key: 'S2', derivedFrom: [I.f1, I.f4, I.f5] }));
   emit('preview_rendered', { previewId: X.previews.build11, source: 'build', label: 'v1.1 빌드', refId: X.build11, spec: PREVIEW_V11 }, tools);
   emit('build_produced', { buildId: X.build11, version: '1.1', handoffIds: [X.handoffs.figma2, X.handoffs.prompt2, X.handoffs.dev2], previewId: X.previews.build11 }, tools);
