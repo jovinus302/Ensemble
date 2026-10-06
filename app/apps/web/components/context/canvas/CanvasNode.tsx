@@ -22,9 +22,8 @@ function ItemChip({ item, branch, compact }: { item: VmContextItem; branch?: VmC
   const chosen = branch?.options.find(o => o.chosen);
   return (
     <div className="cv-node" data-node={compact ? undefined : item.id} data-tone={item.tone} data-status={item.status}>
-      <span className="cv-dot" aria-hidden="true" />
       <span className="cv-node-label">
-        <span className="cv-node-kind">{item.key ?? item.layerLabel}</span>
+        <span className="cv-node-kind"><span className="cv-dot" aria-hidden="true" />{item.key ?? item.layerLabel}</span>
         <span className="cv-node-title">{item.title}</span>
       </span>
       {(tag || chosen) && <span className="cv-node-tags">
@@ -41,9 +40,8 @@ function BranchBox({ item, branch }: { item: VmContextItem; branch: VmContextBra
   return (
     <div className="cv-node cv-branch" data-node={item.id} data-tone="branch" data-status={item.status}>
       <div className="cv-branch-head">
-        <span className="cv-dot" aria-hidden="true" />
         <span className="cv-node-label">
-          <span className="cv-node-kind">{item.key ?? item.layerLabel}</span>
+          <span className="cv-node-kind"><span className="cv-dot" aria-hidden="true" />{item.key ?? item.layerLabel}</span>
           <span className="cv-node-title">{item.title}</span>
         </span>
         <span className="cv-tag" data-tone="branch">{item.statusLabel ?? "분기"}</span>
@@ -85,9 +83,8 @@ function ToolChip({ tool }: { tool: CanvasToolNode }) {
   const status = [tool.statusLabel, tool.resent ? "재전달" : undefined].filter(Boolean).join(" · ");
   return (
     <div className="cv-node cv-tool" data-node={tool.id} data-tone={tool.done ? "ok" : "info"}>
-      <span className="cv-dot" aria-hidden="true" />
       <span className="cv-node-label">
-        <span className="cv-node-kind">{tool.name}</span>
+        <span className="cv-node-kind"><span className="cv-dot" aria-hidden="true" />{tool.name}</span>
         {tool.title && <span className="cv-node-title">{tool.title}</span>}
       </span>
       {status && <span className="cv-node-tags"><span className="cv-tag" data-tone={tool.done ? "ok" : "info"}>{status}</span></span>}
