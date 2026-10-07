@@ -10,7 +10,7 @@
 |---|---|
 | preflight (읽기만) | `GET /v1/me` 성공(사용자 본인 계정). 파일 이름·`version`·`lastModified`(06:44:51Z) 조회, 첫 페이지 첫 FRAME `1:2` 발견, 기존 댓글 0개. 토큰 값은 출력되지 않음 |
 | post | `figma_inspected`(version·프레임 발견) 후 `POST /comments` 성공. Figma가 댓글 id `1955923874`를 반환해 `awaiting_reply`. 본문에 `[ensemble-req:figma-838d006a0bdf7ad4]` 태그 |
-| poll | 약 3시간 동안 반복했으나 새 답 0, 자기 댓글 건너뜀 0 → `awaiting_reply`. **답글 수신은 미관찰** |
+| poll | post 후 약 6시간 동안 반복했으나 새 답 0, 자기 댓글 건너뜀 0 → `awaiting_reply`. **답글 수신은 미관찰** |
 
 주의: 토큰이 사용자 본인 계정이라 PM 댓글과 이후 답글의 작성자가 같은 계정이 된다(아래 '같은 계정으로 시험할 때' 참고).
 
