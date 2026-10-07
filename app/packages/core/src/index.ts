@@ -13,3 +13,4 @@ export * from "./work.ts";
 export * from "./decision-requests.ts";
 export * from "./stuck.ts";
 export * from "./routing.ts";
+export * from "./external.ts";
