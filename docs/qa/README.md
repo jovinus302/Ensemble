@@ -1,18 +1,10 @@
 # 현재 QA 안내
 
-Node.js 24 이상에서 app/의 의존성을 설치한 뒤 실행한다.
+Node.js 24 이상에서 app/의 의존성을 설치한 뒤 npm test, npm run typecheck, npm run build를 실행한다. 기존 회귀 검사는 권한·중복 실행·종료·격리를 확인하며 실제 모델을 호출하지 않는다.
 
-```sh
-npm test
-npm run typecheck
-npm run build
-```
+## 대시보드 브라우저 확인
 
-[필수 회귀 검사](essential-regressions.md)는 기존 제품의 권한·중복 실행·종료·격리와 새 데모의 출처 연결·결정 반영을 확인한다. 실제 모델이나 외부 서비스는 호출하지 않는다. 타입 검사와 웹 빌드는 별도로 수행한다.
-
-## 브라우저 확인
-
-[브라우저 검사](../../app/demo/workspaces/qa/browser.cjs)는 실행 중인 서버와 기존 Playwright 설치를 사용한다. app/에서 서버를 실행하고 다른 터미널에서 다음을 실행한다.
+실행 중인 별도 테스트 서버와 Playwright 설치를 사용한다. 아래 검사는 상태 조회만 수행하며 실제 프로젝트를 시작하거나 승인하지 않는다.
 
 ```powershell
 $env:ENSEMBLE_PLAYWRIGHT_PATH = '<Playwright 모듈의 절대 경로>'
@@ -20,12 +12,10 @@ $env:ENSEMBLE_DEMO_URL = 'http://127.0.0.1:3000'
 node demo/workspaces/qa/browser.cjs
 ```
 
-기본 브라우저는 Edge이며 ENSEMBLE_BROWSER로 Playwright의 다른 설치된 채널을 지정할 수 있다. 개발·디자인 공유 순서, 미팅 선행, 중복 방지, 결정의 개별 반영, 원본 이동, 산출물 내용, 키보드·닫기·포커스 복귀, 보조 뷰 숨기기, 초기화·새로고침, 좁은 화면, 과거 URL 연결, 페이지 오류와 API·외부 요청 부재를 확인한다.
+기본 브라우저는 Edge다. 실제 상태 API와 표시 작업 수의 일치, /demo의 mock 쿼리 무시, 작업 공간 UI 부재, 모바일 넘침, 과거 URL, 서버 오류에서 가상 기록을 표시하지 않는지 확인한다. 오류 응답은 이 검사 탭에서만 가로챈다. 캡처는 저장소 .local/qa/dashboard/에 저장한다.
 
-스크린샷은 .local/qa/workspaces/에 저장하며 Git에 포함하지 않는다. 코드·디자인의 실제 동작이나 로그인 백엔드를 테스트하는 것이 아니라 데모의 사용자 동작과 표시 내용이 일치하는지 검사한다.
+## 실제 CLI feasibility
 
-## 제품 검증과의 구분
+[데모 실행 안내](../../app/demo/README.md)에 따라 별도 데이터·작업 폴더와 인증된 CLI를 사용한다. 작은 목표 하나를 입력하고 계획을 검토·승인한 뒤 실제 Agent의 결과와 산출물을 대시보드에서 확인한다. 실행 설정 표시는 성공 증거가 아니다. 실제 호출 결과·산출물·실패 원인을 기록하고 fake 테스트와 구분한다.
 
-검사 통과는 실제 PM Agent의 판단 품질이나 다양한 팀의 조율 부담 감소를 입증하지 않는다. 실사용 검증에서는 [intent.md](../../intent.md)의 판단 기준에 따라 재설명·수동 추적·누락·지연·불필요한 개입과 실제 후속 행동을 관찰한다.
-
-기존 / 앱의 확인은 PM과 Agent를 모두 fake로 설정하고 별도 ENSEMBLE_DATA_DIR을 사용한다([설치 안내](../../README.md)). live:pm은 실제 provider를 호출할 수 있는 제품 개발용 명령이며 기본 검사나 새 데모 실행에 포함하지 않는다.
+이 검증은 임의의 개인 CLI 세션 자동 수집, Figma·Slack·미팅 연결, 실제 인증 서비스 또는 PM Agent의 판단 품질·팀 생산성 개선을 입증하지 않는다. 각 후속 도구는 별도 이슈에서 검증한다.

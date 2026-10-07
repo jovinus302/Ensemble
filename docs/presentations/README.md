@@ -8,7 +8,7 @@
 2. PM Agent가 목표 아래 맥락을 이해하고 전달·조율·실행·후속 확인을 챙긴다.
 3. Context Aggregator, Goal/State Manager, Coordinator, Proactive PM, Action Agent, Organizational Memory의 여섯 역할이 이어진다.
 4. 개발뿐 아니라 출시·마케팅·리서치·채용·영업·컨설팅·행사·운영 협업에 적용한다.
-5. [로그인 개발·디자인 데모](../../app/demo/README.md)는 구체적인 한 사례다. 우측은 작업·결정·산출물·다음 행동을 확인하는 보조 뷰다.
+5. [CLI 연결 feasibility](../../app/demo/README.md)는 기존 실행 연결로 가능성을 확인하는 작은 사례다. 이번 화면은 작업·결정·산출물·다음 행동을 확인하는 대시보드다.
 
 ## 과거 발표 파일
 

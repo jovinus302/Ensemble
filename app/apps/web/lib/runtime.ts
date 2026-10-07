@@ -243,7 +243,7 @@ export class WebRuntime {
     });
     const goal = state.goal?.text?.replace(/^시연용 가상 자료입니다\.?\s*/, '') ?? '새 프로젝트';
     for (const task of view.roadmap.tasks) if (task.resolution && this.pendingResolutions.has(task.id)) task.resolution.actions = [];
-    return { ...view, project: { ...view.project, id: this.meta.projectId, title: shortTitle(goal.split(/[.!?。]/)[0]!), synthetic: this.meta.mode === 'scenario' }, activity };
+    return { ...view, connection: { pm: process.env.ENSEMBLE_PM_RUNTIME?.trim() || 'api', worker: process.env.ENSEMBLE_AGENT_RUNTIME || 'fake' }, project: { ...view.project, id: this.meta.projectId, title: shortTitle(goal.split(/[.!?。]/)[0]!), synthetic: this.meta.mode === 'scenario' }, activity };
   }
 
   async archives() {

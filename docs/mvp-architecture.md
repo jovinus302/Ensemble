@@ -12,10 +12,10 @@ PM Agent는 여러 사람과 Agent의 협업에서 맥락을 이해하고 다음
 
 | 경로 | 진입점 | 역할 |
 |---|---|---|
-| /demo | [WorkspaceDemo](../app/demo/workspaces/WorkspaceDemo.tsx) | 개발·디자인·Slack·미팅과 PM 연결을 보여주는 로컬 예시 |
+| /demo | [WorkspaceDemo](../app/demo/workspaces/WorkspaceDemo.tsx) | 기존 서버·원장·CLI의 작업·결정·산출물을 보여주는 대시보드 |
 | / | [App](../app/apps/web/components/App.tsx) | 기존 서버·원장 기반 관리 앱 |
 
-새 데모는 [context](../app/demo/workspaces/context.ts)의 독립적인 출처 연결과 결정 반영을 사용한다. 제품 서버 API·PM provider·worker·SQLite를 호출하지 않는다. 실제 외부 도구 연동은 별도 구현 대상이다. 이전 시연 엔진·관찰 실행기는 제거했다.
+대시보드는 기존 useViewModel의 상태 API와 이벤트 구독을 사용한다. 목표 입력·후속 요청·결정 승인은 기존 API로 전달하며 PM provider·worker·원장을 재사용한다. /demo에서는 mock 쿼리를 무시하고 fake 설정이나 시나리오 기록은 명시한다. 디자인·Slack·미팅은 별도 feasibility 이슈로 관리한다. 이전 시연 엔진·관찰 실행기는 제거했다.
 
 제품 패키지 core, store, llm, agents, orchestrator, channel, scenarios는 기존 앱의 내부 기능으로 유지한다. 아래 내용은 그 구현 계약이며 각 도구에 PM Agent가 이미 연동되었다는 주장이 아니다. 검사와 실행은 [README](../README.md)와 [QA 안내](qa/README.md)를 따른다.
 

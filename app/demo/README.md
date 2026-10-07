@@ -1,34 +1,37 @@
-# 기존 작업 환경에 붙는 PM Agent 데모
+# PM Agent 대시보드 · CLI feasibility
 
-이 데모는 [제품 의도](../../intent.md)의 로그인 개발·디자인 협업을 보여준다. 개발·디자인·Slack·미팅이 주 작업 공간이며 각 공간에 PM Agent가 함께한다. 우측은 연결된 프로젝트 맥락을 확인하는 보조 뷰다.
+/demo는 기존 서버의 목표·작업·담당·결정·산출물을 읽는 보조 뷰다. 각자의 에디터, 디자인 도구, Slack, 미팅을 한 화면에 재현하지 않는다. 처음부터 완성형 연동을 만드는 대신 기존 CLI 경로가 목표 → 계획 → 승인 → 실행 → 결과 확인으로 이어지는지 검증한다.
 
 ## 실행
 
-Node.js 24 이상에서:
+Node.js 24 이상에서 app/으로 이동해 npm ci를 실행한다. Codex CLI 설치·로그인 후 PowerShell에서 아래 설정으로 실행한다. 작업 폴더는 저장소 밖의 사용자가 지정한 경로를 사용한다.
 
-```sh
-cd app
-npm ci
+```powershell
+$env:ENSEMBLE_PM_RUNTIME = 'codex'
+$env:ENSEMBLE_AGENT_RUNTIME = 'codex'
+$env:ENSEMBLE_AGENT_WORKSPACE_ROOT = '<저장소 밖의 작업 폴더 절대 경로>'
+$env:ENSEMBLE_DATA_DIR = '<시연 데이터 폴더 절대 경로>'
 npm run dev
 ```
 
-/demo를 연다. 데모 자체는 API 키, 모델 로그인, 별도 실행 설정이 필요 없다. 실제 / 앱의 설정은 [README](../../README.md)를 따른다.
+/demo에서 목표를 입력하고 PM Agent의 결정 요청을 확인한다. 승인된 작업은 기존 connector로 실행되며 상태와 산출물이 갱신된다. 이미 프로젝트가 있다면 입력은 후속 요청으로 전달되며 프로젝트를 자동 교체하지 않는다. 사람 권한과 실행 중복 방지는 기존 API가 담당한다.
 
-## 확인할 흐름
+## 관찰과 한계
 
-1. 개발 공간에서 개발자 Agent의 로그인 코드·작업 결과를 확인하고 프로젝트에 연결한다.
-2. 디자인 공간에서 디자이너 Agent의 로그인 화면·오류 상태를 확인하고 연결한다. 두 공간의 순서는 바꿀 수 있다.
-3. Slack의 이메일 로그인 범위 합의를 연결한다.
-4. 미팅의 입력 유지·공통 오류 문구 결정을 연결한다. PM Agent는 개발과 디자인에 각각 반영이 필요함을 알린다.
-5. 각 작업 공간에서 결정을 반영한 예시를 확인한다. 우측에서 각 산출물의 버전, 결정의 출처와 남은 반영을 확인한다.
-6. 산출물을 열거나 출처로 돌아간다. 우측을 숨겨도 작업은 계속된다. 처음부터 또는 새로고침으로 초기화한다.
+화면의 실행 설정은 연결 성공 보장이 아니다. 실제 CLI 성공은 작업 결과와 산출물로 확인한다. 기본 worker는 fake이고 PM Agent는 api이므로 실제 CLI 시연은 명시적으로 설정해야 한다. fake 또는 기존 시나리오 기록은 화면에서 구분하며 ?mock=1로 대시보드 데이터를 대체하지 않는다. 서버 오류와 연결 끊김도 표시한다.
 
-미팅부터 연결해도 동작한다. 결과를 연결하지 않은 공간은 후속 반영을 완료할 수 없고, 같은 결과를 두 번 연결해도 중복 항목이 생기지 않는다.
+현재 연결은 Ensemble 런타임이 관리하는 CLI 세션이다. 사용자가 다른 곳에서 실행 중인 임의의 CLI 세션을 자동 수집하는 기능은 아니다. 모델 판단 품질·운영 안정성·조율 시간 절감은 이 feasibility만으로 입증되지 않는다. 산출물 제출과 검토 완료도 구분한다.
 
-## 구현 범위
+## 다음 도구별 검증
 
-[WorkspaceDemo.tsx](workspaces/WorkspaceDemo.tsx)가 화면, [context.ts](workspaces/context.ts)가 출처·결정·반영 관계를 관리한다. 사용자 동작에 따른 로컬 예시이며 실제 도구, Agent, 코드 테스트, 저장소 변경이나 배포를 수행하지 않는다. 산출물의 코드와 화면은 예시로 표시한다. 외부 요청과 대본 자동 재생 없이 작동한다.
+- [Figma · 파일 댓글과 변경 맥락](https://github.com/jovinus302/Ensemble/issues/78)
+- [Slack App · 멘션과 스레드 답변](https://github.com/jovinus302/Ensemble/issues/79)
+- [Google Meet 후보 · 종료 후 회의 기록](https://github.com/jovinus302/Ensemble/issues/80)
 
-기존 세 데모와 데모 관찰 실행기는 교체했다. 과거 /demo/pm-coordination, /demo/marketing-campaign, /demo/design-to-code, /s27, /handoff는 /demo로 연결된다. 실제 제품 패키지는 별도로 유지한다.
+각 이슈에서 먼저 대상 도구, PM Agent가 붙는 위치, 입력과 응답 경로를 검증한다. 미구현 도구의 가상 기록을 대시보드에 채우지 않는다. 제품 방향은 [intent.md](../../intent.md), 검사 방법은 [QA 안내](../../docs/qa/README.md)를 따른다.
 
-[상태 검사](../test/essential-workspaces.test.ts)와 [브라우저 검사](workspaces/qa/browser.cjs)의 범위는 [QA 안내](../../docs/qa/README.md)를 따른다.
+CLI 현재 방식과 발전 방식은 [#81](https://github.com/jovinus302/Ensemble/issues/81)에서 관리한다. 현재 managed 세션과 기존 개인 CLI 환경에 MCP 접점을 붙이는 가설을 구분한다.
+
+### 이번 실행에서 확인한 한계
+
+기존 계획 생성은 조사·인터뷰·흐름·프로토타입 역할 템플릿을 사용한다. 단일 작업 요청에도 선행 단계가 남을 수 있다. 현재 관찰한 성공은 실제 Codex worker의 파일 제출과 대시보드 반영이며, 전체 로그인 서비스 완료는 아니다. 고정 템플릿과 개인 CLI 접점의 발전 방향은 #81에서 추적한다.
