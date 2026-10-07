@@ -95,6 +95,7 @@ npm run start -w @ensemble/web
 | app/packages/orchestrator | 기존 PM 계획·조율·검토·인계 |
 | app/packages/agents, llm | 실제 제품의 모델·Agent 연결 |
 | app/packages/channel, scenarios | 기존 앱 채널 계약과 개발용 입력 fixture |
+| app/packages/meeting | 미팅 참여·주선 feasibility(#80) adapter와 Space 기록. 외부 왕복 미검증, [실험 기록](docs/feasibility/meeting-google-meet.md) |
 | app/test | 외부 provider 없는 회귀 검사 |
 | docs | 방향·구현·QA 안내 |
 | motion-remotion, docs/presentations | 과거 영상·발표 자료. 현재 제품 정의는 intent.md |
