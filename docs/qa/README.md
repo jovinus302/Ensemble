@@ -1,31 +1,21 @@
 # 현재 QA 안내
 
-`app/`에서 Node.js 24 이상과 설치된 의존성을 사용한다.
+Node.js 24 이상에서 app/의 의존성을 설치한 뒤 npm test, npm run typecheck, npm run build를 실행한다. 기존 회귀 검사는 권한·중복 실행·종료·격리를 확인하며 실제 모델을 호출하지 않는다.
 
-```sh
-npm test
-npm run typecheck
-npm run build
-```
+## 대시보드 브라우저 확인
 
-현재 자동 검사는 [18개 핵심 회귀 검사](essential-regressions.md)다. 실제 모델·provider 로그인·외부 서비스를 사용하지 않는다. 타입 검사와 웹 빌드는 별도로 실행한다. 자동 검사 통과는 실제 모델 판단 품질이나 팀의 조율 시간 감소를 증명하지 않는다.
-
-## 브라우저 확인
-
-[디자인→개발 협업 브라우저 검사](../../app/demo/scripted/design-to-code/qa/browser.cjs)는 `npm test`와 별개다. 기존 Playwright 설치와 실행 중인 로컬 서버를 사용한다.
-
-`app/` 기준 PowerShell 예시:
+실행 중인 별도 테스트 서버와 Playwright 설치를 사용한다. 아래 검사는 상태 조회만 수행하며 실제 프로젝트를 시작하거나 승인하지 않는다.
 
 ```powershell
-$env:ENSEMBLE_PLAYWRIGHT_PATH = '<기존 Playwright 모듈 경로>'
+$env:ENSEMBLE_PLAYWRIGHT_PATH = '<Playwright 모듈의 절대 경로>'
 $env:ENSEMBLE_DEMO_URL = 'http://127.0.0.1:3000'
-node demo/scripted/design-to-code/qa/browser.cjs
+node demo/workspaces/qa/browser.cjs
 ```
 
-두 사람의 동의, 초안 공유, QA 보완, 사람 검토, 중복·오래된 입력, 중단·기록 이동, 좁은 화면과 이미지 실패 대체 표시를 확인한다. 출력은 저장소의 무시된 `.local/qa/handoff/`에 쓴다. 실제 provider나 제품 인증을 검증하지 않는다.
+기본 브라우저는 Edge다. 실제 상태 API와 표시 작업 수의 일치, /demo의 mock 쿼리 무시, 작업 공간 UI 부재, 모바일 넘침, 과거 URL, 서버 오류에서 가상 기록을 표시하지 않는지 확인한다. 오류 응답은 이 검사 탭에서만 가로챈다. 캡처는 저장소 .local/qa/dashboard/에 저장한다.
 
-실제 앱 `/`의 브라우저 확인은 PM·Agent를 모두 fake로 설정하고 `ENSEMBLE_DATA_DIR`을 별도 로컬 경로로 지정한다([런타임 안내](../../app/demo/runtime/README.md)). provider를 호출하는 `demo:full`과 `live:pm`은 기본 검사에 포함하지 않는다.
+## 실제 CLI feasibility
 
-## 결과 관리
+[데모 실행 안내](../../app/demo/README.md)에 따라 별도 데이터·작업 폴더와 인증된 CLI를 사용한다. 작은 목표 하나를 입력하고 계획을 검토·승인한 뒤 실제 Agent의 결과와 산출물을 대시보드에서 확인한다. 실행 설정 표시는 성공 증거가 아니다. 실제 호출 결과·산출물·실패 원인을 기록하고 fake 테스트와 구분한다.
 
-날짜별 과거 QA 보고서·스크린샷·벤치마크 증거와 제거된 실행기 안내는 현재 트리에 보관하지 않는다. 새 실행 결과는 무시된 `.local/` 아래에 두고, 변경 설명에는 실행한 검사·환경·결과·제한을 적는다. 검증하지 않은 경로를 통과로 기록하지 않는다.
+이 검증은 임의의 개인 CLI 세션 자동 수집, Figma·Slack·미팅 연결, 실제 인증 서비스 또는 PM Agent의 판단 품질·팀 생산성 개선을 입증하지 않는다. 각 후속 도구는 별도 이슈에서 검증한다.

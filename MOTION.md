@@ -424,7 +424,7 @@ ffprobe -v error -show_entries stream=codec_name,width,height,r_frame_rate,durat
 **Phase 2 — Storyboard** (`storyboard.md`)
 - §10 형식으로 모든 장면의 프레임 범위, 원문 텍스트, 모션 토큰, 상태 이름, 대표 프레임을 적는다.
 - 읽기 시간 규칙(Typography)과 5초 훅 규칙을 스스로 계산해 표에 반영한다.
-- **게이트**: 사용자(또는 PM 에이전트)가 storyboard를 승인해야 한다.
+- **게이트**: 사용자(또는 PM Agent)가 storyboard를 승인해야 한다.
 
 **Phase 3 — Style frames**
 - 애니메이션 없이 장면별 대표 프레임 1장씩을 정적으로 구현하고 `npx remotion still`로 렌더한다.
@@ -516,34 +516,15 @@ review/stills의 S03 프레임 4장을 열어 봐라. 이번 라운드는 '텍�
 | 수정할수록 다른 곳이 망가짐 | 한 라운드에 여러 결함을 수정, 범위 밖 파일 편집 | 라운드당 한 종류만 수정, diff 확인, 장면 파일 격리 |
 | 사실 오류 | 모델이 숫자, 이름을 채워 넣음 | brief 원문만 사용하고 최종 대조 단계를 둔다 |
 
-## 15. Ensemble 적용 예시 (확장 섹션)
+## 15. Ensemble 적용 기준
 
-> Ensemble(PM 에이전트가 사람·에이전트와 한 흐름에서 협업하는 Slack형 워크스페이스)의 제품 모션과 프로모 영상에 이 가이드를 적용한 예시다. 제품 구현(Motion/CSS)과 영상(Remotion)이 **같은 토큰**을 공유한다.
->
-> **주의**: 아래 표의 duration/easing/spring 이름(`sm`, `enter`, `spring-pop` 등)은 이 문서(§9) 기준이며, 실제 제품 UI 구현은 DESIGN.md "Ensemble 모션 순간" 표의 M3 spring 토큰(`fast-spatial`, `default-spatial` 등)을 따른다. 두 토큰 세트는 값이 다르다 — **DESIGN.md 토큰은 제품 UI를, 이 문서(MOTION.md)의 토큰은 영상 렌더를 지배한다.** 같은 인터랙션이라도 제품에서 구현할 때는 DESIGN.md 쪽 이름으로 옮겨 쓴다.
+제품 방향은 [intent.md](intent.md), 화면 역할은 [DESIGN.md](DESIGN.md)를 따른다. PM Agent는 다양한 협업의 맥락과 다음 행동을 조율한다. 특정 개발 업무나 중앙 메신저를 제품의 전체로 표현하지 않는다.
 
-| 인터랙션 | 모션 정의 |
-|---|---|
-| **메시지 도착** | 버블: translateY 16→0 + opacity 0→1, `sm`(240ms) `enter`. 기존 메시지 목록은 새 버블 높이만큼 `md` `standard`로 밀려 올라간다(FLIP). 연속 메시지는 `stagger-item`. |
-| **에이전트 타이핑 중** | 점 3개(8px, 해당 역할 색): opacity 0.3↔1 + translateY 0↔-3px, 주기 1200ms 사인 루프, 점 사이 위상차 150ms. 표시와 제거는 `xs` fade. 3초 넘게 이어지면 "생각 중…" 텍스트 칩으로 바꾼다. |
-| **PM 에이전트 → 에이전트 핸드오프** | ① PM 메시지 안의 작업 카드가 scale 1→1.02(`instant`)로 강조됨 → ② 카드의 축소본(토큰)이 PM 아바타에서 담당 에이전트 아바타로 **곡선 경로**로 이동, `lg` `inout` → ③ 도착 시 받는 아바타 링이 역할 색으로 펄스(scale 1→1.12→1, `spring-pop`, 1회) → ④ agent-chip 상태가 "assigned"로 색 전환(`xs`). 전체 약 1.1s. |
-| **사람 멘션 / 승인 요청** | 대상 사람의 아바타 링이 `human` 색으로 켜짐(`sm`), 승인 버튼만 accent. 반복 펄스는 최대 2회 후 정지. |
-| **작업 완료** | 체크 아이콘 stroke draw `xs`, 카드 배경 surface→success 10% 틴트 `md`, 이후 hold. 컨페티 금지. |
-| **스레드 열기** | 패널이 우측에서 32px 이동 + fade, `md` `enter`. 본문은 `stagger-item`으로 3개까지만 순차 표시하고 나머지는 동시에 표시. |
+### 대시보드에서 전달할 의미
 
-**30초 프로모 영상 storyboard 초안 (900f @30fps)**
+이번 데모는 작업 공간 재현이나 작업 간 이동 연출 없이 대시보드만 보여준다. 담당·결정·출처·산출물·다음 행동의 관계를 읽을 수 있게 한다. 전달·반영·검토 완료를 구분하며 입력·결정 승인·근거 펼치기·산출물 링크는 키보드로 조작할 수 있어야 한다. 장면 재생이나 타이머는 사용하지 않는다.
 
-| ID | 프레임 | 내용 | 모션 |
-|---|---|---|---|
-| S01 Hook | 0–45 | 흩어진 알림들이 화면 곳곳에서 쏟아짐 → 하나의 채널로 빨려 들어감 | `stagger-item` 진입, `xl` `inout` 수렴 |
-| S02 Problem | 45–165 | "대화는 여기, 일은 저기" 헤드라인 | `WordReveal` `stagger-word`, `expressive` |
-| S03 PM 등장 | 165–345 | 사람이 요청 → PM 에이전트 타이핑 → 작업 분해 메시지 | 메시지 도착, 타이핑 인디케이터 |
-| S04 Handoff | 345–555 | PM이 dev/research 에이전트에게 작업 카드 핸드오프, 병렬 진행 | 핸드오프 시퀀스 ×2(`stagger-group` 간격) |
-| S05 Human-in-the-loop | 555–705 | 승인 요청 → 사람이 승인 → 완료 체크 | 멘션, 완료 모션 |
-| S06 Payoff | 705–810 | 한 흐름에 정리된 스레드 전체가 줌아웃(1.08→1.0) | `xl` `inout` 카메라 |
-| S07 CTA | 810–900 | 로고 + "Ensemble — 한 흐름에서 함께 일하는 팀" | `spring-heavy` 로고, 2초 이상 hold |
-
-(모든 화면 문구와 UI 텍스트는 확정 전까지 플레이스홀더이며, 실제 카피가 정해지면 brief.md 원문으로 교체한다.)
+과거 영상의 대본·스타일 프레임·렌더는 [Remotion 안내](motion-remotion/README.md)의 역사 자료다. 해당 파일이 새 메시지로 재제작되었다고 표시하지 않는다.
 
 ## 16. Appendix — References
 

@@ -1,29 +1,7 @@
-# Essential regressions only
+# 필수 회귀 검사
 
-Run `npm test` from `app/` on Node 24+. The command uses Node's built-in test runner with a 10-second timeout and the existing `tsx` dependency. No test framework, browser driver, snapshots, paid model, provider login, or benchmark runner is added. Run `npm run typecheck` and `npm run build` separately; the test files are included in type checking.
+app/에서 npm test를 실행한다. 기존 essential-runtime.test.ts의 6개 검사는 사람의 결정 권한, 반복 승인·실행의 중복 방지, 담당자와 수정 메모 보존, 종료 후 늦은 결과 차단, 프로젝트 격리를 확인한다. 모델 호출은 없다.
 
-Inventory checked on **2026-10-05, main `605521b`**: **18 scenarios in four files**. Keep this a risk-based list; do not grow it into a helper-by-helper or visual snapshot suite.
+/demo는 기존 서버 상태와 실행 API를 재사용한다. 이전 브라우저 내 공유·반영 reducer와 관련 검사는 제거했다. browser.cjs는 서버 상태 표시, mock 비활성화, 오류 처리, 작업 공간 UI 부재, 반응형 배치와 URL 호환을 확인한다. 실제 CLI 동작은 별도 실행 관찰로 확인한다.
 
-| File | Cases | Scope |
-|---|---|---|
-| [essential-runtime.test.ts](../../app/test/essential-runtime.test.ts) | 6 | Real runtime entrypoints and in-memory ledger; fake external connector |
-| [essential-pm-coordination.test.ts](../../app/test/essential-pm-coordination.test.ts) | 2 | Fixed demo discussion, scope/schedule gates and limited revisions |
-| [essential-marketing-campaign.test.ts](../../app/test/essential-marketing-campaign.test.ts) | 6 | Scenario references, five-stage story, copy density, navigation, selection and upstream trace |
-| [essential-design-to-code.test.ts](../../app/test/essential-design-to-code.test.ts) | 4 | Two-person consent, sharing, QA repair, human review, stale results and interrupted callbacks |
-
-| Scenario | Why it is essential |
-|---|---|
-| Required human decision remains paused; wrong person is refused; rejection does not hand off | An agent must not proceed without the responsible person's judgment. |
-| Concurrent repeated approval applies acceptance and starts a dependent agent once | Retried requests must not duplicate work. |
-| Retry respects authority, original assignee, state and the human's revision note | Recovery must not assign work to the wrong person or lose the requested scope. |
-| Duplicate execution cannot create a second active turn | Double submission must not start two executions. |
-| Runtime stop detaches late transport results | A stopped runtime must not accept a late completion. |
-| Identical task/decision IDs in shared storage remain project-local | One project's decisions must not affect another project. |
-| Scripted demo compares examples before human judgment and coordinates scope/schedule before execution | Preference, conditional requests and deferred timing must not silently authorize work. |
-| Scripted demo handoff, scoped revision and interrupted callback handling | Replay/reset must not let old timers finish a new presentation or widen the fixed change request. |
-
-`app/test/essential-runtime.test.ts` exercises real `ProjectManager` decision/recovery entrypoints and `SessionRunner`, backed by the real in-memory ledger/projection. Only the external connector is a tiny in-process fake; the model provider throws if called. Requests and the initial plan are seeded, so this does not validate model reasoning or question generation. Shutdown coverage concerns late transport events after stopping, not cancellation of an already-running validator.
-
-`app/test/essential-pm-coordination.test.ts` exercises the scripted reducer only. The S27 tests check data references, bounded/cumulative reveals, version selection and provenance traversal. The handoff tests check that both humans agree, private drafts stay private until shared, shared outputs unlock dependent work, failed QA requests scoped repair, and human approval gates handoff. They also cover duplicate/stale actions and cancel/reset/history invalidation.
-
-These tests do not prove real model reasoning, generated artifacts, rendered browser layout, external integrations or measured product quality. The previous broad suites and standalone benchmark runner remain removed. See the [QA guide](README.md) for the current optional browser check and local output location.
+실행 방법과 한계는 [QA 안내](README.md)를 따른다.

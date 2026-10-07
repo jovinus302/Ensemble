@@ -1,5 +1,8 @@
 # log-v4-sf.md — v4 style frames, round 1
 
+> **과거 영상 자료 · 2026-10-07 정리:** 이 문서는 이전 영상의 제작·검토 기록이다. 현재 제품은 여러 사람과 Agent의 맥락을 목표 아래 연결하고 다음 행동을 조율하는 PM Agent이며 [제품 의도](../../intent.md)가 기준이다. 아래 대본·표현·화면은 새 메시지로 재제작된 결과가 아니다.
+
+
 2026-09-28. Built against `review/design-v4.md` r1 (the review of record).
 Stills: `review/v4/SF1a.png`, `SF1b.png`, `SF2.png`, `SF3.png`; projection
 debug: `SF3-debug.png` (lifted), `SF3-debug-rise0.png` (resting), `SF2-debug.png`.
@@ -87,7 +90,7 @@ Feature zoom s = 1.45 everywhere — the smallest that keeps board body text
   which pushes the near edge (and its side face / shadow) off-frame at −40°.
 - SF3 marks C1.1 and C2.1 "검증됨" (v3 SF3 showed them "미검증" while the panel
   reads 3/5 with three approved evidence items).
-- "AI PM이" / "PM이" accent includes the particle (KineticHeadline accents whole words).
+- "PM Agent이" / "PM이" accent includes the particle (KineticHeadline accents whole words).
 
 ## Round 2 — SF1b framing: chips/badges cut by the frame edge (one defect type)
 
@@ -145,7 +148,7 @@ tall. Anchor error 0.01px (SF3 lifted, SF3 rise 0, SF2). Held poses: SF1a
 ## Round 4 — opening transition clip (design-v4 §5), after still approval
 
 Built `OpeningV4` (`src/v4/OpeningV4.tsx`, timeline/poses in `src/v4/opening.ts`,
-264f): ① and ② type-led on an empty stage → word swap "사람이" → "AI PM이" →
+264f): ① and ② type-led on an empty stage → word swap "사람이" → "PM Agent이" →
 ③ recedes while the board enters at (0,−40,0) → hold (SF1a, f157–165) →
 30f rotation + push-in (f165–195, ease 0.45,0,0.12,1) → ③ re-set above the
 landed board (SF1b, f195–264). `StageV4` gained an optional `boardOpacity`
@@ -179,10 +182,10 @@ SF1a/SF1b/SF2/SF3 re-renders SHA256-identical to the committed PNGs.
 
 ## Round 5 — opening breathing room (timing only, one defect type)
 
-User on `opening-v4.mp4`: "AI PM이 챙긴다로 넘어갈때 너무 쉴틈이 없음". The swap
+User on `opening-v4.mp4`: "PM Agent이 챙긴다로 넘어갈때 너무 쉴틈이 없음". The swap
 followed ②'s reveal directly, and ③ held centered only ~0.5s before receding.
 Fix (`opening.ts`; `OpeningV4.tsx` passes the top-band stagger):
-- ② is set at f100 and holds still 15f; the swap starts at f115, and "AI PM이" is set at f151.
+- ② is set at f100 and holds still 15f; the swap starts at f115, and "PM Agent이" is set at f151.
 - ③ holds centered and fully still for 60f (f151–211). There is no board and no camera move.
 - Recede f211–223; board enters f217–229; SF1a hold f229–237 (pin f233); rotation f237–267.
 - The top-band ③ enters at f261 with a 4f stagger and is fully set at f317 (pin); landed hold f267–320 (53f).
@@ -229,24 +232,24 @@ Checks:
 
 ## Round 7 (design-v4 r3 B) — the PM visibly takes over at landing (one defect type)
 
-User: "AI PM이 챙긴다는데 정작 챙기는 화면은 안보임". Chosen option: "착지 즉시 PM이 답한다".
+User: "PM Agent이 챙긴다는데 정작 챙기는 화면은 안보임". Chosen option: "착지 즉시 PM Agent가 답한다".
 
 What changed:
-- `ui/contentV4.ts` (v3 `content.ts` untouched) adds M1b, the AI PM's reply under 김도윤's goal M1:
+- `ui/contentV4.ts` (v3 `content.ts` untouched) adds M1b, the PM Agent's reply under 김도윤's goal M1:
   **"담당과 순서는 제가 정리할게요. 계획을 곧 올립니다."**
   - It follows the PM voice order (누가 · 무엇을 · 언제) with no hype.
   - It promises the plan rather than saying work has started, because beat ② then shows that plan still at "승인 필요".
   - The example line suggested in the brief ("…조사 Agent가 경쟁사 조사부터 시작합니다") would contradict ②, so it was not used.
 - M1b sits at contentY 101–172. M2…M15 move down by 42 logical.
 - `TimelineV4` draws M1b from a `pmReply` progress (opacity plus a 12-logical rise) rather than the v3 frame clock.
-- `BoardV4` gains `pmActivation`: the AI PM row reads "대기" until the PM acts, then POPs to "지휘 중" (chip overshoot plus one harmony ring off the avatar). It uses the existing EmbossChip and avatar styling.
+- `BoardV4` gains `pmActivation`: the PM Agent row reads "대기" until the PM acts, then POPs to "지휘 중" (chip overshoot plus one harmony ring off the avatar). It uses the existing EmbossChip and avatar styling.
 - Opening (`opening.ts`): M1b rises f300–312 and the POP runs f300–318, both after ③ reads in the band (it is fully set at f317).
   - M1b has 7 words, so it needs ≥ 85f of reading; it holds to f388.
   - The opening is now 388f, and the total is **1834f (61.1s)**. Beats ①–⑥ and the closing are not shortened; they shift by +68f.
 - Knock-on of the 42 shift:
   - SF3 scroll 1650 → 1692, the same rows on screen. The SF3 PNGs are byte-identical to round 6.
   - SF2 keeps scroll 40 but its board top moves 200 → 176, so M1, M1b and the plan card all fit. The hero card bottom is at y 1041 and the headline still ends at y 151.
-- New SF1b = OpeningV4 f330 state (reply shown, "지휘 중" settled, ③ settled). SF1a now shows "대기" on the AI PM chip.
+- New SF1b = OpeningV4 f330 state (reply shown, "지휘 중" settled, ③ settled). SF1a now shows "대기" on the PM Agent chip.
 
 Stills: `review/v4/SF1b.png` (new), `SF2.png` / `SF2-debug.png` (recomposed), `SF1a.png` (chip only), `opening-f306.png` (mid-appearance), `opening-f330.png` (SF1b pin).
 
@@ -279,8 +282,8 @@ The same person drew differently per component:
 
 | Member | Where | v3 look |
 |---|---|---|
-| AI PM | team list | "A" |
-| AI PM | messages | "P" |
+| PM Agent | team list | "A" |
+| PM Agent | messages | "P" |
 | Agents | messages | "A" |
 | 경쟁사 조사 Agent | plan card / handoff | "조" |
 | 경쟁사 조사 Agent | team list | "경" |
@@ -290,7 +293,7 @@ The same person drew differently per component:
 | 이서연 | team list | 김도윤's color, "이" |
 
 Fix: new `ui/membersV4.tsx` (`MEMBERS`, `memberOf`, `MemberAvatar`). It is now the only avatar path in `BoardV4` and `MessageRendererV4`.
-- AI PM and the agents keep the team-list letters: AI PM "A" (pm shape + harmony ring), 경 (#5B84EC), 프 (#E5764F).
+- PM Agent and the agents keep the team-list letters: PM Agent "A" (pm shape + harmony ring), 경 (#5B84EC), 프 (#E5764F).
 - The two people use content.ts's own initials 도 (#CDBBA5) / 서 (#B9C7BE), as storyboard-v3 §3 specifies, instead of the list's surname letters.
 - Shape by kind: circle for people, rounded square for agents, ring for the PM.
 
@@ -311,7 +314,7 @@ Audit of every v4 still and storyboard beat, checking the team list, plan card, 
 
 Fix: `src/v4/stateV4.ts` is now one product-state timeline. Each stage sets the team chips, panel progress, verified/reported ids, D1, evidence rows and approved cards:
 
-| Stage | AI PM | 김도윤 | 이서연 | 조사 Agent | 프로토타입 Agent | Panel |
+| Stage | PM Agent | 김도윤 | 이서연 | 조사 Agent | 프로토타입 Agent | Panel |
 |---|---|---|---|---|---|---|
 | pre | 대기 | 대기 | 대기 | 대기 | 대기 | 0/5 |
 | replied | 지휘 중 | 대기 | 대기 | 대기 | 대기 | 0/5 |
@@ -328,7 +331,7 @@ Fix: `src/v4/stateV4.ts` is now one product-state timeline. Each stage sets the 
 - Stills map to stages: SF1a = pre, SF1b = replied, SF2 = replied (plan proposed, not approved), SF3 = verified.
 
 Result (re-rendered all stills, opening frames and the clip):
-- SF1a/SF1b/SF2 panels now show only the goal, 0/5 and five 미검증 rows. SF1b/SF2 team lists read AI PM 지휘 중 and everyone else 대기. SF3's M14 is approved; its visible part is only its title row.
+- SF1a/SF1b/SF2 panels now show only the goal, 0/5 and five 미검증 rows. SF1b/SF2 team lists read PM Agent 지휘 중 and everyone else 대기. SF3's M14 is approved; its visible part is only its title row.
 - Smallest text: 18.4 / 18.6 / 18.8. Anchor error 0.01px.
 - Pins: f330 vs `SF1b.png` 0.01% of pixels > 24; f233 vs `SF1a.png` 0.001%.
 

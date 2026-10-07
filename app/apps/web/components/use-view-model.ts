@@ -106,9 +106,9 @@ function readStoredMe(): string {
   try { return (typeof window !== "undefined" && window.localStorage.getItem(ME_KEY)) || "owner"; } catch { return "owner"; }
 }
 
-export function useViewModel(): UseViewModelResult {
+export function useViewModel(options: { allowMock?: boolean } = {}): UseViewModelResult {
   const [me, setMe] = useState(readStoredMe);
-  const [mock] = useState(readMockFlag);
+  const [mock] = useState(() => options.allowMock !== false && readMockFlag());
   const [mockState, setMockState] = useState<MockState>({ decided: [], comments: {} });
   const [vm, setVm] = useState<ViewModel | null>(null);
   const [error, setError] = useState<string | null>(null);

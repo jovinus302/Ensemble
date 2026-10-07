@@ -142,6 +142,7 @@ export interface VmActivity {
 }
 
 export interface ViewModel {
+  connection?: { pm: string; worker: string };
   mode: "scenario" | "free";
   /** title: 상단에 보일 짧은 제목(서버가 주면 그 값), synthetic: 시연용 가상 자료 여부(작은 배지). */
   project: { id?: string; goal?: string; deadline?: string; title?: string; synthetic?: boolean };

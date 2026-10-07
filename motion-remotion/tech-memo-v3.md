@@ -1,5 +1,8 @@
 # tech-memo-v3.md
 
+> **과거 영상 자료 · 2026-10-07 정리:** 이 문서는 이전 영상의 제작·검토 기록이다. 현재 제품은 여러 사람과 Agent의 맥락을 목표 아래 연결하고 다음 행동을 조율하는 PM Agent이며 [제품 의도](../intent.md)가 기준이다. 아래 대본·표현·화면은 새 메시지로 재제작된 결과가 아니다.
+
+
 출처: review/spec-v3-architect.md §6 (architect 원문 그대로, verbatim).
 
 ## 6. 기술 메모
@@ -37,4 +40,3 @@
 - 금지: SVG feGaussianBlur·feTurbulence·inner-shadow 필터. inner-shadow는 inset box-shadow로 대체한다.
 - 렌더 시간: **미검증**. 추정치는 1080p에서 프레임당 0.3–1.0s, 전체 1710f에 10–30분이다.
 - 벤치마크 절차: ⑤ 비트 f1250–1310 60프레임을 기본 설정과 `--gl=angle`로 각각 렌더해 비교한다. 목표는 ≤1.0 s/f다. 넘으면 blur를 베일로 바꾸고, 배경을 정적 PNG 한 장으로 미리 렌더한다.
-

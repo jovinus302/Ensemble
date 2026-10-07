@@ -1,5 +1,4 @@
-import { permanentRedirect } from 'next/navigation';
+import { WorkspaceDemo } from '../../../../demo/workspaces/WorkspaceDemo';
 
-export default function Page() {
-  permanentRedirect('/demo/pm-coordination');
-}
+export const metadata = { title: '각자의 작업을 잇는 PM Agent · Ensemble' };
+export default function Page() { return <WorkspaceDemo />; }

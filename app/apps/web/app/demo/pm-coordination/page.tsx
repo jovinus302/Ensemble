@@ -1,5 +1,3 @@
-import { PmCoordinationDemo } from '../../../../../demo/scripted/pm-coordination/PmCoordinationDemo';
+import { permanentRedirect } from 'next/navigation';
 
-export const metadata = { title: 'PM 조율 데모 · Ensemble' };
-
-export default function Page() { return <PmCoordinationDemo />; }
+export default function Page() { permanentRedirect('/demo'); }

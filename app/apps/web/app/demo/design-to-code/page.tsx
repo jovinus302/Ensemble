@@ -1,5 +1,3 @@
-import { DesignToCodeDemo } from '../../../../../demo/scripted/design-to-code/DesignToCodeDemo';
+import { permanentRedirect } from 'next/navigation';
 
-export const metadata = { title: '디자인→개발 협업 데모 · Ensemble' };
-
-export default function Page() { return <DesignToCodeDemo />; }
+export default function Page() { permanentRedirect('/demo'); }
