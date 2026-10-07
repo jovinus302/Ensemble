@@ -19,5 +19,5 @@ export { opsApplicable } from './op-validation.ts';
 export { runDigest, digestText, type DigestOptions } from './digest.ts';
 export { questionRequestId } from './dispatch.ts';
 export type { TrustedValidator, ValidationInput, ValidationOutput, ValidationArtifact, ValidationOptions } from './validation.ts';
-export { SlackCoordinator, slackMessageId, handleSlackEventsRequest, slackConfigFromEnv, SlackWebApi } from './slack-coordination.ts';
-export type { SlackCoordinatorOptions, SlackSpaceBinding, ProactiveSettings, ProactiveTrigger, SlackReceiveOutcome, SlackProactiveOutcome, SlackEnvConfig, SlackEventCallback, SlackHttpResult } from './slack-coordination.ts';
+export { SlackCoordinator, slackMessageId, slackBindingFromConfig, ANY_SLACK_HUMAN, handleSlackEventsRequest, slackConfigFromEnv, SlackWebApi, SlackSocketModeClient, openSocketModeUrl } from './slack-coordination.ts';
+export type { SlackCoordinatorOptions, SlackSpaceBinding, SlackProgress, ProactiveSettings, ProactiveTrigger, SlackReceiveOutcome, SlackProactiveOutcome, SlackEnvConfig, SlackEventCallback, SlackHttpResult } from './slack-coordination.ts';

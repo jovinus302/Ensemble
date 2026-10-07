@@ -280,7 +280,10 @@ test('SlackWebApi: calls the three Web API methods with the bearer token and map
     assert.ok(!String((error as Error).message).includes(token) && !JSON.stringify(error).includes(token));
   }
   assert.ok(!JSON.stringify(api).includes(token));
-  assert.deepEqual(slackConfigFromEnv({ SLACK_BOT_TOKEN: 'x' }), { ok: false, missing: ['SLACK_SIGNING_SECRET', 'SLACK_TEAM_ID', 'SLACK_CHANNEL_ID'] });
+  assert.deepEqual(slackConfigFromEnv({ SLACK_BOT_TOKEN: 'x' }), { ok: false, missing: ['SLACK_CHANNEL_ID (or SLACK_TEST_CHANNEL_ID)'] });
+  // Socket Mode settings: test channel alias, no team/bot ids, no user map.
+  assert.deepEqual(slackConfigFromEnv({ SLACK_BOT_TOKEN: 'x', SLACK_APP_TOKEN: 'a', SLACK_SIGNING_SECRET: 's', SLACK_TEST_CHANNEL_ID: 'CTEST' }),
+    { ok: true, config: { botToken: 'x', appToken: 'a', signingSecret: 's', channelId: 'CTEST', users: {} } });
   const parsed = slackConfigFromEnv({ SLACK_BOT_TOKEN: 'x', SLACK_SIGNING_SECRET: 's', SLACK_TEAM_ID: 'T', SLACK_CHANNEL_ID: 'C', SLACK_USER_MAP: 'U1=owner, B2=research-agent' });
   assert.ok(parsed.ok && parsed.config.users.B2 === 'research-agent' && parsed.config.users.U1 === 'owner');
 });

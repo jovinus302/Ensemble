@@ -3,4 +3,5 @@
 export * from './signature.ts';
 export * from './api.ts';
 export * from './events.ts';
+export * from './socket-mode.ts';
 export { FakeSlackApi } from './fake.ts';

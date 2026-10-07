@@ -2,8 +2,8 @@
 // url_verification challenge, and acknowledges events at once (Slack waits three seconds) while the PM
 // handles them after the response. Without SLACK_* settings the endpoint reports itself unconfigured.
 import { after } from 'next/server';
-import { handleSlackEventsRequest, slackConfigFromEnv } from '@ensemble/orchestrator';
-import { getRuntime } from '../../../../lib/runtime';
+import { handleSlackEventsRequest } from '@ensemble/orchestrator';
+import { getRuntime, slackHttpConfig } from '../../../../lib/runtime';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,10 +11,10 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   // The runtime loads the nearest .env first, where SLACK_* settings may live.
   const app = getRuntime();
-  const env = slackConfigFromEnv();
-  if (!env.ok) return Response.json({ error: 'slack_not_configured' }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+  const config = slackHttpConfig();
+  if (!config) return Response.json({ error: 'slack_not_configured' }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
   const rawBody = await request.text();
-  const result = handleSlackEventsRequest({ rawBody, headers: request.headers, signingSecret: env.config.signingSecret });
+  const result = handleSlackEventsRequest({ rawBody, headers: request.headers, signingSecret: config.signingSecret });
   const envelope = result.envelope;
   if (envelope) {
     after(async () => {

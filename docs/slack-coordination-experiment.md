@@ -1,19 +1,19 @@
 # Slack ↔ Space 양방향 조율 실험 (#79)
 
-기준: 2026-10-07, 브랜치 `jovinus302/issue-79-slack`. 기술 선택은 **EXPERIMENT**다. 이 문서는 구현한 경로와 수동 설치 단계, 검증 범위를 기록한다. **실제 Slack 워크스페이스와의 왕복은 아직 검증하지 않았다(미검증).** 작업 환경에 Slack 토큰·서명 비밀이 없어 fake Slack과 단위 테스트, 로컬 서명 검사까지만 실행했다. 이 문서를 "Slack 연동 완료"의 근거로 쓰지 않는다.
+기준: 2026-10-07, 브랜치 `jovinus302/issue-79-slack`. 기술 선택은 **EXPERIMENT**다. 이 문서는 구현한 경로(Socket Mode 실행기와 HTTP 엔드포인트)와 수동 설치 단계, 검증 범위를 기록한다. **실제 Slack 워크스페이스와의 왕복은 아직 검증하지 않았다(미검증).** 구현 시점에는 Slack 토큰이 없어 fake Slack·fake 소켓 단위 테스트와 로컬 서명 검사까지만 실행했다. 이 문서를 "Slack 연동 완료"의 근거로 쓰지 않는다.
 
 ## 1. 선택한 경로와 이유
 
 | 항목 | 선택 | 이유 |
 |---|---|---|
 | 참여 주체 | Ensemble Slack App의 bot user | 채널 초대(`/invite`)로 범위를 정하고, 작성 주체가 PM Agent임이 Slack에 드러난다 |
-| 요청 수신 | Events API(HTTP) `app_mention` + `message.channels` | 멘션은 `app_mention`, 멘션 없는 스레드 답변은 `message.*`로만 온다. B의 담당자 답변과 A의 후속 답변을 받으려면 둘 다 필요하다 |
+| 요청 수신 | Events API 이벤트 `app_mention` + `message.channels`를 **Socket Mode**(실험 실행기) 또는 HTTP 엔드포인트(웹 앱)로 받는다 | 멘션은 `app_mention`, 멘션 없는 스레드 답변은 `message.*`로만 온다. B의 담당자 답변과 A의 후속 답변을 받으려면 둘 다 필요하다. Socket Mode는 공개 URL 없이 실제 왕복을 시험할 수 있다 |
 | 맥락 읽기 | `conversations.replies` | 질문이 달린 스레드만 읽는다. 채널 전체 기록을 모으지 않는다 |
 | 답변·선제 연락 | `chat.postMessage` (`thread_ts`) | A는 같은 스레드, B는 지정 채널의 새 스레드(또는 설정한 스레드) |
 | 답변 생성 | 기존 PM `LlmProvider`에 강제 tool(`slack_thread_reply`) | 웹 앱의 PM 런타임 선택(`ENSEMBLE_PM_RUNTIME`)을 그대로 쓴다. 모델 실패 시 Space 상태를 담은 고정 문장으로 답하고 원장에 `composedBy: template`로 표시한다 |
 | 기록 | 원장의 `external_*` 이벤트 | 화면 상태가 아니라 이벤트 원장을 정본으로 둔다는 기존 규칙을 따른다 |
 
-비교 후보: Socket Mode는 공개 URL 없이 로컬에서 받을 수 있어 수동 검증에 편하지만 app-level 토큰과 WebSocket 클라이언트가 필요해 이번에는 구현하지 않았다. 브라우저 참여 방식과 MCP는 시도하지 않았다(MCP는 필수 전제가 아니다).
+두 수신 경로는 같은 `routeSlackEvent` → `SlackCoordinator` 경로를 쓴다. Socket Mode는 app-level 토큰(`xapp-`, `connections:write`)으로 `apps.connections.open`을 호출해 WebSocket을 열고, 받은 envelope마다 `{envelope_id}`로 즉시 응답(ack)한 뒤 `events_api` 페이로드를 처리한다. `hello`는 연결 확인, `disconnect`는 새 연결로 교체, 그 밖의 종료는 1초부터 최대 30초까지 늘려 가며 재연결한다. 중복 제거는 HTTP와 같이 event_id와 원장 키로 한다. 추가 의존성 없이 Node 24의 전역 `WebSocket`을 쓴다. 브라우저 참여 방식과 MCP는 시도하지 않았다(MCP는 필수 전제가 아니다).
 
 ## 2. 구현 위치
 
@@ -22,11 +22,15 @@
 | [core/external.ts](../app/packages/core/src/external.ts) | 외부 대화 이벤트 4종과 투영(`externalConversation`), 응답 기한 지난 요청(`overdueExternalRequests`), 작업별 후속(`externalFollowUps`) |
 | [channel/slack/](../app/packages/channel/src/slack/) | 서명 검증(v0 HMAC-SHA256, ±5분), 이벤트 요청 처리(`url_verification`, 재전송 헤더), 이벤트 분류(`routeSlackEvent`), event_id 중복 제거, Web API 실제 구현(`SlackWebApi`, fetch)과 테스트용 `FakeSlackApi`, 환경변수 읽기 |
 | [orchestrator/slack-coordination.ts](../app/packages/orchestrator/src/slack-coordination.ts) | `SlackCoordinator`: Space 연결, 흐름 A·B, 실패·응답 부재 기록 |
+| [channel/slack/socket-mode.ts](../app/packages/channel/src/slack/socket-mode.ts) | Socket Mode 클라이언트(`SlackSocketModeClient`, `openSocketModeUrl`). 소켓은 인터페이스로 추상화해 테스트에서 fake 소켓을 쓴다 |
+| [orchestrator/scripts/slack-live.ts](../app/packages/orchestrator/scripts/slack-live.ts) | 실험 실행기 `npm run live:slack`: `.env.local` 읽기(값 출력 없음), `--check`, Socket Mode 연결, 흐름 B 트리거, 단계별 구조화 로그 |
 | [web/app/api/slack/events/route.ts](../app/apps/web/app/api/slack/events/route.ts) | Events API 엔드포인트. 서명 확인 후 즉시 200으로 응답하고 처리는 `after()`로 응답 뒤에 한다(Slack 3초 제한) |
 | [web/lib/runtime.ts](../app/apps/web/lib/runtime.ts) | `SLACK_*`가 있을 때만 `slack()` 구성. 원장 변경마다 흐름 B 확인, 5분 틱에서 응답 기한 확인 |
-| [test/slack-coordination.test.ts](../app/test/slack-coordination.test.ts) | fake Slack 기반 테스트 |
+| [test/slack-coordination.test.ts](../app/test/slack-coordination.test.ts), [test/slack-socket-mode.test.ts](../app/test/slack-socket-mode.test.ts) | fake Slack·fake 소켓 기반 테스트 |
 
-Space 대응: 한 Slack 워크스페이스(`SLACK_TEAM_ID`)의 한 채널(`SLACK_CHANNEL_ID`)을 웹 앱의 **현재 프로젝트**에 연결한다. 다른 팀·채널 이벤트는 기록하지 않고 무시한다.
+Space 대응: 한 Slack 워크스페이스의 한 채널(`SLACK_CHANNEL_ID`, 별칭 `SLACK_TEST_CHANNEL_ID`)을 하나의 Space에 연결한다. 실험 실행기는 자체 SQLite 원장(`app/data/slack-live.db`, 프로젝트 `slack-live`)에 작은 Space(목표·결정 1건·조사 Agent 작업)를 만들어 쓰고, 웹 앱(HTTP 경로)은 **현재 프로젝트**에 연결한다. 팀 id와 bot user id는 설정에 없으면 `auth.test`로 채운다. 다른 팀·채널 이벤트는 기록하지 않고 무시한다.
+
+사람 연결: `SLACK_USER_MAP`(`U…=member`)이 있으면 그대로 쓴다. **없으면 테스트용 대체 규칙**으로 연결된 채널의 사람(bot이 아닌 작성자)을 모두 목표 결정권자로 본다. 그 사람의 `decision`은 결정으로 남고, 결정권자에게 보낸 요청에는 채널의 누구나 답할 수 있다. 흐름 B는 `SLACK_OWNER_USER_ID`가 있으면 그 사람을 `<@…>`로 부르고, 없으면 "담당자님,"처럼 이름으로만 부른다(Slack 알림은 가지 않음). 실제 팀에서는 `SLACK_USER_MAP`을 써야 한다.
 
 ## 3. 흐름
 
@@ -71,30 +75,47 @@ Space 대응: 한 Slack 워크스페이스(`SLACK_TEAM_ID`)의 한 채널(`SLACK
 - 응답 부재: `expireOverdue()`가 기한 지난 요청을 `no_response`로 기록한다(웹은 5분 틱).
 - 표시 범위: Slack 스레드 알림(읽기 실패)과 원장 기록, `SlackCoordinator.status()`까지다. 웹 화면에 Slack 상태를 그리는 것은 이번 범위에 없다.
 
-## 7. 실제 왕복을 위한 수동 단계 (미실행)
+## 7. 실제 왕복을 위한 수동 단계
+
+### 7.1 Slack 앱 설정 (Socket Mode)
 
 1. https://api.slack.com/apps 에서 테스트 워크스페이스에 앱을 만든다(이름 예: Ensemble).
-2. **OAuth & Permissions → Bot Token Scopes**: `app_mentions:read`, `channels:history`(비공개 채널이면 `groups:history`), `chat:write`.
-3. 공개 HTTPS 주소를 준비한다(로컬이면 cloudflared/ngrok 등 터널 → `http://localhost:3000`).
-4. 웹 앱을 아래 환경변수로 실행한다(`app/.env` 또는 셸, `.env`는 git 제외 대상):
-   - `SLACK_BOT_TOKEN`(Bot User OAuth Token, `xoxb-`), `SLACK_SIGNING_SECRET`(Basic Information), `SLACK_TEAM_ID`, `SLACK_CHANNEL_ID`
-   - 선택: `SLACK_BOT_USER_ID`(없으면 `auth.test`로 조회), `SLACK_USER_MAP=U사람=owner,U디자이너=designer,B개인Agent=research-agent`, `SLACK_PROACTIVE_TRIGGERS=agent_result,agent_blocker[,decision_followup]`
-5. **Event Subscriptions** 켜기 → Request URL `https://<주소>/api/slack/events`(서명된 `url_verification`에 challenge로 응답한다) → Subscribe to bot events: `app_mention`, `message.channels`(비공개면 `message.groups`).
-6. 앱을 워크스페이스에 설치하고 테스트 채널에서 `/invite @Ensemble`.
-7. 검증 A: 채널의 기존 스레드에서 `@Ensemble 이 결정 다음에 뭘 해야 해?` → 같은 스레드 답 확인 → 답변 작성 → 원장의 `external_*` 기록 확인.
-8. 검증 B: 자유 진행 프로젝트에서 Agent 결과나 막힘이 생기게 한 뒤 → 지정 채널에 담당자 멘션 메시지 확인 → 그 스레드에 답 → `externalFollowUps`로 작업 연결 확인.
-9. 재전송 확인: Slack 관리 화면의 이벤트 재시도 또는 같은 요청 재전송 시 답이 한 번인지, 자기 답변에 다시 답하지 않는지 확인한다.
+2. **Socket Mode** 켜기 → app-level 토큰 생성(scope `connections:write`) → `SLACK_APP_TOKEN`(`xapp-`).
+3. **OAuth & Permissions → Bot Token Scopes**: `app_mentions:read`, `channels:history`(비공개 채널이면 `groups:history`), `chat:write`. `--check`의 채널 확인(`conversations.info`)에는 `channels:read`(비공개면 `groups:read`)가 필요하며, 없으면 그 항목만 `missing_scope`로 표시된다.
+4. **Event Subscriptions** 켜기 → Subscribe to bot events: `app_mention`, `message.channels`(비공개면 `message.groups`). Socket Mode에서는 Request URL이 필요 없다.
+5. 워크스페이스에 설치 → Bot User OAuth Token(`xoxb-`) → `SLACK_BOT_TOKEN`. 테스트 채널에서 `/invite @Ensemble`, 채널 id → `SLACK_TEST_CHANNEL_ID`.
+6. 값은 git 제외 대상인 `.env.local`(저장소 루트 또는 `app/`)에 둔다. 선택: `SLACK_USER_MAP`, `SLACK_OWNER_USER_ID`, 모델 사용 시 기존 PM 설정(`ENSEMBLE_PM_RUNTIME`, `ANTHROPIC_API_KEY` 등, `.env`). 모델 설정이 없으면 답은 고정 문장(`composedBy: template`)이다.
+
+### 7.2 실행과 확인 (`app/`에서)
+
+| 단계 | 명령 | 확인할 로그 |
+|---|---|---|
+| 점검 | `npm run live:slack -- --check` | `check_auth`(부여된 scope, 빠진 scope), `check_channel`(bot이 채널 멤버인지), `check_history`, `check_socket_mode`, `check_done ok` |
+| A | `npm run live:slack` 실행 후 테스트 채널의 스레드에서 `@Ensemble 다음에 뭘 확인해야 해?` → 같은 스레드에 답이 오면 그 스레드에 사람이 답한다 | `slack.event_received` → `slack.thread_read` → `slack.reply_posted`(ts) → (`ask`이면) `slack.request_sent` → 답변 후 `slack.reply_recorded`(`resolved: true`) |
+| B | `npm run live:slack -- --trigger-blocker "인터뷰 대상자가 5명뿐이에요"` (또는 `--trigger-result "<요약>"`) → 채널에 PM이 먼저 올린 메시지의 스레드에 답한다 | `space_change_recorded` → `slack.request_sent`(ts) → 답변 후 `slack.reply_recorded`(`resolved: true`) |
+| 종료 | Ctrl+C (또는 `--minutes <n>`) | `stopped`: 요청별 상태(`awaiting_response`/`answered`/`no_response`), 실패 목록 |
+
+- 중복·자기 메시지: 실행 중 `socket.acked`와 `slack.event_skipped`(`duplicate`, `self`, `mention_via_app_mention`)를 확인한다. PM 자신의 답에는 다시 답하지 않아야 한다.
+- 응답 부재: `--response-timeout-minutes 2`로 실행하고 답하지 않으면 1분 주기 점검에서 `slack.request_expired`가 나온다.
+- 로그에는 id·ts·오류 코드·scope 이름만 나오고 토큰과 WebSocket URL은 나오지 않는다(토큰 패턴은 한 번 더 가린다).
+- 웹 앱의 HTTP 경로와 실험 실행기를 같은 앱으로 동시에 켜지 않는다. 웹 앱은 `SLACK_SIGNING_SECRET`이 있을 때만 Slack 연결을 만들며, 저장소 루트·`app/`의 `.env.local`은 읽지 않는다.
+
+### 7.3 HTTP 경로 (웹 앱, 공개 URL 필요)
+
+Socket Mode를 끄고 Event Subscriptions의 Request URL을 `https://<공개 주소>/api/slack/events`로 지정한다(서명된 `url_verification`에 challenge로 응답). 웹 앱에 `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_CHANNEL_ID`를 준다. 로컬이면 cloudflared/ngrok 등 터널이 필요하다.
 
 ## 8. 완료 기준별 상태
 
 | 완료 기준 | 상태 | 근거 |
 |---|---|---|
-| 실제 Slack 초대/연결과 Space 대응 | **미검증** | 연결 설정(팀·채널 → 현재 프로젝트)과 엔드포인트만 구현. 실제 설치·초대 안 함 |
+| 실제 Slack 초대/연결과 Space 대응 | **미검증** | 연결 설정(채널 → Space), Socket Mode 실행기와 `--check`, HTTP 엔드포인트 구현. 실제 설치·초대 후 실행 기록 없음 |
 | A 호출 → 맥락 확인 → 같은 스레드 답변 실제 왕복 | **구현만, 실제 미검증** | fake Slack 테스트로 스레드 읽기·Space 맥락 전달·같은 `thread_ts` 답변·답변 기록 확인 |
 | B Space 변화 → 선제 요청 → 담당자 응답 실제 왕복 | **구현만, 실제 미검증** | fake Slack 테스트로 막힘 → 선제 게시 → 담당자 답 → 작업 연결 확인 |
 | 원본 메시지/스레드·작성자·시각 보존, 결정/제안/미응답 구분 | **테스트로 확인(fake)** | 실제 Slack 페이로드 형식과의 일치는 미검증 |
 | 재수신·자기 메시지로 인한 중복 방지 | **테스트로 확인(fake)** | event_id, 재시작 후 원장 키, 이중 이벤트, 자기/bot 메시지 |
 | 읽기/발송 실패·응답 부재 표시, 경로·수동 단계·한계 기록 | **테스트로 확인(fake) + 이 문서** | 실제 Slack 오류 코드 발생은 미검증. 웹 화면 표시는 없음 |
+
+Socket Mode: fake 소켓 테스트로 envelope ack, `events_api` 전달, `disconnect` 교체, 종료 후 재연결, 잘못된 app 토큰 중단, 같은 event_id 재전송 시 답 한 번, 매핑 없는 사람의 대체 규칙을 확인했다. 실제 Slack WebSocket 연결은 미검증이다.
 
 로컬 확인: `next dev`에서 서명된 `url_verification` → 200(challenge), 잘못된 비밀·오래된 시각 → 401, 다른 채널 이벤트 → 200 후 `ignored: unbound_channel` 로그를 확인했다. 이때 실제 Slack API는 호출하지 않았다.
 
@@ -107,7 +128,9 @@ Space 대응: 한 Slack 워크스페이스(`SLACK_TEAM_ID`)의 한 채널(`SLACK
 
 ## 10. 한계
 
-- 한 워크스페이스·한 채널·현재 프로젝트 하나. 프로젝트를 새로 시작하면 같은 채널이 새 프로젝트를 가리킨다.
+- 한 워크스페이스·한 채널·Space 하나. 웹 앱에서는 프로젝트를 새로 시작하면 같은 채널이 새 프로젝트를 가리키고, 실험 실행기는 웹 앱과 별도 원장을 쓴다.
+- `SLACK_USER_MAP`이 없을 때의 대체 규칙(채널의 모든 사람 = 결정권자)은 테스트 전용이다. 권한 판단이나 실제 팀 운영에 쓰지 않는다.
+- Socket Mode 연결은 실행기 프로세스가 켜져 있는 동안만 유지된다. 꺼진 동안의 이벤트는 Slack 재시도 범위 밖이면 받지 못한다.
 - `message.channels` 구독으로 채널의 모든 메시지 이벤트가 서버에 도착한다. PM이 참여한 스레드 외에는 기록하지 않지만, 전송 자체는 Slack 설정의 범위다.
 - 흐름 B는 Coordinator 생성(서버 시작) 이후의 변화만 보낸다. 서버가 꺼진 동안의 변화는 보내지 않는다.
 - event_id 기억은 메모리 안에서만 유지된다(재시작 후에는 원장 키가 막는다).

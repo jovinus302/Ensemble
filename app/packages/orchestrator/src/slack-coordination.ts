@@ -14,7 +14,7 @@ import { routeSlackEvent, slackErrorCode, SlackEventDeduper, slackTsToIso, strip
 import type { LlmProvider } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
 
-export { handleSlackEventsRequest, slackConfigFromEnv, SlackWebApi, type SlackEnvConfig, type SlackEventCallback, type SlackHttpResult } from '@ensemble/channel';
+export { handleSlackEventsRequest, openSocketModeUrl, slackConfigFromEnv, SlackSocketModeClient, SlackWebApi, type SlackEnvConfig, type SlackEventCallback, type SlackHttpResult } from '@ensemble/channel';
 
 export interface SlackSpaceBinding {
   teamId: string;
@@ -23,7 +23,26 @@ export interface SlackSpaceBinding {
   botId?: string;
   /** Slack user or bot id -> Space member id. Unmapped people are still recorded, without a member. */
   users: Record<string, Id>;
+  /**
+   * Test fallback when `users` does not name someone: `goal_decider` treats every unmapped human in the bound
+   * channel as the goal's decider (their "decision" counts, and they may answer the decider's requests).
+   */
+  unmappedHumans?: 'none' | 'goal_decider';
+  /** Slack user to mention for the goal's decider when `users` has none. */
+  ownerUserId?: string;
 }
+/** Redacted progress for live runs: ids, ts, reason codes and counts, never tokens. */
+export type SlackProgress =
+  | { step: 'event_received'; eventId: string; type: string; channel: string; ts: string; threadTs?: string; retryNum?: number }
+  | { step: 'event_skipped'; eventId: string; outcome: 'ignored' | 'duplicate'; reason: string }
+  | { step: 'thread_read'; messageId: Id; messages: number }
+  | { step: 'reply_posted'; messageId: Id; ts: string; threadTs: string; kind: 'answer' | 'ask'; composedBy: 'llm' | 'template' }
+  | { step: 'request_sent'; requestId: Id; ts: string; reason: ExternalRequestReason; target: string; taskIds: Id[] }
+  | { step: 'reply_recorded'; messageId: Id; kind: ExternalMessageKind; requestId?: Id; resolved: boolean }
+  | { step: 'request_expired'; requestId: Id }
+  | { step: 'failure'; stage: ExternalFailureStage; operation: string; error: string; triggerId: Id; attempt: number };
+/** A request target meaning "any person in the channel" (fallback without a Slack mapping). */
+export const ANY_SLACK_HUMAN = '*';
 export type ProactiveTrigger = 'agent_result' | 'agent_blocker' | 'decision_followup';
 export interface ProactiveSettings {
   /** Which Space changes the PM may raise in Slack first. Default: agent results and blockers. */
@@ -50,6 +69,7 @@ export interface SlackCoordinatorOptions {
   proactive?: ProactiveSettings;
   /** Thread messages read for context. Default 30. */
   threadLimit?: number;
+  onProgress?: (entry: SlackProgress) => void;
 }
 
 export type SlackReceiveOutcome =
@@ -84,9 +104,13 @@ export class SlackCoordinator {
    * Handles one verified event. Call it after acknowledging the HTTP request (Slack waits three seconds).
    * Redeliveries are dropped by event id here and by the message's ledger key after a restart.
    */
-  receive(envelope: SlackEventCallback, _meta: { retryNum?: number } = {}): Promise<SlackReceiveOutcome> {
-    if (this.deduper.check(envelope.event_id)) return Promise.resolve({ kind: 'duplicate', key: envelope.event_id });
-    return this.enqueue(() => this.handle(envelope));
+  async receive(envelope: SlackEventCallback, meta: { retryNum?: number } = {}): Promise<SlackReceiveOutcome> {
+    const e = envelope.event;
+    this.progress({ step: 'event_received', eventId: envelope.event_id, type: e?.type, channel: e?.channel, ts: e?.ts, ...(e?.thread_ts ? { threadTs: e.thread_ts } : {}), ...(meta.retryNum ? { retryNum: meta.retryNum } : {}) });
+    const outcome: SlackReceiveOutcome = this.deduper.check(envelope.event_id) ? { kind: 'duplicate', key: envelope.event_id } : await this.enqueue(() => this.handle(envelope));
+    if (outcome.kind === 'ignored') this.progress({ step: 'event_skipped', eventId: envelope.event_id, outcome: 'ignored', reason: outcome.reason });
+    if (outcome.kind === 'duplicate') this.progress({ step: 'event_skipped', eventId: envelope.event_id, outcome: 'duplicate', reason: outcome.key });
+    return outcome;
   }
 
   /** Flow B: raises new Space changes in Slack. Idempotent per triggering ledger event. */
@@ -100,6 +124,7 @@ export class SlackCoordinator {
       const overdue = overdueExternalRequests(externalConversation(await this.read()), now);
       if (!overdue.length) return [];
       await this.options.store.append(overdue.map(r => this.event('external_request_resolved', { requestId: r.request.requestId, outcome: 'no_response' }, `${r.request.requestId}:resolved`, now)));
+      for (const r of overdue) this.progress({ step: 'request_expired', requestId: r.request.requestId });
       return overdue.map(r => r.request.requestId);
     });
   }
@@ -141,6 +166,7 @@ export class SlackCoordinator {
     let thread: SlackThreadMessage[];
     try {
       thread = await this.options.api.conversationsReplies({ channel: event.channel, ts: root, limit: this.options.threadLimit ?? 30 });
+      this.progress({ step: 'thread_read', messageId, messages: thread.length });
     } catch (error) {
       const code = slackErrorCode(error);
       await this.failure('read', 'conversations.replies', messageId, code, 1, { channelId: event.channel, threadTs: root });
@@ -161,6 +187,8 @@ export class SlackCoordinator {
     const requestId = composed.kind === 'ask' ? `slack-request:${messageId}` : undefined;
     if (requestId) out.push(this.request(requestId, posted.ts, root, author, composed.text, 'thread_question', messageId, composed.taskIds, composed.composedBy));
     await this.options.store.append(out);
+    this.progress({ step: 'reply_posted', messageId, ts: posted.ts, threadTs: root, kind: composed.kind, composedBy: composed.composedBy });
+    if (requestId) this.progress({ step: 'request_sent', requestId, ts: posted.ts, reason: 'thread_question', target: author.externalUserId, taskIds: composed.taskIds });
     return { kind: 'replied', messageId, replyMessageId, composedBy: composed.composedBy, ...(requestId ? { requestId } : {}), ...(resolvedRequestId ? { resolvedRequestId } : {}) };
   }
 
@@ -175,6 +203,7 @@ export class SlackCoordinator {
     const resolves = target?.status === 'awaiting_response';
     if (resolves) recorded.push(this.resolution(target.request.requestId, messageId, author));
     await this.options.store.append(recorded);
+    this.progress({ step: 'reply_recorded', messageId, kind, resolved: resolves, ...(target ? { requestId: target.request.requestId } : {}) });
     return { kind: 'recorded', messageId, resolved: resolves, ...(target ? { requestId: target.request.requestId } : {}) };
   }
 
@@ -198,13 +227,13 @@ export class SlackCoordinator {
       if (attempts.length >= maxAttempts || attempts.some(f => f.error === 'recipient_not_mapped')) continue;
       const attempt = attempts.length + 1;
       const memberId = settings.recipientFor ? settings.recipientFor({ trigger: candidate.trigger, taskId: candidate.taskIds[0], state }) : this.defaultRecipient(candidate, state);
-      const slackUser = memberId ? Object.entries(this.options.binding.users).find(([, m]) => m === memberId)?.[0] : undefined;
+      const slackUser = memberId ? this.slackUserFor(memberId, state) : undefined;
       if (!memberId || !slackUser) {
         await this.failure('send', 'chat.postMessage', e.id, 'recipient_not_mapped', attempt, { requestId });
         outcomes.push({ kind: 'failed', requestId, triggerId: e.id, error: 'recipient_not_mapped', attempt });
         continue;
       }
-      const text = `<@${slackUser}> ${candidate.text}`;
+      const text = slackUser === ANY_SLACK_HUMAN ? `${state.members.get(memberId)?.displayName ?? '담당자'}님, ${candidate.text}` : `<@${slackUser}> ${candidate.text}`;
       const posted = await this.post(this.options.binding.channelId, text, settings.threadTs, e.id, requestId, attempt);
       if (!posted.ok) { outcomes.push({ kind: 'failed', requestId, triggerId: e.id, error: posted.error, attempt }); continue; }
       const target: ExternalAuthor = { kind: 'human', externalUserId: slackUser, memberId };
@@ -212,6 +241,7 @@ export class SlackCoordinator {
         this.pmMessage(posted.ts, settings.threadTs, text, 'request', 'template', { taskIds: candidate.taskIds }),
         this.request(requestId, posted.ts, settings.threadTs, target, text, candidate.reason, e.id, candidate.taskIds, 'template'),
       ]);
+      this.progress({ step: 'request_sent', requestId, ts: posted.ts, reason: candidate.reason, target: slackUser, taskIds: candidate.taskIds });
       outcomes.push({ kind: 'sent', requestId, triggerId: e.id, ts: posted.ts });
     }
     return outcomes;
@@ -326,16 +356,31 @@ export class SlackCoordinator {
   private answerTarget(conversation: ExternalConversationState, event: SlackMessageEvent, author: ExternalAuthor): ExternalRequestState | undefined {
     if (!event.thread_ts) return undefined;
     const key = `${event.channel}:${event.thread_ts}`;
-    const mine = [...conversation.requests.values()].filter(r => threadKey(r.request.source) === key && r.request.target.externalUserId === author.externalUserId);
+    const mine = [...conversation.requests.values()].filter(r => threadKey(r.request.source) === key
+      && (r.request.target.externalUserId === author.externalUserId || (r.request.target.externalUserId === ANY_SLACK_HUMAN && author.kind === 'human')));
     return mine.find(r => r.status === 'awaiting_response') ?? mine.filter(r => r.status === 'no_response').at(-1);
   }
 
   private author(externalUserId: string, state: ProjectState, botId?: string): ExternalAuthor {
     const { binding } = this.options;
     if (externalUserId === binding.botUserId || (botId && botId === binding.botId)) return { kind: 'pm', externalUserId };
-    const memberId = binding.users[externalUserId] ?? (botId ? binding.users[botId] : undefined);
+    const fallback = binding.unmappedHumans === 'goal_decider' && !botId ? state.goal?.decider : undefined;
+    const memberId = binding.users[externalUserId] ?? (botId ? binding.users[botId] : undefined) ?? fallback;
     const kind = memberId && state.members.get(memberId)?.kind === 'agent' ? 'agent' : 'human';
     return { kind, externalUserId, ...(memberId ? { memberId } : {}) };
+  }
+
+  /** The Slack account to address for a member: the mapping, then SLACK_OWNER_USER_ID for the decider, then "anyone" under the fallback. */
+  private slackUserFor(memberId: Id, state: ProjectState): string | undefined {
+    const { binding } = this.options;
+    const mapped = Object.entries(binding.users).find(([, m]) => m === memberId)?.[0];
+    if (mapped) return mapped;
+    if (memberId === state.goal?.decider && binding.ownerUserId) return binding.ownerUserId;
+    return binding.unmappedHumans === 'goal_decider' && memberId === state.goal?.decider ? ANY_SLACK_HUMAN : undefined;
+  }
+
+  private progress(entry: SlackProgress): void {
+    try { this.options.onProgress?.(entry); } catch { /* Logging never breaks coordination. */ }
   }
 
   private source(event: Pick<SlackMessageEvent, 'channel' | 'ts' | 'thread_ts'>): ExternalSourceRef {
@@ -356,6 +401,7 @@ export class SlackCoordinator {
   private async failure(stage: ExternalFailureStage, operation: string, triggerId: Id, error: string, attempt: number, extra: { requestId?: Id; channelId?: string; threadTs?: string } = {}) {
     const failureId = `${stage}:${triggerId}:${attempt}`;
     await this.options.store.append([this.event('external_delivery_failed', { failureId, stage, operation, triggerId, error, attempt, ...extra }, `slack-failure:${failureId}`)]);
+    this.progress({ step: 'failure', stage, operation, error, triggerId, attempt });
   }
 
   private pmMessage(ts: string, threadTs: string | undefined, text: string, kind: ExternalMessageKind, composedBy: 'llm' | 'template', extra: { inReplyTo?: Id; confirmed?: string[]; remaining?: string[]; taskIds?: Id[] } = {}): NewLedgerEvent {
@@ -387,4 +433,15 @@ export class SlackCoordinator {
     this.queue = next.catch(() => undefined);
     return next;
   }
+}
+
+/**
+ * Builds the binding for a configured channel. Team and bot user ids come from auth.test when the settings leave
+ * them out. Without SLACK_USER_MAP every unmapped human counts as the goal's decider (test fallback).
+ */
+export async function slackBindingFromConfig(config: { channelId: string; teamId?: string; botUserId?: string; users: Record<string, Id>; ownerUserId?: string }, api: Pick<SlackApi, 'authTest'>): Promise<SlackSpaceBinding> {
+  const identity: { teamId: string; userId: string; botId?: string } = config.teamId && config.botUserId ? { teamId: config.teamId, userId: config.botUserId } : await api.authTest();
+  return { teamId: config.teamId ?? identity.teamId, channelId: config.channelId, botUserId: config.botUserId ?? identity.userId,
+    ...(identity.botId ? { botId: identity.botId } : {}), users: config.users,
+    unmappedHumans: Object.keys(config.users).length ? 'none' : 'goal_decider', ...(config.ownerUserId ? { ownerUserId: config.ownerUserId } : {}) };
 }

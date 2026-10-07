@@ -20,9 +20,12 @@ export interface SlackApi {
 
 /** A Slack call that failed. `code` is Slack's `error` (e.g. not_in_channel, missing_scope) or a transport code. */
 export class SlackApiError extends Error {
-  constructor(readonly code: string, readonly retryable: boolean) {
-    super(`Slack API error: ${code}`);
+  /** For missing_scope: the scope Slack says is needed. */
+  readonly needed?: string;
+  constructor(readonly code: string, readonly retryable: boolean, needed?: string) {
+    super(`Slack API error: ${code}${needed ? ` (needed: ${needed})` : ''}`);
     this.name = 'SlackApiError';
+    if (needed) this.needed = needed;
   }
 }
 
@@ -30,7 +33,7 @@ export function slackErrorCode(error: unknown): string {
   return error instanceof SlackApiError ? error.code : 'unexpected_error';
 }
 
-type SlackResponse = { ok: boolean; error?: string; [key: string]: unknown };
+export type SlackResponse = { ok: boolean; error?: string; [key: string]: unknown };
 const MAX_REPLY_PAGES = 5;
 
 export class SlackWebApi implements SlackApi {
@@ -72,54 +75,73 @@ export class SlackWebApi implements SlackApi {
     return messages.length <= keep ? messages : [messages[0]!, ...messages.slice(-(keep - 1))];
   }
 
+  /** Not part of SlackApi: used by the live runner's --check to confirm channel access. */
+  async conversationsInfo(channel: string): Promise<{ id: string; name?: string; isMember?: boolean }> {
+    const body = await this.call(`conversations.info?${new URLSearchParams({ channel })}`, { method: 'GET' });
+    const c = body.channel as { id?: string; name?: string; is_member?: boolean } | undefined;
+    return { id: String(c?.id ?? channel), ...(c?.name ? { name: c.name } : {}), ...(typeof c?.is_member === 'boolean' ? { isMember: c.is_member } : {}) };
+  }
+
   async postMessage({ channel, text, threadTs }: { channel: string; text: string; threadTs?: string }) {
     const body = await this.call('chat.postMessage', { method: 'POST', json: { channel, text, ...(threadTs ? { thread_ts: threadTs } : {}), unfurl_links: false, unfurl_media: false } });
     return { channel: String(body.channel), ts: String(body.ts) };
   }
 
-  private async call(method: string, init: { method: 'GET' | 'POST'; json?: unknown }): Promise<SlackResponse> {
-    let response: Response;
-    try {
-      response = await this.fetchImpl(`${this.baseUrl}/${method}`, {
-        method: init.method,
-        headers: { Authorization: `Bearer ${this.#token}`, ...(init.json !== undefined ? { 'Content-Type': 'application/json; charset=utf-8' } : {}) },
-        ...(init.json !== undefined ? { body: JSON.stringify(init.json) } : {}),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-    } catch (error) {
-      throw new SlackApiError((error as Error)?.name === 'TimeoutError' ? 'timeout' : 'network_error', true);
-    }
-    if (response.status === 429) throw new SlackApiError('ratelimited', true);
-    if (!response.ok) throw new SlackApiError(`http_${response.status}`, response.status >= 500);
-    let body: SlackResponse;
-    try { body = await response.json() as SlackResponse; } catch { throw new SlackApiError('invalid_response', true); }
-    if (!body.ok) throw new SlackApiError(typeof body.error === 'string' ? body.error : 'unknown_error', false);
-    return body;
+  private call(method: string, init: { method: 'GET' | 'POST'; json?: unknown }): Promise<SlackResponse> {
+    return slackCall({ token: this.#token, fetch: this.fetchImpl, baseUrl: this.baseUrl, timeoutMs: this.timeoutMs }, method, init);
   }
+}
+
+/** One Web API call. Shared by the bot client and Socket Mode's apps.connections.open (app token). */
+export async function slackCall(auth: { token: string; fetch?: typeof fetch; baseUrl?: string; timeoutMs?: number }, method: string, init: { method: 'GET' | 'POST'; json?: unknown }): Promise<SlackResponse> {
+  let response: Response;
+  try {
+    response = await (auth.fetch ?? fetch)(`${auth.baseUrl ?? 'https://slack.com/api'}/${method}`, {
+      method: init.method,
+      headers: { Authorization: `Bearer ${auth.token}`, ...(init.json !== undefined ? { 'Content-Type': 'application/json; charset=utf-8' } : {}) },
+      ...(init.json !== undefined ? { body: JSON.stringify(init.json) } : {}),
+      signal: AbortSignal.timeout(auth.timeoutMs ?? 10_000),
+    });
+  } catch (error) {
+    throw new SlackApiError((error as Error)?.name === 'TimeoutError' ? 'timeout' : 'network_error', true);
+  }
+  if (response.status === 429) throw new SlackApiError('ratelimited', true);
+  if (!response.ok) throw new SlackApiError(`http_${response.status}`, response.status >= 500);
+  let body: SlackResponse;
+  try { body = await response.json() as SlackResponse; } catch { throw new SlackApiError('invalid_response', true); }
+  if (!body.ok) throw new SlackApiError(typeof body.error === 'string' ? body.error : 'unknown_error', false, typeof body.needed === 'string' ? body.needed : undefined);
+  return body;
 }
 
 export interface SlackEnvConfig {
   botToken: string;
-  signingSecret: string;
-  teamId: string;
+  /** Socket Mode app-level token (xapp-, connections:write). */
+  appToken?: string;
+  /** Events API over HTTP only; Socket Mode does not need it. */
+  signingSecret?: string;
+  /** SLACK_CHANNEL_ID, or SLACK_TEST_CHANNEL_ID as an alias. */
   channelId: string;
-  /** Optional; when absent the host asks auth.test. */
+  /** Optional; resolved with auth.test when absent. */
+  teamId?: string;
   botUserId?: string;
-  /** Slack user/bot id → Space member id, from `U1=owner,B2=research-agent`. */
+  /** Slack user/bot id → Space member id, from `U1=owner,B2=research-agent`. Empty means the fallback applies. */
   users: Record<string, string>;
+  /** The Slack user the PM mentions for the goal's decider when SLACK_USER_MAP does not name one. */
+  ownerUserId?: string;
 }
 
 /** Reads the Slack settings. Values are returned to the caller only; nothing here prints them. */
 export function slackConfigFromEnv(env: Record<string, string | undefined> = process.env): { ok: true; config: SlackEnvConfig } | { ok: false; missing: string[] } {
   const value = (name: string) => env[name]?.trim() || undefined;
-  const required = ['SLACK_BOT_TOKEN', 'SLACK_SIGNING_SECRET', 'SLACK_TEAM_ID', 'SLACK_CHANNEL_ID'] as const;
-  const missing = required.filter((name) => !value(name));
+  const channelId = value('SLACK_CHANNEL_ID') ?? value('SLACK_TEST_CHANNEL_ID');
+  const missing = [...(value('SLACK_BOT_TOKEN') ? [] : ['SLACK_BOT_TOKEN']), ...(channelId ? [] : ['SLACK_CHANNEL_ID (or SLACK_TEST_CHANNEL_ID)'])];
   if (missing.length) return { ok: false, missing };
   const users: Record<string, string> = {};
   for (const pair of (value('SLACK_USER_MAP') ?? '').split(',')) {
     const [slackId, memberId] = pair.split('=').map((part) => part.trim());
     if (slackId && memberId) users[slackId] = memberId;
   }
-  const botUserId = value('SLACK_BOT_USER_ID');
-  return { ok: true, config: { botToken: value('SLACK_BOT_TOKEN')!, signingSecret: value('SLACK_SIGNING_SECRET')!, teamId: value('SLACK_TEAM_ID')!, channelId: value('SLACK_CHANNEL_ID')!, ...(botUserId ? { botUserId } : {}), users } };
+  const optional = { appToken: value('SLACK_APP_TOKEN'), signingSecret: value('SLACK_SIGNING_SECRET'), teamId: value('SLACK_TEAM_ID'), botUserId: value('SLACK_BOT_USER_ID'), ownerUserId: value('SLACK_OWNER_USER_ID') };
+  return { ok: true, config: { botToken: value('SLACK_BOT_TOKEN')!, channelId: channelId!, users,
+    ...Object.fromEntries(Object.entries(optional).filter(([, v]) => v !== undefined)) } };
 }
