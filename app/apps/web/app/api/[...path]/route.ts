@@ -16,6 +16,46 @@ function uploads(value: unknown): Upload[] {
     return { name, mimeType, contentBase64: a.contentBase64 };
   });
 }
+function optionalText(value: unknown, message: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') throw new InputError(message);
+  return value.trim() || undefined;
+}
+function stringList(value: unknown, message: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some(v => typeof v !== 'string')) throw new InputError(message);
+  return value as string[];
+}
+/**
+ * #81 personal agents in the Space. Reading and posting are for the linked agent itself (curl or a browser);
+ * linking, inspecting and sending requests are for a project person (`me`).
+ */
+async function spacePost(parts: string[], body: Record<string, unknown>, origin: string) {
+  const app = getRuntime();
+  if (parts.length === 2 && parts[1] === 'participants') {
+    const scopes = body.scopes;
+    if (scopes !== undefined && (!scopes || typeof scopes !== 'object' || Array.isArray(scopes) || Object.values(scopes).some(v => typeof v !== 'boolean'))) throw new InputError('권한 범위 형식이 올바르지 않습니다.');
+    return json(await app.linkParticipant({ participantId: text(body.participantId, 'participantId'), displayName: text(body.displayName, 'displayName'), tool: text(body.tool, 'tool'),
+      workspaceRoot: text(body.workspaceRoot, 'workspaceRoot'), ...(stringList(body.allowedPaths, '허용 경로는 글 목록으로 입력해 주세요.') ? { allowedPaths: body.allowedPaths as string[] } : {}),
+      ...(scopes ? { scopes: scopes as Record<string, boolean> } : {}), spaceUrl: optionalText(body.spaceUrl, 'Space 주소 형식이 올바르지 않습니다.') ?? origin }, text(body.me, 'me')), 201);
+  }
+  if (parts.length === 3 && parts[1] === 'requests' && parts[2] === 'sweep') return json(await app.sweepRequests());
+  if (parts.length !== 4 || parts[1] !== 'participants') return null;
+  const participantId = parts[2]!;
+  if (parts[3] === 'posts') {
+    if (typeof body.text !== 'string') throw new InputError('공유할 내용을 입력해 주세요.');
+    const kind = body.kind ?? 'note';
+    if (kind !== 'result' && kind !== 'question' && kind !== 'blocked' && kind !== 'note') throw new InputError('kind는 result, question, blocked, note 중 하나여야 합니다.');
+    const taskId = optionalText(body.taskId, '작업 id 형식이 올바르지 않습니다.'), inReplyTo = optionalText(body.inReplyTo, 'inReplyTo 형식이 올바르지 않습니다.');
+    return json(await app.spacePost(participantId, { kind, text: body.text, clientPostId: text(body.clientPostId, 'clientPostId'), ...(taskId ? { taskId } : {}), ...(inReplyTo ? { inReplyTo } : {}) }), 202);
+  }
+  if (parts[3] === 'inspect') return json(await app.inspectParticipant(participantId, text(body.me, 'me'), stringList(body.paths, '경로는 글 목록으로 입력해 주세요.')));
+  if (parts[3] === 'requests') {
+    const taskId = optionalText(body.taskId, '작업 id 형식이 올바르지 않습니다.');
+    return json(await app.requestParticipant(participantId, text(body.me, 'me'), text(body.text, 'text'), taskId), 201);
+  }
+  return null;
+}
 function errorResponse(error: unknown) {
   // Provider exceptions may contain request details: never serialize them to the browser/log.
   return json({ error: { code: error instanceof RuntimeError ? error.code : error instanceof InputError ? 'invalid_input' : 'request_failed', message: error instanceof RuntimeError || error instanceof InputError ? error.message : '요청을 처리하지 못했습니다. 현재 상태를 확인한 뒤 다시 시도해 주세요.' } }, error instanceof RuntimeError ? error.status : error instanceof InputError ? 400 : 500);
@@ -27,6 +67,13 @@ export async function GET(request: Request, context: Context) {
     if (route === 'archives') return json(await app.archives());
     if (parts[0] === 'archives' && parts.length === 2) return json(await app.archivedState(parts[1]!, new URL(request.url).searchParams.get('me') ?? 'owner'));
     if (route === 'state') return json(await app.state(new URL(request.url).searchParams.get('me') ?? 'owner'));
+    if (route === 'space') return json(await app.spaceStatus());
+    if (parts[0] === 'space' && parts[1] === 'participants' && parts.length === 4 && parts[3] === 'context') {
+      // Markdown for agents reading with curl or a browser; `format=json` for tools.
+      const format = new URL(request.url).searchParams.get('format') === 'json' ? 'json' : 'md';
+      const context = await app.spaceContext(parts[2]!, format);
+      return typeof context === 'string' ? new Response(context, { headers: { 'Content-Type': 'text/markdown; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } }) : json(context);
+    }
     if (parts[0] === 'tasks' && parts.length === 2) return json(await app.task(parts[1]!, new URL(request.url).searchParams.get('me') ?? 'owner'));
     if (route === 'events') {
       let cleanup = () => {};
@@ -56,6 +103,12 @@ export async function GET(request: Request, context: Context) {
 export async function POST(request: Request, context: Context) {
   try {
     const parts = (await context.params).path, route = parts.join('/');
+    if (parts[0] === 'space') {
+      let parsed: unknown;
+      try { parsed = await request.json(); } catch { throw new InputError('요청 내용을 읽을 수 없습니다.'); }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new InputError('요청 형식이 올바르지 않습니다.');
+      return await spacePost(parts, parsed as Record<string, unknown>, new URL(request.url).origin) ?? json({ error: { code: 'not_found', message: '요청한 경로를 찾지 못했습니다.' } }, 404);
+    }
     const resolving = parts[0] === 'tasks' && parts.length === 3 && parts[2] === 'resolve';
     const commenting = parts[0] === 'tasks' && parts.length === 3 && parts[2] === 'comments';
     const deciding = parts[0] === 'decisions' && parts.length === 2;

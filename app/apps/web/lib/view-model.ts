@@ -159,6 +159,17 @@ export interface ViewModel {
   scenario?: { name: string; nextLine?: { authorName: string; text: string; hasAttachment: boolean }; done: boolean };
   busy: boolean;                    // PM/Agent 처리 중 표시(activity가 없을 때의 대체)
   activity?: VmActivity;
+  /** #81: 연결된 개인 Agent의 Space 참여(글·PM 요청). 연결이 없으면 비운다. */
+  space?: VmSpace;
+}
+
+/** 개인 Agent 참여. 요청 상태: pending(아직 폴더에 못 전함) → delivered(폴더에 도착) → seen(Space에서 확인) → answered(답 받음). */
+export interface VmSpace {
+  participants: { id: string; displayName: string; tool: string; workspaceRoot: string; lastReadAt?: string; lastObservedAt?: string; observedFiles?: number }[];
+  posts: { id: string; participantId: string; kind: "result" | "question" | "blocked" | "note"; text: string; at: string; inReplyTo?: string; taskId?: string }[];
+  requests: { id: string; participantId: string; text: string; status: "pending" | "delivered" | "seen" | "answered"; at: string; byPm: boolean; location?: string; failure?: string; attempts: number; answerPostId?: string; triggerPostId?: string }[];
+  /** PM이 사람에게 넘긴 흐름(왕복 한도 도달). */
+  needsHuman: { postId: string; participantId: string; reason: string }[];
 }
 
 /** 오류 응답(계약 4): 화면은 message를 그대로 보여 준다. */

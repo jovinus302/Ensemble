@@ -1,6 +1,6 @@
-import { project, forecast, forecastFromState, availabilityWeek, bundleDecisions, isParentTask, openDecisions, taskActivity, waitingOn, workStatus,
+import { participation, project, forecast, forecastFromState, availabilityWeek, bundleDecisions, isParentTask, openDecisions, taskActivity, waitingOn, workStatus,
   type AnyEvent, type DecisionEffect, type EventPayloads, type LedgerEvent, type PlanOp, type Priority, type ProjectState, type RoutingReason, type TaskActivity, type TaskState, type TaskStatus } from '@ensemble/core';
-import type { ViewModel, VmActivity, VmActivityItem, VmMessage, VmCard, VmDecisionCard, VmPmJudgement, VmPlanTask, VmTaskDetail, VmWork, VmWorkItem, VmWorkStatus, VmWorkTeamRow } from './view-model';
+import type { ViewModel, VmActivity, VmActivityItem, VmMessage, VmCard, VmDecisionCard, VmPmJudgement, VmPlanTask, VmTaskDetail, VmWork, VmWorkItem, VmWorkStatus, VmWorkTeamRow, VmSpace } from './view-model';
 import { taskResolutions } from './task-resolution';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -295,7 +295,25 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
       ...(state.plan ? { lastChange: { version: state.plan.version, reason: state.plan.reason } } : {}),
     },
     pmLog,
+    ...spaceView(events),
   };
+}
+
+const FAILURE_LABEL: Record<string, string> = { unreachable: '작업 폴더에 연결되지 않음', permission_denied: '쓰기 권한 없음', not_permitted: '요청 받기 미허용', error: '전달 오류' };
+/** #81: 개인 Agent의 Space 글과 PM 요청 상태. 연결된 참여자가 없으면 아무것도 더하지 않는다. */
+export function spaceView(events: readonly LedgerEvent[]): { space?: VmSpace } {
+  const space = participation(events);
+  if (!space.participants.size) return {};
+  return { space: {
+    participants: [...space.participants.values()].map(p => ({ id: p.link.participantId, displayName: p.link.displayName, tool: p.link.tool, workspaceRoot: p.link.workspaceRoot,
+      ...(p.lastReadAt ? { lastReadAt: p.lastReadAt } : {}), ...(p.lastObservation ? { lastObservedAt: p.lastObservation.at, observedFiles: p.lastObservation.files.length } : {}) })),
+    posts: [...space.posts.values()].map(p => ({ id: p.postId, participantId: p.participantId, kind: p.kind, text: p.text, at: p.at, ...(p.inReplyTo ? { inReplyTo: p.inReplyTo } : {}), ...(p.taskId ? { taskId: p.taskId } : {}) })),
+    requests: [...space.requests.values()].map(r => ({ id: r.request.requestId, participantId: r.request.participantId, text: r.request.text, status: r.status, at: r.createdAt,
+      byPm: r.createdBy.kind === 'pm', attempts: r.attempts, ...(r.delivered ? { location: r.delivered.location } : {}),
+      ...(r.lastFailure && !r.delivered ? { failure: FAILURE_LABEL[r.lastFailure.reason] ?? r.lastFailure.reason } : {}),
+      ...(r.answer ? { answerPostId: r.answer.postId } : {}), ...(r.request.triggerPostId ? { triggerPostId: r.request.triggerPostId } : {}) })),
+    needsHuman: [...space.considerations.values()].filter(c => c.outcome === 'needs_human').map(c => ({ postId: c.triggerPostId, participantId: c.participantId, reason: c.reason })),
+  } };
 }
 
 // ── 작업 패널(§4): 작업 항목·팀·결정 요청 카드·작업 상세. 사람에게 보이는 글에는 작업 id·키를 넣지 않는다. ──
