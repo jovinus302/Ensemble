@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { inspect } from 'node:util';
 import type { NewLedgerEvent } from '@ensemble/core';
 import {
-  FakeMeetingAdapter, GoogleMeetCalendarAdapter, MeetingCoordinator, MeetingRequestError, calendarEventIdFor, meetingViews,
+  FakeMeetingAdapter, GoogleMeetCalendarAdapter, MeetingCoordinator, MeetingRequestError, OAuthTokenError, RefreshTokenProvider, calendarEventIdFor, meetingViews,
   type ArrangeInput,
 } from '@ensemble/meeting';
 import { MemoryLedgerStore } from '@ensemble/store';
@@ -262,7 +263,7 @@ const SECRET = 'ya29.test-token-not-real';
 const invite = {
   meetingId: 'meeting-1', projectId: 'space-a', calendarEventId: 'ens0123abcd', purpose: '결제 문구 충돌 정리', agenda: ['문구 선택'],
   attendees: [{ memberId: 'mina', email: 'mina@example.test' }], start: '2026-10-07T05:00:00.000Z', end: '2026-10-07T05:30:00.000Z', timeZone: 'Asia/Seoul',
-  space: { name: 'spaces/abc', meetingUri: 'https://meet.google.com/abc-defg-hij', meetingCode: 'abc-defg-hij' },
+  space: { name: 'spaces/abc', meetingUri: 'https://meet.google.com/abc-defg-hij', meetingCode: 'abc-defg-hij' }, sendUpdates: 'all' as const,
 };
 
 test('google adapter: spaces.create and events.insert request shape', async () => {
@@ -278,7 +279,7 @@ test('google adapter: spaces.create and events.insert request shape', async () =
   assert.equal(calls[0]!.headers.authorization, `Bearer ${SECRET}`);
   assert.deepEqual(calls[0]!.body, { config: { accessType: 'TRUSTED' } });
   const inserted = await adapter.insertInvite(invite);
-  assert.deepEqual(inserted, { status: 'ok', value: { eventId: 'ens0123abcd', htmlLink: 'https://calendar.google.com/event?eid=x' } });
+  assert.deepEqual(inserted, { status: 'ok', value: { eventId: 'ens0123abcd', htmlLink: 'https://calendar.google.com/event?eid=x', link: 'https://meet.google.com/abc-defg-hij' } });
   assert.equal(calls[1]!.url, 'https://www.googleapis.com/calendar/v3/calendars/pm-agent%40example.test/events?sendUpdates=all');
   const body = calls[1]!.body as Record<string, any>;
   assert.equal(body.id, 'ens0123abcd');
@@ -356,4 +357,92 @@ test('participants seen by the provider are recorded once each, without guessing
   assert.deepEqual(view.participants, [{ name: 'Mina Kim', evidence: 'fake' }]);
   assert.deepEqual(view.attendees.map(a => a.joined), [false, false]);
   assert.equal(view.pm, 'not_joined');
+});
+
+// ---- live-path additions: silent events, cross-ledger replay, OAuth refresh, access probe ----
+
+test('notifyAttendees false creates the event without emailing anyone and is not reported as an invite', async () => {
+  const f = await fixture();
+  const view = await f.coordinator.arrange({ ...arrangeInput, notifyAttendees: false });
+  assert.equal(f.adapter.events.size, 1);
+  assert.equal(f.adapter.invitesDelivered.length, 0);
+  assert.equal([...f.adapter.events.values()][0]!.sendUpdates, 'none');
+  assert.deepEqual(view.states, ['created']);
+  assert.equal(view.sendUpdates, 'none');
+  assert.deepEqual(view.attendees.map(a => a.invite), ['not_sent', 'not_sent']);
+  // The same key with sending switched on is a different request.
+  await assert.rejects(f.coordinator.arrange(arrangeInput), { code: 'conflict' });
+  const { calls, fetchImpl } = mockFetch([() => ({ status: 200, body: { id: 'ens0123abcd' } })]);
+  await new GoogleMeetCalendarAdapter({ accessToken: async () => SECRET, fetch: fetchImpl }).insertInvite({ ...invite, sendUpdates: 'none' });
+  assert.match(calls[0]!.url, /\?sendUpdates=none$/);
+});
+
+test('a retry from an empty ledger reuses the provider event and reports the link people were invited with', async () => {
+  const f = await fixture();
+  const first = await f.coordinator.arrange(arrangeInput);
+  // Same Space and key, but the local state was lost: a new space is made, the event insert is replayed.
+  const g = await fixture();
+  const other = new MeetingCoordinator({ store: g.store, context, adapter: f.adapter, now: () => new Date('2026-10-07T01:00:00.000Z') });
+  const replay = await other.arrange(arrangeInput);
+  assert.equal(f.adapter.spaces.length, 2);
+  assert.equal(f.adapter.events.size, 1);
+  assert.equal(f.adapter.invitesDelivered.length, 2);
+  assert.equal(replay.link, first.link);
+  assert.equal(replay.spaceMismatch, true);
+  assert.equal(replay.spaceName, undefined);
+  assert.equal(first.spaceMismatch, false);
+});
+
+const TOKEN_ENV = { clientId: 'client-id-not-real', clientSecret: 'client-secret-not-real', refreshToken: 'refresh-token-not-real' };
+test('refresh-token provider: form request, cache until expiry, one exchange for concurrent callers', async () => {
+  let now = 1_000_000;
+  const { calls, fetchImpl } = mockFetch([
+    () => ({ status: 200, body: { access_token: 'access-1', expires_in: 3600, scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/meetings.space.created', token_type: 'Bearer' } }),
+    () => ({ status: 200, body: { access_token: 'access-2', expires_in: 3600 } }),
+  ]);
+  // mockFetch parses bodies as JSON; capture the raw form separately.
+  const forms: string[] = [];
+  const provider = new RefreshTokenProvider({ ...TOKEN_ENV, now: () => now, fetch: (async (url, init) => { forms.push(String(init?.body)); return fetchImpl(url, { ...init, body: undefined }); }) as typeof fetch });
+  assert.deepEqual(await Promise.all([provider.accessToken(), provider.accessToken(), provider.accessToken()]), ['access-1', 'access-1', 'access-1']);
+  assert.equal(provider.exchanges, 1);
+  assert.equal(calls[0]!.url, 'https://oauth2.googleapis.com/token');
+  assert.equal(calls[0]!.method, 'POST');
+  assert.equal(calls[0]!.headers['content-type'], 'application/x-www-form-urlencoded');
+  assert.deepEqual(Object.fromEntries(new URLSearchParams(forms[0])), { grant_type: 'refresh_token', client_id: TOKEN_ENV.clientId, client_secret: TOKEN_ENV.clientSecret, refresh_token: TOKEN_ENV.refreshToken });
+  assert.deepEqual(provider.scopes, ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/meetings.space.created']);
+  now += 3_500_000; // 100 s before expiry: still cached
+  assert.equal(await provider.accessToken(), 'access-1');
+  assert.equal(provider.exchanges, 1);
+  now += 50_000; // 50 s before expiry: inside the 60 s skew, refreshed
+  assert.equal(await provider.accessToken(), 'access-2');
+  assert.equal(provider.exchanges, 2);
+  const printed = JSON.stringify(provider) + inspect(provider, { showHidden: true, depth: 5 });
+  for (const secret of [...Object.values(TOKEN_ENV), 'access-1', 'access-2']) assert.ok(!printed.includes(secret), `leaked ${secret}`);
+});
+
+test('refresh-token provider: failures name an error class only', async () => {
+  const cases = [
+    [() => ({ status: 400, body: { error: 'invalid_grant', error_description: `Bad ${TOKEN_ENV.refreshToken}` } }), 'invalid_grant'],
+    [() => ({ status: 401, body: { error: 'invalid_client' } }), 'invalid_client'],
+    [() => ({ status: 500, body: { error: { message: 'html?' } } }), 'http_500'],
+    [() => ({ status: 200, body: { token_type: 'Bearer' } }), 'bad_response'],
+    [() => new TypeError('fetch failed'), 'network'],
+  ] as const;
+  for (const [reply, code] of cases) {
+    const { fetchImpl } = mockFetch([reply as never]);
+    const provider = new RefreshTokenProvider({ ...TOKEN_ENV, fetch: (async (url, init) => fetchImpl(url, { ...init, body: undefined })) as typeof fetch });
+    const error = await provider.accessToken().then(() => undefined, (e: unknown) => e);
+    assert.ok(error instanceof OAuthTokenError);
+    assert.equal(error.code, code);
+    for (const secret of Object.values(TOKEN_ENV)) assert.ok(!error.message.includes(secret));
+  }
+  assert.throws(() => new RefreshTokenProvider({ ...TOKEN_ENV, refreshToken: '' }), { code: 'missing_refreshToken' });
+});
+
+test('google adapter: access probe reads one Calendar page and one Meet page', async () => {
+  const { calls, fetchImpl } = mockFetch([() => ({ status: 200, body: { items: [{}] } }), () => ({ status: 403, body: { error: { status: 'PERMISSION_DENIED', message: 'scope' } } })]);
+  const probe = await new GoogleMeetCalendarAdapter({ accessToken: async () => SECRET, fetch: fetchImpl }).probe();
+  assert.deepEqual(probe.calendar, { status: 'ok', value: { items: 1 } });
+  assert.equal(probe.meet.status === 'failed' && probe.meet.code, 'permission_denied');
+  assert.deepEqual(calls.map(c => `${c.method} ${c.url}`), ['GET https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=1', 'GET https://meet.googleapis.com/v2/conferenceRecords?pageSize=1']);
 });

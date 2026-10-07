@@ -41,6 +41,8 @@
 | `fake.ts` | 테스트 double. `spaces.create`는 매번 새 방, `events.insert`는 같은 id면 거절, 메일은 새 insert에서만 발송하는 공급자 동작을 흉내냄 |
 | `coordinator.ts` | `arrange`(B), `registerInvitation`(A), `refreshResponses`, `observeParticipants`, `report`, `ingest`, `ask`, `expireQuestions`, `recordNotes` |
 | `projection.ts` | Space 원장에서 미팅 상태를 계산. 성공/완료 상태가 없음 |
+| `oauth.ts` | refresh token → access token 교환과 만료 전 캐시. 값은 오류·출력에 남기지 않음 |
+| `scripts/live-meeting.ts` | 실연동 실행기(`check`/`create`/`observe`), 상태는 git 무시 SQLite 파일 |
 
 ### 멱등성
 
@@ -76,16 +78,50 @@
 | Workspace 관리자 확인 | 외부 참여자 허용, Meet 녹화·자막 설정, 서드파티 앱 접근 허용 여부 |
 | 브라우저 참여 결정 | PM 계정의 브라우저 자동 입장을 허용할지(약관·보안 검토), 회의 참가자에게 PM 참여·수집 범위를 알리는 문구 승인 |
 
-## 5. 수동 검증 절차 (자격 증명 확보 후)
+## 5. 실연동 실행기 (`npm run live:meeting`)
 
-1. 호스트 코드에서 `GoogleMeetCalendarAdapter({ accessToken, calendarId: <PM 계정> })`로 `MeetingCoordinator`를 만든다. token provider는 refresh token으로 access token을 발급하는 호스트 함수다.
-2. **B**: `arrange`를 한 번 호출하고 같은 입력으로 한 번 더 호출한다. Meet 링크 1개, 캘린더 이벤트 1개, 참여자별 메일 1통인지 각 계정에서 확인한다. 참여자가 링크로 입장한 뒤 `observeParticipants`와 `refreshResponses`의 결과를 기록한다.
+fake는 단위 테스트 보조로만 쓰고, 외부 왕복 증거는 이 실행기로 남긴다. 코드: [`scripts/live-meeting.ts`](../../app/packages/meeting/scripts/live-meeting.ts), 토큰 발급: [`src/oauth.ts`](../../app/packages/meeting/src/oauth.ts).
+
+- **자격 증명**: worktree 루트의 `.env.local`(git 무시 대상, `.gitignore`의 `.env.*`)에서 `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN`을 읽는다. `GOOGLE_CLOUD_PROJECT`는 기록용이며 실행기는 쓰지 않는다. 값은 출력하지 않고, 없으면 빠진 키 이름만 출력한다. 다른 파일은 `--env <경로>`로 지정한다.
+- **토큰**: `RefreshTokenProvider`가 `https://oauth2.googleapis.com/token`에 `grant_type=refresh_token`으로 access token을 받고 만료 60초 전까지 캐시한다. 오류는 `invalid_grant` 같은 분류만 남긴다.
+- **상태 파일**: 기본 `.local/meeting/ledger.db`(SQLite, git 무시 대상 `.local/`). 다른 프로세스에서 다시 실행해도 같은 원장을 읽으므로 같은 키는 같은 미팅이다. `--state <경로>`로 바꾼다.
+- **출력**: 호출한 Google API의 메서드·호스트·경로·HTTP 상태, 미팅 URI, Calendar 이벤트 id, htmlLink, 이번 실행에서 쓴 원장 기록. 헤더·본문·토큰은 출력하지 않는다.
+
+app/에서 순서대로 실행한다.
+
+```powershell
+# 1) 접근 확인: 토큰 교환 + Calendar events.list 1건 + Meet conferenceRecords.list 1건 (읽기만)
+npm run live:meeting -- check
+
+# 2) 드라이런: 실제 Meet space와 PM 캘린더 일정을 만들지만 참석자는 비우고 sendUpdates=none
+npm run live:meeting -- create --key live-b-dry-1
+#    같은 명령을 한 번 더: "ledger records written this run: 0", "api calls (0)"이면 프로세스 간 멱등성 확인
+npm run live:meeting -- create --key live-b-dry-1
+
+# 3) 실제 초대: --confirm-send가 있어야만 참석자를 넣고 sendUpdates=all. 드라이런과 다른 새 키를 쓴다
+npm run live:meeting -- create --key live-b-send-1 --attendee <테스트 참여자 이메일> --start 2026-10-08T05:00:00+09:00 --minutes 30 --confirm-send
+npm run live:meeting -- create --key live-b-send-1 --attendee <테스트 참여자 이메일> --start 2026-10-08T05:00:00+09:00 --minutes 30 --confirm-send
+
+# 4) 관찰: 참석 응답(responseStatus)과 Meet 입장자(conferenceRecords/participants)를 원장에 기록
+npm run live:meeting -- observe --key live-b-send-1
+```
+
+- `--confirm-send` 없이 `--attendee`를 주면 드라이런으로 처리하고 참석자를 넣지 않는다. 같은 키로 나중에 `--confirm-send`를 주면 다른 요청이므로 `conflict`로 거절된다. 실제 발송은 새 키로 한다.
+- 다시 실행할 때 `--start`를 생략하면 원장에 저장된 일정을 재사용한다. 처음 실행에서 생략하면 다음 정시 + 1시간, 30분이다.
+- 공급자 수준 멱등성(선택): 같은 키를 새 `--state` 파일로 실행하면 원장이 비어 있어 Meet space를 하나 더 만들지만, Calendar insert는 409 → 기존 이벤트 조회(`replayed=true`)로 끝나 메일이 다시 나가지 않는다. 이때 새 space는 쓰이지 않으며 실행기는 이벤트의 원래 링크를 보여준다. 빈 space가 하나 남으므로 필요할 때만 한다.
+- 일정을 Calendar에서 지우면 그 이벤트 id는 다시 쓸 수 없다. 새 키를 쓴다.
+- 이 저장소에서는 실행기의 원장 동작을 Google 대신 로컬 fetch 대체로만 돌려 보았다. 실제 Google 응답은 아직 관찰하지 않았다.
+
+## 6. 수동 검증 절차 (자격 증명 확보 후)
+
+1. 위 실행기의 `check`로 토큰과 범위를 확인한다(B 경로는 5절 명령 그대로).
+2. **B**: `create`를 같은 키로 두 번 실행한다. Meet 링크 1개, 캘린더 이벤트 1개, 참여자별 메일 1통인지 각 계정에서 확인한다. 참여자가 응답하고 링크로 입장한 뒤 `observe`의 결과를 기록한다.
 3. 실패 확인: 잘못된 token(`unauthenticated`), 범위 누락(`permission_denied`), 거절 응답(`declined`), 시작 후 무응답(`no_response`)이 각각 성공과 다른 상태로 남는지 본다.
 4. **A**: 사람이 만든 미팅 링크로 `registerInvitation`을 호출한다. PM 계정이 브라우저로 입장을 시도하고 결과(입장/거절/끊김)를 `report`로 남긴다. 회의 중 채팅을 사람이 옮겨 적는 경우 근거는 `human_report`로 구분한다.
 5. 결정/제안/미해결을 `recordNotes`로 원문 위치와 함께 남기고, 후속 요청 전달은 #79/#81 경로가 생긴 뒤 시험한다.
 6. 관찰 결과를 이 문서의 표에 날짜·계정 종류·관찰 근거와 함께 갱신한다. 회의록 업로드만 성공하면 "회의록 처리만 검증"으로 남긴다.
 
-## 6. 의존과 남은 일
+## 7. 의존과 남은 일
 
 - **#81 개인 Agent/작업환경 참여**: Space 공통 참여 경로와 공통 이벤트가 정해지면 `meeting_*` 이벤트를 core 공통 이벤트로 올릴지, 회의 결정을 `decision_recorded`와 어떻게 연결할지 함께 정한다. 후속 요청의 작업환경 전달은 여기에 의존한다.
 - **#79 Slack**: 초대 안내·후속 연락을 Slack 스레드로 보낼 경우 그 접점을 재사용한다.

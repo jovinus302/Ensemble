@@ -27,7 +27,7 @@ type Failed = Extract<AdapterOutcome<never>, { status: 'failed' }>;
 type Response<T> = { status: 'ok'; code: number; body: T } | Failed;
 
 interface GoogleEvent {
-  id?: string; status?: string; htmlLink?: string;
+  id?: string; status?: string; htmlLink?: string; location?: string;
   attendees?: { email?: string; responseStatus?: string }[];
   extendedProperties?: { private?: Record<string, string> };
 }
@@ -112,15 +112,15 @@ export class GoogleMeetCalendarAdapter implements MeetingAdapter {
       extendedProperties: { private: { ensembleMeetingId: input.meetingId, ensembleProjectId: input.projectId } },
     };
     // sendUpdates=all asks Calendar to email the guests. Acceptance of this request is not proof of delivery.
-    const inserted = await this.call<GoogleEvent>('POST', this.eventUrl(undefined, '?sendUpdates=all'), body);
-    if (inserted.status === 'ok') return { status: 'ok', value: { eventId: inserted.body.id ?? input.calendarEventId, ...(inserted.body.htmlLink ? { htmlLink: inserted.body.htmlLink } : {}) } };
+    const inserted = await this.call<GoogleEvent>('POST', this.eventUrl(undefined, `?sendUpdates=${input.sendUpdates}`), body);
+    if (inserted.status === 'ok') return { status: 'ok', value: { eventId: inserted.body.id ?? input.calendarEventId, ...(inserted.body.htmlLink ? { htmlLink: inserted.body.htmlLink } : {}), link: inserted.body.location ?? input.space.meetingUri } };
     if (inserted.code !== 'conflict') return inserted;
     // Same id already exists: a previous attempt got through. Read it back instead of inserting (no second email).
     const existing = await this.call<GoogleEvent>('GET', this.eventUrl(input.calendarEventId));
     if (existing.status !== 'ok') return existing;
     if (existing.body.extendedProperties?.private?.ensembleMeetingId !== input.meetingId) return { status: 'failed', code: 'id_conflict', message: 'calendar event id is held by another event', retryable: false };
     if (existing.body.status === 'cancelled') return { status: 'failed', code: 'cancelled', message: 'the event for this meeting was cancelled', retryable: false };
-    return { status: 'ok', replayed: true, value: { eventId: input.calendarEventId, ...(existing.body.htmlLink ? { htmlLink: existing.body.htmlLink } : {}) } };
+    return { status: 'ok', replayed: true, value: { eventId: input.calendarEventId, ...(existing.body.htmlLink ? { htmlLink: existing.body.htmlLink } : {}), ...(existing.body.location ? { link: existing.body.location } : {}) } };
   }
 
   async readResponses(calendarEventId: string): Promise<AdapterOutcome<{ email: string; response: AttendeeResponse }[]>> {
@@ -146,6 +146,16 @@ export class GoogleMeetCalendarAdapter implements MeetingAdapter {
       }
     }
     return { status: 'ok', value: participants };
+  }
+
+  /** Harmless reads to check access: one Calendar event list page and one Meet conference record page. */
+  async probe(): Promise<{ calendar: AdapterOutcome<{ items: number }>; meet: AdapterOutcome<{ items: number }> }> {
+    const calendar = await this.call<{ items?: unknown[] }>('GET', this.eventUrl(undefined, '?maxResults=1'));
+    const meet = await this.call<{ conferenceRecords?: unknown[] }>('GET', `${GOOGLE_MEET_API}/conferenceRecords?pageSize=1`);
+    return {
+      calendar: calendar.status === 'ok' ? { status: 'ok', value: { items: calendar.body?.items?.length ?? 0 } } : calendar,
+      meet: meet.status === 'ok' ? { status: 'ok', value: { items: meet.body?.conferenceRecords?.length ?? 0 } } : meet,
+    };
   }
 
   async sendInMeeting(): Promise<AdapterOutcome<{ ref: string }>> {

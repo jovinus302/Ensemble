@@ -53,11 +53,11 @@ export class FakeMeetingAdapter implements MeetingAdapter {
     const existing = this.events.get(input.calendarEventId);
     if (existing) {
       if (existing.meetingId !== input.meetingId) return { status: 'failed', code: 'id_conflict', message: 'id held by another event', retryable: false };
-      return failure ? failure.failure : { status: 'ok', replayed: true, value: { eventId: input.calendarEventId } };
+      return failure ? failure.failure : { status: 'ok', replayed: true, value: { eventId: input.calendarEventId, link: existing.space.meetingUri } };
     }
     this.events.set(input.calendarEventId, input);
-    for (const attendee of input.attendees) this.invitesDelivered.push({ eventId: input.calendarEventId, email: attendee.email });
-    return failure ? failure.failure : { status: 'ok', value: { eventId: input.calendarEventId, htmlLink: `https://calendar.example.test/${input.calendarEventId}` } };
+    if (input.sendUpdates === 'all') for (const attendee of input.attendees) this.invitesDelivered.push({ eventId: input.calendarEventId, email: attendee.email });
+    return failure ? failure.failure : { status: 'ok', value: { eventId: input.calendarEventId, htmlLink: `https://calendar.example.test/${input.calendarEventId}`, link: input.space.meetingUri } };
   }
 
   async readResponses(calendarEventId: string): Promise<AdapterOutcome<{ email: string; response: AttendeeResponse }[]>> {

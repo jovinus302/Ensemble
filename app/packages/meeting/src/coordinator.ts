@@ -36,6 +36,8 @@ export interface ArrangeInput {
   timeZone?: string;
   /** The human who confirmed attendees and schedule (issue #80 B2). */
   confirmedBy: Id;
+  /** Email the attendees (Calendar `sendUpdates=all`). Default true; false creates the event without notifying anyone. */
+  notifyAttendees?: boolean;
 }
 
 export interface InvitationInput {
@@ -161,7 +163,7 @@ export class MeetingCoordinator {
     const coordinationKey = input.coordinationKey.trim();
     const purpose = input.purpose.trim();
     if (!coordinationKey || !purpose) throw new MeetingRequestError('invalid', 'coordinationKey and purpose are required');
-    if (!input.attendees.length || input.attendees.some(attendee => !EMAIL.test(attendee.email))) throw new MeetingRequestError('invalid', 'attendees need valid emails');
+    if (input.attendees.some(attendee => !EMAIL.test(attendee.email))) throw new MeetingRequestError('invalid', 'attendees need valid emails');
     const start = Date.parse(input.start), end = Date.parse(input.end);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new MeetingRequestError('invalid', 'start must be before end');
     const { projectId } = this.context;
@@ -169,6 +171,7 @@ export class MeetingCoordinator {
     const fields = {
       purpose, agenda: input.agenda ?? [], attendees: input.attendees.map(a => ({ memberId: a.memberId, email: a.email.trim().toLowerCase() })),
       start: input.start, end: input.end, ...(input.timeZone ? { timeZone: input.timeZone } : {}), confirmedBy: input.confirmedBy,
+      sendUpdates: input.notifyAttendees === false ? 'none' as const : 'all' as const,
     };
     const request: MeetingRequestedPayload = {
       meetingId, coordinationKey, origin: 'arranged', ...fields,
@@ -215,13 +218,15 @@ export class MeetingCoordinator {
       const outcome = await this.adapter.insertInvite({
         meetingId, projectId, calendarEventId: request.calendarEventId, purpose: request.purpose, agenda: request.agenda,
         attendees: request.attendees, start: request.start, end: request.end, ...(request.timeZone ? { timeZone: request.timeZone } : {}), space: space.space,
+        sendUpdates: request.sendUpdates ?? 'all',
       });
       const failures = meetingEvents(events).filter(e => e.type === 'meeting_observed' && e.payload.meetingId === meetingId && e.payload.failure?.step === 'invite').length;
       await store.append([outcome.status === 'ok'
         ? this.observation(meetingId, 'invite_sent', {
-          event: { id: outcome.value.eventId, ...(outcome.value.htmlLink ? { htmlLink: outcome.value.htmlLink } : {}), replayed: outcome.replayed === true },
-          source: { channel: 'calendar_api', calendarEventId: outcome.value.eventId, spaceName: space.space.name, link: space.space.meetingUri },
-          detail: 'Calendar가 초대 발송 요청을 수락함. 참여자 수신은 관찰하지 않음',
+          event: { id: outcome.value.eventId, ...(outcome.value.htmlLink ? { htmlLink: outcome.value.htmlLink } : {}), replayed: outcome.replayed === true, ...(outcome.value.link ? { link: outcome.value.link } : {}) },
+          // The link people were invited with is the one on the event, even if a later attempt made another space.
+          source: { channel: 'calendar_api', calendarEventId: outcome.value.eventId, ...(outcome.value.link && outcome.value.link !== space.space.meetingUri ? {} : { spaceName: space.space.name }), link: outcome.value.link ?? space.space.meetingUri },
+          detail: (request.sendUpdates ?? 'all') === 'all' ? 'Calendar가 초대 발송 요청을 수락함. 참여자 수신은 관찰하지 않음' : 'sendUpdates=none: 일정만 생성하고 아무에게도 메일을 보내지 않음',
         }, key(meetingId, 'invite-sent'))
         : this.failedObservation(meetingId, 'invite', outcome, key(meetingId, 'invite', failures + 1, 'failed'))]);
       events = await this.read();

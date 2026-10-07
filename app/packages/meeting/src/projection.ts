@@ -38,6 +38,8 @@ export interface MeetingView {
   link?: string;
   spaceName?: string;
   calendarEventId?: string;
+  /** `none`: the Calendar event was created without emailing anyone (dry run). */
+  sendUpdates: 'all' | 'none';
   /** Every state that applies, most urgent first. */
   states: MeetingState[];
   attendees: (MeetingAttendee & { invite: InviteState; joined: boolean })[];
@@ -58,6 +60,8 @@ export interface MeetingView {
   inMeetingEvidence: boolean;
   /** Notes exist but all come from a post-meeting transcript: transcript processing only, not participation. */
   transcriptOnly: boolean;
+  /** The invite carries a different Meet link than the recorded space (participants of that link cannot be looked up by space name). */
+  spaceMismatch: boolean;
   /** Any fact came from a test double. */
   fake: boolean;
 }
@@ -70,6 +74,7 @@ function fold(request: MeetingRequestedPayload, observed: MeetingObservedPayload
   const byMember = new Map(attendees.map(attendee => [attendee.memberId, attendee]));
   let space: MeetingObservedPayload['space'];
   let eventId: string | undefined;
+  let invitedLink: string | undefined;
   let inviteSent = false;
   let lastStepFailure: MeetingFailure | undefined;
   let chatFailure: MeetingFailure | undefined;
@@ -87,8 +92,9 @@ function fold(request: MeetingRequestedPayload, observed: MeetingObservedPayload
       case 'space_reserved': reserved = { attempt: o.attempt ?? 1, since: o.observedAt }; lastStepFailure = undefined; break;
       case 'space_created': space = o.space; reserved = undefined; lastStepFailure = undefined; break;
       case 'invite_sent':
-        inviteSent = true; eventId = o.event?.id ?? eventId; lastStepFailure = undefined;
-        for (const attendee of attendees) if (attendee.invite === 'not_sent') attendee.invite = 'sent_unconfirmed';
+        inviteSent = true; eventId = o.event?.id ?? eventId; invitedLink = o.event?.link ?? invitedLink; lastStepFailure = undefined;
+        // A silent event (sendUpdates=none) notified nobody.
+        if (request.sendUpdates !== 'none') for (const attendee of attendees) if (attendee.invite === 'not_sent') attendee.invite = 'sent_unconfirmed';
         break;
       case 'invite_accepted': case 'invite_declined': case 'invite_tentative': {
         const attendee = o.subjectId ? byMember.get(o.subjectId) : undefined;
@@ -129,7 +135,7 @@ function fold(request: MeetingRequestedPayload, observed: MeetingObservedPayload
   const states = new Set<MeetingState>();
   if (request.origin === 'arranged') {
     if (lastStepFailure) states.add('failed');
-    else if (inviteSent) states.add('invite_sent');
+    else if (inviteSent) states.add(request.sendUpdates === 'none' ? 'created' : 'invite_sent');
     else if (space) { states.add('created'); states.add('pending'); }
     else states.add('pending');
   } else if (pm === 'not_joined') states.add('pending');
@@ -138,13 +144,15 @@ function fold(request: MeetingRequestedPayload, observed: MeetingObservedPayload
   if (unsupported.size) states.add('unsupported');
   const silent = [...questions.values()].includes('silent');
   if (silent || attendees.some(attendee => attendee.invite === 'no_response')) states.add('no_response');
-  const link = space?.meetingUri ?? request.link;
-  const spaceName = space?.name;
+  // The event's own link wins: a space recorded by a later attempt may not be the one people were invited to.
+  const link = invitedLink ?? space?.meetingUri ?? request.link;
+  const spaceMismatch = invitedLink !== undefined && space !== undefined && invitedLink !== space.meetingUri;
+  const spaceName = spaceMismatch ? undefined : space?.name;
   const calendarEventId = eventId ?? (inviteSent ? request.calendarEventId : undefined);
   return {
     meetingId: request.meetingId, origin: request.origin, purpose: request.purpose, agenda: request.agenda, confirmedBy: request.confirmedBy,
     ...(request.start ? { start: request.start } : {}),
-    ...(link ? { link } : {}), ...(spaceName ? { spaceName } : {}), ...(calendarEventId ? { calendarEventId } : {}),
+    ...(link ? { link } : {}), ...(spaceName ? { spaceName } : {}), ...(calendarEventId ? { calendarEventId } : {}), sendUpdates: request.sendUpdates ?? 'all',
     states: ORDER.filter(state => states.has(state)),
     attendees, pm, participants, unsupported: [...unsupported],
     openQuestions: [...questions].flatMap(([id, state]) => state === 'open' ? [id] : []),
@@ -153,6 +161,7 @@ function fold(request: MeetingRequestedPayload, observed: MeetingObservedPayload
     ...(reserved && !space ? { inFlight: reserved } : {}),
     notes,
     inMeetingEvidence: inMeeting,
+    spaceMismatch,
     transcriptOnly: notes.length > 0 && !inMeeting && notes.every(note => note.source.channel === 'transcript'),
     fake,
   };
@@ -177,6 +186,7 @@ export function meetingStatusLine(view: MeetingView): string {
   const replies = view.attendees.filter(a => a.invite === 'declined' || a.invite === 'no_response').map(a => `${a.memberId}(${a.invite === 'declined' ? '거절' : '응답 없음'})`);
   return [
     `"${view.purpose}" 미팅: ${states}`,
+    ...(view.sendUpdates === 'none' && view.calendarEventId ? ['초대 메일 없이 일정만 생성'] : []),
     ...(view.failure ? [`사유 ${view.failure.code}${view.failure.uncertain ? ' · 요청 반영 여부 불확실' : ''}`] : []),
     ...(replies.length ? [`초대 ${replies.join(', ')}`] : []),
     ...(view.unsupported.length ? [`미지원 ${view.unsupported.join(', ')}`] : []),

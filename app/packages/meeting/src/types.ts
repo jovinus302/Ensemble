@@ -65,6 +65,8 @@ export interface MeetingRequestedPayload {
   calendarEventId?: string;
   /** Existing meeting link for `invited`. */
   link?: string;
+  /** Calendar `sendUpdates`: `all` emails the attendees, `none` creates the event silently. Absent on older records means `all`. */
+  sendUpdates?: 'all' | 'none';
   requestDigest: string;
 }
 
@@ -85,7 +87,7 @@ export interface MeetingObservedPayload {
   questionId?: Id;
   text?: string;
   space?: { name: string; meetingUri: string; meetingCode?: string };
-  event?: { id: string; htmlLink?: string; replayed: boolean };
+  event?: { id: string; htmlLink?: string; replayed: boolean; link?: string };
   failure?: MeetingFailure;
   detail?: string;
 }
@@ -116,7 +118,8 @@ export type MeetingEventType = keyof MeetingEventPayloads;
 // ---- Adapter contract -------------------------------------------------------------------------------------
 
 export interface MeetingSpace { name: string; meetingUri: string; meetingCode?: string }
-export interface MeetingInvite { eventId: string; htmlLink?: string }
+/** `link`: the meeting link the event actually carries (on a replay it can differ from a space made by a later attempt). */
+export interface MeetingInvite { eventId: string; htmlLink?: string; link?: string }
 export type AttendeeResponse = 'needsAction' | 'accepted' | 'declined' | 'tentative';
 export interface MeetingParticipant { name: string; displayName?: string; joinedAt?: string; leftAt?: string }
 
@@ -137,6 +140,8 @@ export interface InviteRequest {
   end: string;
   timeZone?: string;
   space: MeetingSpace;
+  /** `all` asks Calendar to email the attendees; `none` sends nothing. */
+  sendUpdates: 'all' | 'none';
 }
 
 export interface MeetingAdapter {
