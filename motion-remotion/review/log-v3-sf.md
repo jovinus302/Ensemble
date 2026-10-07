@@ -1,5 +1,8 @@
 # log-v3-sf.md — v3 style-frame review (SF1 f185 / SF2 f505 / SF3 f1305)
 
+> **과거 영상 자료 · 2026-10-07 정리:** 이 문서는 이전 영상의 제작·검토 기록이다. 현재 제품은 여러 사람과 Agent의 맥락을 목표 아래 연결하고 다음 행동을 조율하는 PM Agent이며 [제품 의도](../../intent.md)가 기준이다. 아래 대본·표현·화면은 새 메시지로 재제작된 결과가 아니다.
+
+
 Reviewed as a pitch-video art director against the Linear/Raycast-grade bar
 (the user rejected the first motion graphic as "그림이 구려"). One defect class
 per round, per MOTION.md §13.

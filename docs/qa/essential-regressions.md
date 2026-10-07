@@ -1,29 +1,12 @@
-# Essential regressions only
+# 필수 회귀 검사
 
-Run `npm test` from `app/` on Node 24+. The command uses Node's built-in test runner with a 10-second timeout and the existing `tsx` dependency. No test framework, browser driver, snapshots, paid model, provider login, or benchmark runner is added. Run `npm run typecheck` and `npm run build` separately; the test files are included in type checking.
+app/에서 npm test를 실행한다. Node 내장 테스트 러너와 기존 tsx를 사용한다. 외부 provider 호출은 없으며 타입 검사와 웹 빌드는 따로 수행한다.
 
-Inventory checked on **2026-10-05, main `605521b`**: **18 scenarios in four files**. Keep this a risk-based list; do not grow it into a helper-by-helper or visual snapshot suite.
-
-| File | Cases | Scope |
-|---|---|---|
-| [essential-runtime.test.ts](../../app/test/essential-runtime.test.ts) | 6 | Real runtime entrypoints and in-memory ledger; fake external connector |
-| [essential-pm-coordination.test.ts](../../app/test/essential-pm-coordination.test.ts) | 2 | Fixed demo discussion, scope/schedule gates and limited revisions |
-| [essential-marketing-campaign.test.ts](../../app/test/essential-marketing-campaign.test.ts) | 6 | Scenario references, five-stage story, copy density, navigation, selection and upstream trace |
-| [essential-design-to-code.test.ts](../../app/test/essential-design-to-code.test.ts) | 4 | Two-person consent, sharing, QA repair, human review, stale results and interrupted callbacks |
-
-| Scenario | Why it is essential |
+| 파일 | 검증할 관찰 결과 |
 |---|---|
-| Required human decision remains paused; wrong person is refused; rejection does not hand off | An agent must not proceed without the responsible person's judgment. |
-| Concurrent repeated approval applies acceptance and starts a dependent agent once | Retried requests must not duplicate work. |
-| Retry respects authority, original assignee, state and the human's revision note | Recovery must not assign work to the wrong person or lose the requested scope. |
-| Duplicate execution cannot create a second active turn | Double submission must not start two executions. |
-| Runtime stop detaches late transport results | A stopped runtime must not accept a late completion. |
-| Identical task/decision IDs in shared storage remain project-local | One project's decisions must not affect another project. |
-| Scripted demo compares examples before human judgment and coordinates scope/schedule before execution | Preference, conditional requests and deferred timing must not silently authorize work. |
-| Scripted demo handoff, scoped revision and interrupted callback handling | Replay/reset must not let old timers finish a new presentation or widen the fixed change request. |
+| [essential-runtime.test.ts](../../app/test/essential-runtime.test.ts) | 필요한 사람의 판단 없이 후속 실행하지 않음, 잘못된 담당자 거부, 반복 승인·실행의 중복 방지, 원래 담당자와 수정 메모를 보존한 재시도, 종료 후 늦은 결과 차단, 프로젝트 격리 |
+| [essential-workspaces.test.ts](../../app/test/essential-workspaces.test.ts) | 개발·디자인 공유 순서 독립성, 미팅 결정만으로 미공유 결과를 반영 완료하지 않음, 담당자별 반영과 남은 검토, 출처·버전 보존, 중복 동작과 초기화 |
 
-`app/test/essential-runtime.test.ts` exercises real `ProjectManager` decision/recovery entrypoints and `SessionRunner`, backed by the real in-memory ledger/projection. Only the external connector is a tiny in-process fake; the model provider throws if called. Requests and the initial plan are seeded, so this does not validate model reasoning or question generation. Shutdown coverage concerns late transport events after stopping, not cancellation of an already-running validator.
+현재 두 파일에서 10개 사례를 실행한다. 기존 제품 검사는 실제 ProjectManager·SessionRunner·메모리 원장을 사용하며 외부 연결만 fake다. 새 데모 검사는 사용자의 연결·반영 동작에 따른 결과를 확인한다. 각 내부 함수마다 검사를 늘리거나 화면 구조를 그대로 복제하지 않는다.
 
-`app/test/essential-pm-coordination.test.ts` exercises the scripted reducer only. The S27 tests check data references, bounded/cumulative reveals, version selection and provenance traversal. The handoff tests check that both humans agree, private drafts stay private until shared, shared outputs unlock dependent work, failed QA requests scoped repair, and human approval gates handoff. They also cover duplicate/stale actions and cancel/reset/history invalidation.
-
-These tests do not prove real model reasoning, generated artifacts, rendered browser layout, external integrations or measured product quality. The previous broad suites and standalone benchmark runner remain removed. See the [QA guide](README.md) for the current optional browser check and local output location.
+실제 모델 추론, 외부 서비스 연동, 로그인 서비스의 품질, 다양한 협업에서의 사용자 효과는 이 검사의 범위가 아니다. 화면·키보드·모바일·원본 이동은 [별도 브라우저 검사](README.md)로 확인한다.

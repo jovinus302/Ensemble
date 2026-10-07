@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "Ensemble",
-  description: "An AI project manager for teams of people and agents.",
+  description: "PM Agent — 여러 사람과 Agent의 맥락을 연결하고 다음 행동을 조율합니다.",
 };
 
 export const viewport = {

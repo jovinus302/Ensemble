@@ -2,24 +2,22 @@
 
 <a id="현행-구현--2026-10-02"></a>
 
-## 현행 구현 — 2026-10-05
+## 현행 구현 — 2026-10-07
 
-확인 기준은 `main@605521b`다. 전체 문서 지도는 [docs 안내](README.md)를 따른다. 제품 방향은 `intent.md`를 따르고 여기에는 현재 실행 구조만 설명한다. 시작 명령은 [README](../README.md), 제품 범위는 [MVP 범위](mvp-scope.md)를 참고한다.
+기존 앱 기준은 `main@7095f0b`이며 새 데모의 접점 구조를 반영했다. 전체 문서 지도는 [docs 안내](README.md)를 따른다. 제품 방향은 `intent.md`를 따르고 여기에는 현재 실행 구조만 설명한다. 시작 명령은 [README](../README.md), 제품 범위는 [MVP 범위](mvp-scope.md)를 참고한다.
 
-### 실행 앱과 독립 시연
+### 제품 접점과 내부 구현
 
-| 경로 | 진입점 | 상태·실행 경로 |
+PM Agent는 여러 사람과 Agent의 협업에서 맥락을 이해하고 다음 행동을 조율한다. 기존 작업 환경이 접점이며 내부 데이터 모델은 제품의 목적이 아니다. 우측은 프로젝트 맥락 확인을 위한 보조 뷰이며 내부 원장·작업 모델은 그 경험을 지원하는 수단이다.
+
+| 경로 | 진입점 | 역할 |
 |---|---|---|
-| `/` | [App](../app/apps/web/components/App.tsx) | [웹 runtime](../app/apps/web/lib/runtime.ts) → ProjectManager → 이벤트 원장·SQLite |
-| `/demo/pm-coordination` | [PmCoordinationDemo](../app/demo/scripted/pm-coordination/PmCoordinationDemo.tsx) | pm-coordination reducer와 고정 대화·결과 |
-| `/demo/marketing-campaign` | [MarketingCampaignDemo](../app/demo/scripted/marketing-campaign/MarketingCampaignDemo.tsx) | S27 시나리오·노드/엣지·장면 상태 |
-| `/demo/design-to-code` | [DesignToCodeDemo](../app/demo/scripted/design-to-code/DesignToCodeDemo.tsx) | design-to-code reducer와 합의·초안·공유·검토 상태 |
+| /demo | [WorkspaceDemo](../app/demo/workspaces/WorkspaceDemo.tsx) | 개발·디자인·Slack·미팅과 PM 연결을 보여주는 로컬 예시 |
+| / | [App](../app/apps/web/components/App.tsx) | 기존 서버·원장 기반 관리 앱 |
 
-뒤의 세 경로는 앱 서버 API·PM provider·worker connector·SQLite에 연결되지 않은 클라이언트 시연이다. 실제 앱의 fake 모드는 동일한 서버·원장을 쓰므로 이들과 구분한다. [데모 안내](../app/demo/README.md)에 조작과 한계를 정리했다.
+새 데모는 [context](../app/demo/workspaces/context.ts)의 독립적인 출처 연결과 결정 반영을 사용한다. 제품 서버 API·PM provider·worker·SQLite를 호출하지 않는다. 실제 외부 도구 연동은 별도 구현 대상이다. 이전 시연 엔진·관찰 실행기는 제거했다.
 
-현행 패키지는 `core`(이벤트·투영·권한·예측), `store`(메모리·SQLite), `llm`(provider), `agents`(세션 connector), `orchestrator`(계획·조율·검토·인계), `channel`(채널 계약), `scenarios`(앱 입력 재생)다. 스크립트 데모는 `app/demo/scripted`, 실제 앱을 이용하는 관찰 실행기는 `app/demo/runtime`에 둔다. 별도 패키지나 런타임 복제는 만들지 않는다.
-
-현재 검증 명령은 `app/`에서 `npm test`, `npm run typecheck`, `npm run build`다. 테스트 구성과 역사적 실행기 구분은 [QA 안내](qa/README.md)를 따른다.
+제품 패키지 core, store, llm, agents, orchestrator, channel, scenarios는 기존 앱의 내부 기능으로 유지한다. 아래 내용은 그 구현 계약이며 각 도구에 PM Agent가 이미 연동되었다는 주장이 아니다. 검사와 실행은 [README](../README.md)와 [QA 안내](qa/README.md)를 따른다.
 
 ### 웹 앱의 PM과 worker는 별도 선택
 

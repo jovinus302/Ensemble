@@ -1,5 +1,3 @@
-import { MarketingCampaignDemo } from '../../../../../demo/scripted/marketing-campaign/MarketingCampaignDemo';
+import { permanentRedirect } from 'next/navigation';
 
-export const metadata = { title: '마케팅 캠페인 데모 · Ensemble' };
-
-export default function Page() { return <MarketingCampaignDemo />; }
+export default function Page() { permanentRedirect('/demo'); }

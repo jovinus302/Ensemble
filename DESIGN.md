@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: Ensemble
-description: 사람과 AI Agent가 하나의 흐름에서 일하는 대화형 프로젝트 공간. PM Agent가 지휘하고, 담당 Agent가 바뀌어도 맥락이 이어진다. Google Labs 스타일(실험적, 밝고 유희적이되 정돈된) 위에 Ensemble 고유의 포레스트 그린 앵커를 둔다.
+description: 여러 사람과 Agent의 협업에서 맥락을 이해하고 다음 행동을 조율하는 PM Agent. 기존 작업 환경을 주 공간으로 유지하고 프로젝트 맥락은 보조 뷰로 확인한다.
 colors:
   # Brand anchor (concept PDF에서 추정한 톤)
   brand-ink: "#173B30"
@@ -350,15 +350,18 @@ components:
 
 ## Overview
 
-### 제품 한 줄
-Ensemble은 **사람과 AI Agent가 하나의 팀으로 일하는 대화형 프로젝트 공간**이다. 겉모습은 Slack처럼 채널, 스레드, 멘션이 있는 채팅이다. 그 안에서 **PM Agent**가 사람과 대화하며 목표를 정리하고, 전문 Agent에게 일을 배정한다. 결정과 결과는 다음 작업으로 연결된다. 핵심 약속은 **"담당 Agent가 바뀌어도 맥락은 이어진다"**이다. 앞선 작업의 목적·배경·결정 이유·진행 상태·결과를 다음 담당자에게 넘겨, 사용자가 같은 설명을 되풀이하지 않게 한다.
+### 제품 정의와 화면의 역할
 
-### 브랜드 메타포: 앙상블 (지휘자와 연주자들)
-- **사람**: 곡의 방향을 정한다. 목표를 제시하고, 중요한 결정을 내리고, 외부에 영향이 있는 작업(발송·배포·결제)을 승인한다.
-- **PM Agent**: 지휘자다. 누가 언제 들어올지 정하고(배정), 템포를 맞추고(진행 추적), 악보를 넘긴다(Handoff).
-- **전문 Agent**: 파트 연주자다. 각자 고유한 음색이 있고, 이것이 곧 **Agent voice color**다.
-- **맥락**은 악보다. 연주자가 바뀌어도 악보는 그대로 넘어간다. Handoff 카드가 이 악보 역할을 한다.
-- **하나의 흐름**: 여러 목소리가 한 타임라인에서 화음을 이룬다. 소음이 아니라 화음이 되도록, 결과는 채널에 올리고 과정은 카드와 상태 표시에 담는다.
+Ensemble은 여러 사람과 Agent가 동시에 일하는 환경에서 흩어진 맥락을 목표 아래 연결하고 다음 행동을 조율하는 **PM Agent**다. North Star와 여섯 역할은 [intent.md](intent.md)를 따른다. 다양한 협업을 대상으로 하며 개발·디자인은 데모 사례다.
+
+주 작업 공간은 팀원이 원래 쓰는 도구다. PM Agent는 그곳에서 필요한 결정·자료·결과를 전달하고 다음 행동을 챙긴다. 우측은 목표, 작업·담당, 결정·이유·출처, 산출물·버전, 남은 일과 행동 결과를 확인하는 보조 뷰다. 그래프나 상태 편집을 제품의 주인공으로 삼지 않는다.
+
+### 브랜드 메타포: 각자의 연주를 하나의 목표로
+
+- 사람은 제작·판단·검토에 직접 참여한다.
+- 작업 Agent는 각자의 환경에서 업무를 수행한다.
+- PM Agent는 서로 필요한 맥락과 다음 행동을 조율한다.
+- 연결을 표현할 때는 출처·대상·의미를 함께 보여준다. 선이 있다는 이유만으로 전달·실행·완료를 의미하지 않는다.
 
 ### 왜 Google Labs 스타일인가
 - Ensemble은 "사람과 AI가 한 팀"이라는 **아직 정답이 없는 실험**이다. Labs 스타일의 정서, 즉 "완성품보다 가능성을 먼저 보여주는 밝은 실험실"이 이 제품의 위치와 맞는다.
@@ -385,7 +388,7 @@ Ensemble은 **사람과 AI Agent가 하나의 팀으로 일하는 대화형 프�
 
 ### 원칙
 1. **중립이 90%**다. 배경 `background`(#F6F6F3), 카드 `surface`(#FFFFFF), 텍스트 `on-surface`(#18201C)가 화면을 지배한다.
-2. **브랜드 앵커는 포레스트 그린**이다. `brand-ink`(#173B30), `primary`(#2B6A52), `secondary-container`(#E3EDE7) 세 색은 concept PDF(`docs/ensemble-direction-context.pdf`)의 톤을 눈으로 보고 추정한 값이다. 주 행동 버튼, 활성 채널, 방향·요약 카드에 쓴다.
+2. **브랜드 앵커는 포레스트 그린**이다. `brand-ink`(#173B30), `primary`(#2B6A52), `secondary-container`(#E3EDE7) 세 색은 기존 브랜드 팔레트를 유지한 값이다. 주 행동 버튼, 활성 채널, 방향·요약 카드에 쓴다.
 3. **harmony gradient는 AI의 신호**다. #3DBE8B → #4C8DF6 → #9B7BF7 → #F08BB4. 다음 경우에만 쓴다: PM Agent 아바타 링, 생각 중 shimmer, Handoff 연결선, 온보딩·히어로. 일반 버튼, 배경 전면, 텍스트에는 쓰지 않는다.
 4. **사람과 Agent는 색만으로 구분하지 않는다**. 반드시 모양(원 대 둥근 사각)과 라벨(`AI` 배지, Agent 역할명)을 함께 쓴다.
 
@@ -468,30 +471,26 @@ Ensemble은 **사람과 AI Agent가 하나의 팀으로 일하는 대화형 프�
 
 ## Layout
 
-### 기본 골격 (Expanded 이상)
+### 현재 데모의 골격
+
+```text
+[ 기존 작업 환경: 개발 / 디자인 / Slack / 미팅 ][ 프로젝트 맥락 보조 뷰 ]
+[ 해당 환경에 함께하는 PM Agent               ][ 결정·출처·결과·다음 행동 ]
 ```
-[rail 72] [sidebar 280] [ main: channel header 64 / timeline / composer ] [ thread·context panel 400 ]
-```
-- **rail**: 워크스페이스 전환, 홈, 활동, 에이전트 로스터 아이콘. 세로 정렬, 간격 `spacing.3`.
-- **sidebar**: 프로젝트 → 채널(`#`), DM, **Agents 섹션**(현재 작업 중인 Agent와 상태 점). 배경은 `surface-container-low`.
-- **main**: 메시지 열 최대 폭 `message-max` 760px, 가운데 정렬. 양옆 여백은 `spacing.6`.
-- **thread·context panel**: 스레드, Handoff 상세, 작업(Work) 상세를 같은 패널에서 탭으로 전환한다. 메인 영역 위에 떠 있는 카드 형태(`rounded.xl`, 바깥 여백 `spacing.2`)로 배치해 Labs 특유의 "떠 있는 패널" 인상을 준다.
 
-### 간격
-- 4px 기본 단위를 쓴다. 허용 값은 4, 8, 12, 16, 20, 24, 32, 40, 48, 64다.
-- 같은 발신자의 연속 메시지 간격은 `message-gap` 4px, 발신자가 바뀌면 `group-gap` 16px, 날짜 구분선 위아래는 24px.
-- 카드 내부 padding은 16(일반)과 20(Handoff·PM 요약) 두 가지다.
+- 주 영역은 코드·디자인·논의·미팅 결정을 실제 내용으로 보여준다. 모든 환경을 하나의 중앙 채팅 UI로 바꾸지 않는다.
+- PM Agent는 해당 작업 아래에서 근거와 다음 행동을 짧게 설명한다.
+- 보조 뷰는 목표와 관계를 확인하는 용도이며 숨길 수 있다. 숨겨도 작업 공간의 공유·반영·산출물 열기는 동작한다.
+- 원본으로 돌아가는 출처 링크, 내용과 버전을 확인하는 산출물 열기를 제공한다.
+- 결정 전달, 산출물 반영, 최종 검토는 라벨과 문구로 구분한다. 색상만으로 상태를 전달하지 않는다.
 
-### 반응형 (M3 window size class 기준, 경계값은 기억에 의존해 확인 필요)
-| 클래스 | 폭 | 규칙 |
-|---|---|---|
-| compact | < 600 | 단일 열. sidebar는 모달 drawer. 스레드는 전체 화면 push. 컴포저는 하단 고정, 알약 모양 |
-| medium | 600–839 | rail + main. sidebar는 오버레이 drawer. 스레드는 전체 화면 |
-| expanded | 840–1199 | rail + sidebar + main. 스레드는 오버레이 시트(오른쪽 400) |
-| large | 1200–1599 | 4열 전부 고정 |
-| extra-large | ≥ 1600 | 4열 + 메시지 열 760 유지, 남는 폭은 여백 |
+### 반응형과 접근성
 
-- 터치 타깃은 최소 48×48 (시각 크기 40이어도 hit area 48).
+760px 이하에서는 주 영역 다음에 보조 뷰를 배치한다. 480px 이하에서는 코드·디자인 예시와 설명도 한 열로 바꾼다. 좁은 화면에서 본문 가로 스크롤을 만들지 않는다. 터치 동작은 충분한 높이로 제공하고 키보드 포커스, 작업 공간 선택 상태, 다이얼로그 닫기와 포커스 복귀를 유지한다.
+
+### 기존 앱과 토큰
+
+아래 색·타입·컴포넌트 토큰과 기존 앱의 채널 구성 요소는 내부 UI 자산으로 유지한다. 자체 Slack형 앱의 골격을 새 제품의 필수 형태로 해석하지 않는다. 새 데모의 스타일은 .ens-demo 아래에 한정해 기존 앱에 영향을 주지 않는다.
 
 ## Elevation & Depth
 
@@ -551,7 +550,7 @@ Ensemble은 **사람과 AI Agent가 하나의 팀으로 일하는 대화형 프�
   - 구조: 제목(`title-md`) → 결론 한 줄 → 목록(누가·무엇·언제) → 필요한 결정(needs-you 칩) → 액션 버튼(tonal "계획 승인", text "수정 요청").
 
 ### 5. Agent assignment card
-- PM이 일을 배정할 때 타임라인에 삽입한다. `card-assignment`(흰 카드, `rounded.xl`, padding 16).
+- PM Agent가 일을 배정할 때 타임라인에 삽입한다. `card-assignment`(흰 카드, `rounded.xl`, padding 16).
 - 레이아웃: 좌측 PM 아바타 24 → `arrow_forward` → 담당 Agent 아바타 36(voice 색) + 이름/역할.
   - 본문: 작업 제목(`title-md`), 완료 기준 1~3개(체크 아이콘 없는 불릿), 마감(`label-md`, `schedule` 아이콘), 예산·위임 깊이 표시(`label-sm`, 예 "자동 턴 3/8").
   - 하단: 상태 칩 + 버튼(tonal "담당 변경", text "세부").
@@ -575,7 +574,7 @@ Ensemble은 **사람과 AI Agent가 하나의 팀으로 일하는 대화형 프�
   - 오프라인·중지: 빈 원 테두리
 - **생각 중(typing)**: 타임라인 하단에 "Iris가 시안을 만드는 중…" 행을 둔다(`body-sm on-surface-variant`).
   - 앞에 voice 색 점 3개가 150ms 간격으로 위아래로 튄다(`spring.fast-spatial` 유사 bounce, 4px).
-  - PM이 생각 중이면 점 대신 harmony shimmer 바(폭 48, 높이 4, 알약)를 쓴다.
+  - PM Agent가 생각 중이면 점 대신 harmony shimmer 바(폭 48, 높이 4, 알약)를 쓴다.
   - 진행 단계가 있으면 "3/5 단계 · 레이아웃 정리"처럼 단계만 한 줄로 표시하고, 상세는 패널에서 연다.
 - 답변이 도착한 뒤 1.5초 안에 늦게 온 typing 신호는 무시한다(깜빡임 방지).
 
@@ -585,7 +584,7 @@ Ensemble은 **사람과 AI Agent가 하나의 팀으로 일하는 대화형 프�
 - `@` 입력 시 자동완성 메뉴(레벨 3, `rounded.lg`)가 뜬다. 사람과 Agent를 **섹션으로 분리**해 보여준다. Agent 항목에는 아바타, 이름, 역할, 현재 상태 칩을 붙인다. 맨 위에 "@PM에게 맡기기"를 고정한다.
 - 확정된 멘션은 **mention pill**이 된다. Agent는 voice container 배경과 `*-on` 텍스트, 사람은 `surface-container-high`와 `on-surface`다.
 - `@A > @B` 순서 표기를 입력하면 pill 사이에 `arrow_forward` 아이콘을 넣어 순차 실행임을 보여준다.
-- 컴포저 위 힌트 줄(선택): "PM이 담당자를 추천해요" text 버튼(`auto_awesome` 아이콘).
+- 컴포저 위 힌트 줄(선택): "PM Agent가 담당자를 추천해요" text 버튼(`auto_awesome` 아이콘).
 
 ### 9. Thread / context panel
 - 떠 있는 패널(`thread-panel`, `rounded.xl`, 레벨 2, 오른쪽 400).
@@ -663,7 +662,7 @@ M3 Expressive 방식을 따른다. **공간 변화(위치·크기·모양)는 �
 |---|---|---|
 | 메시지 도착 | opacity 0→1, translateY 8→0px | opacity: default-effects · 이동: default-spatial |
 | 내 메시지 전송 | 컴포저에서 타임라인으로 이동, 전송 버튼 scale 0.9→1 | fast-spatial |
-| Agent 생각 중 | 점 3개 4px bounce, 150ms stagger, 1200ms 루프 / PM은 harmony shimmer 1600ms linear 루프 | linear 루프 |
+| Agent 생각 중 | 점 3개 4px bounce, 150ms stagger, 1200ms 루프 / PM Agent는 harmony shimmer 1600ms linear 루프 | linear 루프 |
 | PM 아바타 작업 중 | harmony 링 회전 3000ms linear | linear |
 | 배정 | 카드 등장 후 Agent 아바타 scale 0.6→1 오버슈트 | default-spatial → fast-spatial |
 | Handoff | A→B 연결선 그리기(stroke-dashoffset) 450ms, 그다음 B 아바타 pop, 카드 본문 순차 fade(50ms stagger) | emphasized-decelerate 450ms, fast-spatial, default-effects |
@@ -694,7 +693,7 @@ M3 Expressive 방식을 따른다. **공간 변화(위치·크기·모양)는 �
 > DESIGN.md의 토큰만 사용해. 색은 `{colors.*}`, 모서리는 `{rounded.*}`, 간격은 `{spacing.*}` 값 외의 임의 값은 쓰지 마. 사람은 원형 아바타와 말풍선 없는 행, Agent는 둥근 사각 아바타와 voice container 말풍선으로 구분해. harmony gradient는 PM 아바타 링, 생각 중 표시, Handoff 선에만 써. 한글 폴백 폰트를 지정하고, 라이트와 다크 둘 다 만들고, prefers-reduced-motion 대안을 넣어.
 
 ### 화면별 예시 프롬프트
-1. **메인 채널 화면**: "Expanded(1280px) 기준 4열 레이아웃으로 #launch-plan 채널을 만들어. 사람 2명, PM Agent, 디자인 Agent(voice-3), 개발 Agent(voice-2)가 대화 중이다. PM의 계획 요약 카드 1개, 배정 카드 2개, 하단에 '개발 Agent가 API 스펙을 정리하는 중' typing 행을 넣어. 사이드바 Agents 섹션에 상태 점을 표시해."
+1. **메인 채널 화면**: "Expanded(1280px) 기준 4열 레이아웃으로 #launch-plan 채널을 만들어. 사람 2명, PM Agent, 디자인 Agent(voice-3), 개발 Agent(voice-2)가 대화 중이다. PM Agent의 계획 요약 카드 1개, 배정 카드 2개, 하단에 '개발 Agent가 API 스펙을 정리하는 중' typing 행을 넣어. 사이드바 Agents 섹션에 상태 점을 표시해."
 2. **Handoff 순간**: "디자인 Agent → 개발 Agent Handoff 카드를 만들어. 맥락 5요소를 한국어 예시로 채우고, 연결선 그리기와 아바타 pop 모션을 motion 표 그대로 구현해."
 3. **컴포저 멘션**: "컴포저에서 '@' 입력 시 자동완성을 만들어. 사람과 Agent 섹션을 분리하고, 맨 위에 '@PM에게 맡기기'를 고정해. 선택한 멘션은 pill로 표시하고 `@A > @B` 순차 표기를 지원해."
 4. **모바일(compact 390px)**: "같은 채널을 단일 열로. sidebar는 drawer, 스레드는 전체 화면 push, 컴포저는 하단 고정 알약 모양으로."

@@ -1,5 +1,8 @@
 # Review log — Phase 2a (S01-S04)
 
+> **과거 영상 자료 · 2026-10-07 정리:** 이 문서는 이전 영상의 제작·검토 기록이다. 현재 제품은 여러 사람과 Agent의 맥락을 목표 아래 연결하고 다음 행동을 조율하는 PM Agent이며 [제품 의도](../../intent.md)가 기준이다. 아래 대본·표현·화면은 새 메시지로 재제작된 결과가 아니다.
+
+
 Reference: storyboard-v2.md, MOTION.md §13 checklist, and the art-direction pass
 (jitter.video/templates + getdesign.md reference research) forwarded mid-build.
 Springs/timings from that pass live in `src/tokens/motion.ts` (`ad` export) and

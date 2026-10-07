@@ -4,9 +4,9 @@
 
 ## 현행 동작 보충 — 2026-10-05
 
-이 절은 `main@605521b` 코드로 확인한 현재 안내다. 적용 대상은 서버·원장을 사용하는 앱 `/`다. `/demo/pm-coordination`·`/demo/marketing-campaign`·`/demo/design-to-code`는 [별도 클라이언트 시연](../app/demo/README.md)이므로 화면의 상태를 이 원장 모델의 실행 결과로 읽지 않는다. 아래의 이슈 #26 중심 설명은 당시 작업 모델 기록으로 보존하며, 이후 변경과 충돌하면 이 절을 우선한다. 실행 설정은 [아키텍처 현행 안내](mvp-architecture.md#현행-구현--2026-10-02), 시작 방법은 [README](../README.md)를 참고한다.
+이 절은 `main@605521b` 코드로 확인한 현재 안내다. 적용 대상은 서버·원장을 사용하는 앱 `/`다. `/demo`는 [별도 클라이언트 시연](../app/demo/README.md)이므로 화면의 상태를 이 원장 모델의 실행 결과로 읽지 않는다. 아래의 이슈 #26 중심 설명은 당시 작업 모델 기록으로 보존하며, 이후 변경과 충돌하면 이 절을 우선한다. 실행 설정은 [아키텍처 현행 안내](mvp-architecture.md#현행-구현--2026-10-02), 시작 방법은 [README](../README.md)를 참고한다.
 
-이 문서는 앱이 관리하는 프로젝트·worker의 구현 계약이다. 최신 [제품 의도](../intent.md)의 개인 Agent 자율 작업·명시적 공유·채널 간 연속성 전체를 구현한 모델은 아니다. 아래 Agent 배정·자동 시작 규칙을 개인 Agent에 대한 PM의 소유권으로 해석하지 않는다. 제품 개념인 Team Work State와 현재 구현의 차이는 [MVP 범위](mvp-scope.md#구현과-제품-의도-사이의-확인-사항)에 정리한다.
+이 문서는 앱이 관리하는 프로젝트·worker의 구현 계약이다. 최신 [제품 의도](../intent.md)의 개인 Agent 자율 작업·명시적 공유·채널 간 연속성 전체를 구현한 모델은 아니다. 아래 Agent 배정·자동 시작 규칙을 개인 Agent에 대한 PM Agent의 소유권으로 해석하지 않는다. 기존 작업 환경에 붙는 PM Agent와 프로젝트 맥락 보조 뷰가 최신 제품 방향이다. 이 내부 모델이 실제 도구 연동을 구현한 것은 아니며 차이는 [MVP 범위](mvp-scope.md)에 정리한다.
 
 ### 제출, 검증, 최종 판정
 
@@ -39,12 +39,12 @@ PR #49의 선점은 같은 작성자가 채널에 연속으로 보낸, 첨부와
 
 ## 0. 요약
 
-PM이 작업 만들기·쪼개기·배정·상태 갱신·후속 확인을 통해 사람과 Agent 사이의 일을 잇는다. JIRA 연동이 아니고, 사용자에게 `ENS-12` 같은 키를 보이지 않으며, 칸반을 주 화면으로 두지 않는다.
+PM Agent가 작업 만들기·쪼개기·배정·상태 갱신·후속 확인을 통해 사람과 Agent 사이의 일을 잇는다. JIRA 연동이 아니고, 사용자에게 `ENS-12` 같은 키를 보이지 않으며, 칸반을 주 화면으로 두지 않는다.
 
 - 작업 항목은 새 엔티티가 아니라 기존 `Task`(`TaskSpec`)다. 계층은 `TaskSpec.parentId`, 실행 명세가 아닌 정보(우선순위·라우팅 사유·출처·맥락)는 `task_meta_set` 이벤트에 둔다.
 - 사람을 부르는 새 경로는 모두 결정 요청(`decision_requested` → `decision_resolved`) 하나다. 요청에는 항상 추천안·선택지·근거가 있다.
 - 현재 라우팅은 가능한 Agent에게 우선 배정한다. 사람에게는 판단·접근 권한·Agent 역량 부족 등의 사유로 실제 작업을 맡길 수 있고 필요한 확인·정보를 요청한다. 이는 구현 규칙이며 사람의 역할을 승인에 한정하는 제품 결정은 아니다.
-- PM이 대화에서 맥락(이유·원 대화·확정 결정·자료·제약)을 수확해 작업에 붙이고, Agent 시작 입력에 실어 보낸다. 사람은 작업 양식을 쓰지 않는다.
+- PM Agent가 대화에서 맥락(이유·원 대화·확정 결정·자료·제약)을 수확해 작업에 붙이고, Agent 시작 입력에 실어 보낸다. 사람은 작업 양식을 쓰지 않는다.
 
 ## 1. 데이터 모델
 
@@ -81,7 +81,7 @@ Goal (goal_set, 프로젝트당 1개)
 
 - `Priority` = `high | normal | low`.
 - `TaskRouting` = `{ executor: 'agent' | 'human'; reason: RoutingReason; note }`. `RoutingReason` = `agent_capable | needs_decision | needs_human_access | needs_human_judgement | no_capable_agent`.
-- `TaskBrief` = `{ why, sourceMessageIds, decisionIds, attachmentIds, constraints }`. PM이 대화에서 모은 맥락이고 사람이 쓰지 않는다.
+- `TaskBrief` = `{ why, sourceMessageIds, decisionIds, attachmentIds, constraints }`. PM Agent가 대화에서 모은 맥락이고 사람이 쓰지 않는다.
 - `TaskOrigin` = `{ createdBy: 'pm' | Id, planVersion, sourceMessageIds, decisionRequestId?, splitFrom? }`.
 - 리듀서(`applyWorkEvent`): `origin`은 **처음 기록된 것만** 유지한다. `priority`는 유효한 값일 때만 덮어쓰고, `routing`·`brief`는 통째로 바꾼다. 없는 작업에 대한 메타는 무시한다.
 - `TaskSpec`에 넣지 않은 이유: 넣으면 `plan_committed` 투영이 spec 차이로 `specVersion`을 올려 결과를 stale로 만들고 `checked`를 `waiting`으로 되돌린다. `task_meta_set`은 `specVersion`·결과·`checked`를 바꾸지 않는다.
@@ -159,8 +159,8 @@ type DecisionEffect =
 
 ### 2.3 권한 판정과 Q1 기본값
 
-- `opAuthority`는 기존 `whoApproves`(`core/src/authority.ts`)를 쓴다. `scope_reduce`·`scope_add`·`deadline_change`·`goal_change`는 결정권자(`goal.decider`)가 직접 말한 경우에만 허용한다. 나머지는 프로젝트의 `delegation.pmMayApply`에 든 종류면 PM이 바로 적용한다. 요구 조건이 여럿이면 처음으로 막히는 것을 돌려준다.
-- **Q1 기본값**: `DEFAULT_PM_MAY_APPLY = ['reorder', 'split_task', 'reassign_agent']`. 이미 승인된 작업을 하위 작업으로 나누기, Agent끼리 재배정, 우선순위 변경은 PM이 묻지 않고 한다. 새 범위 추가(최상위 `create_task`)는 결정권자 발언이 아니면 카드로 묻는다.
+- `opAuthority`는 기존 `whoApproves`(`core/src/authority.ts`)를 쓴다. `scope_reduce`·`scope_add`·`deadline_change`·`goal_change`는 결정권자(`goal.decider`)가 직접 말한 경우에만 허용한다. 나머지는 프로젝트의 `delegation.pmMayApply`에 든 종류면 PM Agent가 바로 적용한다. 요구 조건이 여럿이면 처음으로 막히는 것을 돌려준다.
+- **Q1 기본값**: `DEFAULT_PM_MAY_APPLY = ['reorder', 'split_task', 'reassign_agent']`. 이미 승인된 작업을 하위 작업으로 나누기, Agent끼리 재배정, 우선순위 변경은 PM Agent가 묻지 않고 한다. 새 범위 추가(최상위 `create_task`)는 결정권자 발언이 아니면 카드로 묻는다.
   - **바꾸는 설정**: `DEFAULT_PM_MAY_APPLY`(`core/src/plan-ops.ts`). 웹 런타임이 새 프로젝트의 `goal_set.delegation.pmMayApply`에 이 값을 넣는다(`apps/web/lib/runtime.ts`). 이미 만들어진 프로젝트는 원장의 `goal_set`에 기록된 값을 따른다.
 - 허용되면 즉시 적용, 아니면 권한자에게 결정 요청을 연다(§5.2).
 
@@ -182,7 +182,7 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 - **바꾸는 설정**: `HUMAN_ASSIGNMENT_NEEDS_ACCEPTANCE = true`(`core/src/routing.ts`). `ProjectManager` 옵션 `humanAssignmentNeedsAcceptance`로 프로젝트별로 덮어쓸 수 있다. `false`면 수락 카드 대신 결정권자에게 묻는다.
 - **설계와 다름**: 이 스위치는 `routeTask`의 `needsAcceptance` 표시와 정체 점검의 담당 공백 처리(`sweep.ts` `assignmentRequest`의 대상 = 본인 / 결정권자)에만 걸린다. 대화에서 사람 담당 작업을 만들 때의 수락 카드는 권한 규칙(`human_commitment`)에서 나오므로 이 스위치로 꺼지지 않는다. 웹 런타임은 이 옵션을 넘기지 않는다(기본값 사용).
 
-## 4. 맥락 수확과 전달 (PM의 핵심 일)
+## 4. 맥락 수확과 전달 (PM Agent의 핵심 일)
 
 ### 4.1 브리프 만들기 (`orchestrator/src/coordination.ts` `finishDraft`)
 
@@ -211,7 +211,7 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 ### 5.1 대화 → 작업 (`Coordinator.onMessage` → `consider`)
 
 - 해석 단계의 작업 op는 `WORK_OPS = create_task | split_task | cancel_task | set_priority`다. `prepareOps`가 초안마다 `routeTask`와 브리프 채우기를 하고 `planOpsProblems`로 묶음 전체를 검증한다.
-- 허용된 op → `decision_recorded` + `plan_committed`(v+1) + `task_meta_set`(같은 트랜잭션). Agent에게 간 새 작업은 바로 시작 예약(`planStarts`)을 잡는다. PM은 Agent 배정을 따로 말하지 않는다(작업 보기에 표시).
+- 허용된 op → `decision_recorded` + `plan_committed`(v+1) + `task_meta_set`(같은 트랜잭션). Agent에게 간 새 작업은 바로 시작 예약(`planStarts`)을 잡는다. PM Agent는 Agent 배정을 따로 말하지 않는다(작업 보기에 표시).
 - 아직 승인되지 않은 op에 기대는 작업 op는 보류(`deferred`)되어 함께 승인을 기다린다.
 - 메시지 하나에서 새 작업이 `MAX_TASKS_PER_MESSAGE`(5)개를 넘으면 아무것도 적용하지 않고, 모든 작업 op를 결정권자에게 한 장의 묶음 요청("작업 N개가 나왔어요… 한 번에 반영할까요?")으로 올린다.
 - 사람이 작업 스레드(`task:<id>`)에 쓴 메시지는 그 작업의 맥락으로만 해석하라는 규칙이 시스템 프롬프트(`pm-prompt.ts`)에 있다.
@@ -253,7 +253,7 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 
 - 질문 대상(지정된 사람 → 해당 파일 주인 → 결정권자)에게 `missing_info` 요청을 연다. 선택지는 `answer`(효과 `answer`)와 `hold`, `impact.blockedTaskIds = [그 작업]`. 그래서 작업이 "사람 대기"로 보이되 TaskStatus는 그대로라 진행 중인 Agent 턴을 끊지 않는다.
 - 대상이 사람이 아니거나 그 작업에 이미 열린 요청이 있으면 요청은 만들지 않고 채널 질문만 나간다.
-- 채널에서 따로 답이 오면 요청을 닫는다(대상이 답했으면 `answered`, 아니면 PM이 `withdrawn`).
+- 채널에서 따로 답이 오면 요청을 닫는다(대상이 답했으면 `answered`, 아니면 PM Agent가 `withdrawn`).
 
 ### 5.5 작업 댓글 전달 (`ProjectManager.processRecordedMessage`)
 
@@ -309,7 +309,7 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 - **작업 탭**: 목표·기한·예상 완료 아래 작업 트리. 묶음은 사람 대기 / 진행 중(검토 중·막힘 포함) / 할 일 / 완료(취소 포함, 접힘). 빈 묶음은 숨긴다. 우선순위 → 계획 순서로 정렬한다. 사람 대기 행에는 "내 결정 대기" 또는 "OO님 결정 대기".
 - **팀 탭**: PM → 사람 → Agent 순 한 줄 목록. 지금 하는 작업, 상태("결정 N건 대기", 작업 상태, "쉬는 중"), 열린 결정 수.
 - **내 결정 탭**과 채널 인라인 카드는 같은 컴포넌트(`DecisionRequestCard.tsx`)다. 카드 = 질문, **PM 추천**(추천안·근거·증거, 추천안은 이 블록에만 한 번), 나머지 선택지, 영향(관련 작업 / 멈춘 작업 / 일정). 버튼: **추천대로 진행**, **다른 안 선택**, **고쳐서 승인**(`editable`이 있을 때만), **보류**. `missing_info`(답변형)는 답 없이 진행할 수 없으므로 필수 답변 입력란과 **답변 보내기**·**보류**만 둔다. 기존 계획·권한 카드는 기존 `ApprovalCard` 그대로다.
-- **작업 상세(서랍, `WorkItemDetail.tsx`)**: 담당·라우팅 사유·상태, 확인/다시 맡기기(`TaskResolution`), 하위 작업, 완료 조건, 범위, **PM이 정리한 맥락**(이유, 원 대화, 관련 결정, 확정된 제약, 자료), 출처, 활동 기록(대화 보기 링크), 댓글 입력.
+- **작업 상세(서랍, `WorkItemDetail.tsx`)**: 담당·라우팅 사유·상태, 확인/다시 맡기기(`TaskResolution`), 하위 작업, 완료 조건, 범위, **PM Agent가 정리한 맥락**(이유, 원 대화, 관련 결정, 확정된 제약, 자료), 출처, 활동 기록(대화 보기 링크), 댓글 입력.
 - PM 발언이 작업을 언급하면(`pm_spoke.taskIds`) 메시지에 작업 이름 칩이 붙고, 누르면 상세가 열린다.
 - 만들지 않은 것: 작업 생성 양식, 드래그 칸반, 사용자에게 보이는 작업 키. 보기 모델은 `ordinal`을 내보내지 않고, PM 문장 속 키 패턴도 `stripTaskKeys`로 지운다.
 
