@@ -3,6 +3,7 @@
 //   npm run live:slack                                   Flow A: mention the app in a thread of the test channel
 //   npm run live:slack -- --trigger-blocker "<text>"     Flow B: a personal-agent blocker lands in the Space
 //   npm run live:slack -- --trigger-result "<text>"      Flow B: a personal-agent result lands in the Space
+// Thread replies whose events were missed are recovered from conversations.replies at start and every minute.
 // Options: --pm template|env (default env, template when no model credentials), --minutes <n> (stop after n
 // minutes), --response-timeout-minutes <n> (default 60), --data <sqlite file> (default app/data/slack-live.db).
 // Settings come from .env.local (app/ or the repo root) and .env; values are never printed, only key names.
@@ -135,7 +136,9 @@ const socket = new SlackSocketModeClient({
 });
 
 let stopping = false;
-const expiry = setInterval(() => { void coordinator.expireOverdue().catch(error => log('expire_failed', errorOf(error))); }, 60_000);
+// Every minute: expire overdue requests and re-read the PM's threads for replies whose events never arrived.
+const catchUp = () => coordinator.catchUp().catch(error => log('catch_up_failed', errorOf(error)));
+const expiry = setInterval(() => { void coordinator.expireOverdue().catch(error => log('expire_failed', errorOf(error))); void catchUp(); }, 60_000);
 async function stop(reason: string) {
   if (stopping) return;
   stopping = true;
@@ -152,6 +155,7 @@ process.on('SIGTERM', () => { void stop('SIGTERM'); });
 
 try { await socket.start(); }
 catch (error) { log('socket_start_failed', errorOf(error)); store.close(); process.exit(1); }
+await catchUp();
 
 // Flow B: record a personal agent's blocker/result in the Space, then let the PM raise it in Slack first.
 const blocker = option('--trigger-blocker'), result = option('--trigger-result');

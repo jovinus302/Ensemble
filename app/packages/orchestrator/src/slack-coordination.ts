@@ -40,6 +40,7 @@ export type SlackProgress =
   | { step: 'request_sent'; requestId: Id; ts: string; reason: ExternalRequestReason; target: string; taskIds: Id[] }
   | { step: 'reply_recorded'; messageId: Id; kind: ExternalMessageKind; requestId?: Id; resolved: boolean }
   | { step: 'request_expired'; requestId: Id }
+  | { step: 'catch_up'; threads: number; recovered: number }
   | { step: 'failure'; stage: ExternalFailureStage; operation: string; error: string; triggerId: Id; attempt: number };
 /** A request target meaning "any person in the channel" (fallback without a Slack mapping). */
 export const ANY_SLACK_HUMAN = '*';
@@ -126,6 +127,43 @@ export class SlackCoordinator {
       await this.options.store.append(overdue.map(r => this.event('external_request_resolved', { requestId: r.request.requestId, outcome: 'no_response' }, `${r.request.requestId}:resolved`, now)));
       for (const r of overdue) this.progress({ step: 'request_expired', requestId: r.request.requestId });
       return overdue.map(r => r.request.requestId);
+    });
+  }
+
+  /**
+   * Re-reads every thread the PM is part of and feeds replies it never received through the normal intake,
+   * so a missed `message` event (missing subscription, a disconnect, a restart) is recovered. Already recorded
+   * messages, its own messages and anything older than the PM's first message in the thread are skipped.
+   * A missed mention in such a thread is answered late, once. Returns how many messages were recorded.
+   */
+  catchUp(): Promise<number> {
+    return this.enqueue(async () => {
+      const { binding } = this.options;
+      const conversation = externalConversation(await this.read());
+      const since = new Map<string, string>();
+      const note = (source: ExternalSourceRef) => {
+        if (source.channelId !== binding.channelId) return;
+        const root = source.threadTs ?? source.messageTs, prev = since.get(root);
+        if (!prev || Number(source.messageTs) < Number(prev)) since.set(root, source.messageTs);
+      };
+      for (const m of conversation.messages) if (m.author.kind === 'pm') note(m.source);
+      for (const r of conversation.requests.values()) note(r.request.source);
+      let recovered = 0;
+      for (const [root, first] of since) {
+        let thread: SlackThreadMessage[];
+        try { thread = await this.options.api.conversationsReplies({ channel: binding.channelId, ts: root, limit: this.options.threadLimit ?? 30 }); }
+        catch (error) { await this.failure('read', 'conversations.replies', `catch-up:${root}`, slackErrorCode(error), 1, { channelId: binding.channelId, threadTs: root }); continue; }
+        for (const m of thread) {
+          if (Number(m.ts) <= Number(first)) continue;
+          const envelope: SlackEventCallback = { type: 'event_callback', team_id: binding.teamId, event_id: `catch-up:${binding.channelId}:${m.ts}`, event_time: Math.floor(Number(m.ts)),
+            event: { type: m.text.includes(`<@${binding.botUserId}>`) ? 'app_mention' : 'message', channel: binding.channelId, ts: m.ts, thread_ts: m.threadTs ?? root, text: m.text,
+              ...(m.user ? { user: m.user } : {}), ...(m.botId ? { bot_id: m.botId } : {}), ...(m.subtype ? { subtype: m.subtype } : {}) } };
+          const outcome = await this.handle(envelope);
+          if (outcome.kind === 'recorded') recovered++;
+        }
+      }
+      this.progress({ step: 'catch_up', threads: since.size, recovered });
+      return recovered;
     });
   }
 

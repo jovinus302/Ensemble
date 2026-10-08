@@ -131,6 +131,35 @@ test('Flow A: a mention in a thread gets a same-thread reply from Space + thread
   assert.equal(c.requests.get(request.request.requestId)!.reply?.text, answer.text);
 });
 
+test('catch-up: replies whose message events never arrived are recovered once from the PM threads', async t => {
+  const llm = new ScriptedLlm({
+    slack_thread_reply: () => ({ text: '이메일 가입만으로 시안을 시작해도 될까요?', kind: 'ask', confirmed: [], remaining: ['시안 시작 여부'], taskIds: ['design'] }),
+    record_thread_reply: () => ({ kind: 'decision', confirmed: ['시안 시작'], remaining: [] }),
+  });
+  const f = await fixture(t, { llm });
+  const root = f.slack.add(CHANNEL, { user: DESIGNER, text: '온보딩 시안 언제 시작하면 될까요?' });
+  const early = f.slack.add(CHANNEL, { user: DESIGNER, threadTs: root.ts, text: '참고로 저는 다음 주 휴가예요' });
+  const mention = f.slack.add(CHANNEL, { user: OWNER, threadTs: root.ts, text: `<@${BOT_USER}> 정리해 줘` });
+  await f.coordinator.receive(f.envelope({ type: 'app_mention', user: OWNER, text: mention.text, ts: mention.ts, thread_ts: root.ts }));
+  const untracked = f.slack.add(CHANNEL, { user: OWNER, text: '다른 이야기' });
+  f.slack.add(CHANNEL, { user: OWNER, threadTs: untracked.ts, text: '스레드 답글' });
+  // The owner answers but only Slack knows: no event reaches the coordinator.
+  const answer = f.slack.add(CHANNEL, { user: OWNER, threadTs: root.ts, text: '네, 시작하죠' });
+
+  assert.equal(await f.coordinator.catchUp(), 1);
+  assert.equal(await f.coordinator.catchUp(), 0, 'a second pass records nothing');
+  // The live event arriving late is a duplicate of what catch-up recorded.
+  assert.equal((await f.coordinator.receive(f.envelope({ user: OWNER, text: answer.text, ts: answer.ts, thread_ts: root.ts }))).kind, 'duplicate');
+  const c = await f.conversation();
+  assert.equal(f.slack.posts.length, 1, 'catch-up never posts');
+  assert.deepEqual(f.slack.replyReads.map(r => r.ts), [root.ts, root.ts, root.ts], 'only the PM thread is re-read');
+  assert.ok(!c.messages.some(m => m.source.messageTs === early.ts), 'messages before the PM joined are not recorded');
+  const recovered = c.messages.find(m => m.source.messageTs === answer.ts)!;
+  assert.equal(recovered.text, answer.text);
+  assert.equal(recovered.kind, 'decision');
+  assert.equal([...c.requests.values()][0]!.status, 'answered');
+});
+
 test('dedupe: a redelivered event and a restart never answer twice; own, unmapped-bot and untracked messages are ignored', async t => {
   const llm = new ScriptedLlm({ slack_thread_reply: () => ({ text: '다음 행동은 인터뷰 정리 공유예요.', kind: 'answer' }), record_thread_reply: () => ({ kind: 'proposal' }) });
   const f = await fixture(t, { llm });
