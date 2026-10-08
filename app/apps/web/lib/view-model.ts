@@ -163,11 +163,16 @@ export interface ViewModel {
   space?: VmSpace;
 }
 
-/** 개인 Agent 참여. 요청 상태: pending(아직 폴더에 못 전함) → delivered(폴더에 도착) → seen(Space에서 확인) → answered(답 받음). */
+/**
+ * 개인 Agent 참여. 요청 상태: pending(아직 폴더에 못 전함) → delivered(폴더에 도착) → seen(Space에서 확인) → answered(답 받음).
+ * 상태는 가장 앞선 단계만 보인다. 폴더 도착 여부는 `delivered`로 따로 본다(Space에서 먼저 보고 폴더에는 아직 없을 수 있다).
+ */
 export interface VmSpace {
-  participants: { id: string; displayName: string; tool: string; workspaceRoot: string; lastReadAt?: string; lastObservedAt?: string; observedFiles?: number }[];
+  participants: { id: string; displayName: string; tool: string; workspaceRoot: string; allowedPaths: string[]; lastReadAt?: string; lastObservedAt?: string; observedFiles?: number }[];
+  /** 아직 사람이 확인하지 않은 연결 요청. 확인 코드는 서버 콘솔에만 나온다. */
+  pendingLinks: { id: string; participantId: string; displayName: string; tool: string; workspaceRoot: string; allowedPaths: string[]; scopes: Record<string, boolean>; requestedBy: string; at: string; expiresAt: string }[];
   posts: { id: string; participantId: string; kind: "result" | "question" | "blocked" | "note"; text: string; at: string; inReplyTo?: string; taskId?: string }[];
-  requests: { id: string; participantId: string; text: string; status: "pending" | "delivered" | "seen" | "answered"; at: string; byPm: boolean; location?: string; failure?: string; attempts: number; answerPostId?: string; triggerPostId?: string }[];
+  requests: { id: string; participantId: string; text: string; status: "pending" | "delivered" | "seen" | "answered"; at: string; byPm: boolean; delivered: boolean; location?: string; failure?: string; attempts: number; answerPostId?: string; triggerPostId?: string }[];
   /** PM이 사람에게 넘긴 흐름(왕복 한도 도달). */
   needsHuman: { postId: string; participantId: string; reason: string }[];
 }

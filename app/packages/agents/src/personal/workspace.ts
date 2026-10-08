@@ -47,7 +47,7 @@ export class WorkspaceAccessError extends Error {
 
 export interface LocalFolderOptions {
   root: string;
-  /** Relative to root; `.` grants the whole folder. */
+  /** Relative to root; `.` grants the whole folder. Omitted means `.`; an explicit empty list grants no reading at all. */
   allowedPaths?: string[];
   maxFiles?: number;
   /** Text read per file and in total; hashes always cover the whole file. */
@@ -66,6 +66,26 @@ function failure(error: unknown): DeliveryFailureReason {
 const inside = (root: string, target: string) => { const relative = path.relative(root, target); return !relative.startsWith('..') && !path.isAbsolute(relative); };
 const posix = (p: string) => p.split(path.sep).join('/');
 
+/**
+ * Makes `relative` under `root` one level at a time and returns its real path, or undefined when an existing level (a link or
+ * junction) resolves outside the root. Each level is resolved before anything below it is created, so a refused delivery never
+ * creates a directory outside the folder (a recursive mkdir would follow the link first and check afterwards).
+ */
+async function directoryInside(root: string, relative: string): Promise<string | undefined> {
+  let current = root;
+  for (const segment of relative.split(path.sep)) {
+    const next = path.join(current, segment);
+    const exists = await lstat(next).then(() => true, (error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return false; throw error; });
+    // Created inside `current`, which is already a real path inside the root. EEXIST means it appeared meanwhile; it is checked below.
+    if (!exists) await mkdir(next).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'EEXIST') throw error; });
+    const real = await realpath(next);
+    if (!inside(root, real)) return undefined;
+    if (!(await stat(real)).isDirectory()) throw Object.assign(new Error(`${segment} is not a directory`), { code: 'ENOTDIR' });
+    current = real;
+  }
+  return current;
+}
+
 /** Front matter values are single-line JSON strings, so a request text can never break out of the header. */
 export function inboxDocument(request: PersonalRequest): string {
   const header = { requestId: request.requestId, project: request.projectId, participant: request.participantId, from: 'Ensemble PM Agent', createdAt: request.createdAt,
@@ -77,8 +97,9 @@ export function inboxDocument(request: PersonalRequest): string {
     '## 답하는 방법', '',
     '이 폴더에서 요청을 처리한 뒤 결과나 처리할 수 없는 이유를 Space에 남겨 주세요. `inReplyTo`가 있어야 이 요청의 답으로 연결됩니다.',
     '질문이면 `kind`를 `question`, 막혔으면 `blocked`로 보내세요. 같은 `clientPostId`로 다시 보내도 한 번만 기록됩니다.', '',
-    '```sh', `curl -s -X POST ${JSON.stringify(request.reply.postUrl)} -H 'Content-Type: application/json' -d '${body.replaceAll("'", "'\\''")}'`, '```', '',
-    `Space 맥락: ${request.reply.contextUrl}`, '',
+    '`<연결 토큰>`은 이 폴더를 Space에 연결할 때 사람이 받은 토큰입니다. 이 파일에는 토큰을 쓰지 않습니다.', '',
+    '```sh', `curl -s -X POST ${JSON.stringify(request.reply.postUrl)} -H 'Content-Type: application/json' -H 'Authorization: Bearer <연결 토큰>' -d '${body.replaceAll("'", "'\\''")}'`, '```', '',
+    `Space 맥락(같은 헤더 필요): ${request.reply.contextUrl}`, '',
     '이 파일은 Ensemble이 요청 전달용으로만 만든 것입니다. 지워도 요청 기록은 Space에 남습니다.', '',
   ].join('\n');
 }
@@ -88,7 +109,9 @@ export class LocalFolderWorkspace implements PersonalWorkspace {
   private readonly allowed: string[];
   constructor(private readonly options: LocalFolderOptions) {
     if (!path.isAbsolute(options.root)) throw new Error('Personal workspace root must be absolute');
-    this.allowed = (options.allowedPaths?.length ? options.allowedPaths : ['.']).map(p => path.normalize(p));
+    // Fail closed: a blank entry would normalize to `.` (the whole folder), and an explicit [] stays "nothing", never the default.
+    if (options.allowedPaths?.some(p => !p.trim())) throw new Error('Allowed paths must not be empty');
+    this.allowed = (options.allowedPaths ?? ['.']).map(p => path.normalize(p));
     if (this.allowed.some(p => path.isAbsolute(p) || p === '..' || p.startsWith(`..${path.sep}`))) throw new Error('Allowed paths must stay inside the workspace root');
   }
 
@@ -167,14 +190,15 @@ export class LocalFolderWorkspace implements PersonalWorkspace {
     try { root = await this.root(); } catch (error) { return { delivered: false, reason: error instanceof WorkspaceAccessError ? error.reason : 'error', detail: (error as Error).message }; }
     const location = path.join(root, INBOX_DIR, `${request.requestId}.md`);
     try {
-      await mkdir(path.join(root, INBOX_DIR), { recursive: true });
-      // A pre-existing `.ensemble` link must not redirect the write out of the folder.
-      if (!inside(root, await realpath(path.join(root, INBOX_DIR)))) return { delivered: false, reason: 'permission_denied', detail: '요청함 경로가 작업 폴더 밖을 가리킵니다' };
+      // A pre-existing `.ensemble` or `inbox` link must neither redirect the write nor create anything out of the folder.
+      const inbox = await directoryInside(root, INBOX_DIR);
+      if (!inbox) return { delivered: false, reason: 'permission_denied', detail: '요청함 경로가 작업 폴더 밖을 가리킵니다' };
+      const target = path.join(inbox, `${request.requestId}.md`);
       // Never overwrite: the same request file already there means an earlier attempt landed. The temporary file plus rename
       // keeps a half-written request from ever counting as delivered.
-      if (await stat(location).then(() => true, () => false)) return { delivered: true, location };
-      const temporary = `${location}.${randomUUID()}.tmp`;
-      try { await writeFile(temporary, inboxDocument(request), { encoding: 'utf8', flag: 'wx' }); await rename(temporary, location); }
+      if (await lstat(target).then(() => true, () => false)) return { delivered: true, location };
+      const temporary = `${target}.${randomUUID()}.tmp`;
+      try { await writeFile(temporary, inboxDocument(request), { encoding: 'utf8', flag: 'wx' }); await rename(temporary, target); }
       finally { await rm(temporary, { force: true }); }
       return { delivered: true, location };
     } catch (error) {

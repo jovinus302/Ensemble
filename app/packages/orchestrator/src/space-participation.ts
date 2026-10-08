@@ -2,24 +2,26 @@
 // reuse. A participant is a person's own agent in the person's own folder; Ensemble never starts or steers it. The Space is
 // read and written over HTTP (this module is the logic behind those routes), and the PM reaches the folder only through a
 // PersonalWorkspace the person authorized. All writes are ledger events (core/src/participation.ts).
-import { createHash, randomUUID } from 'node:crypto';
+// Grants: a link request grants nothing until a person confirms it with a one-time code shown only on the server console;
+// confirming issues the agent's connection token, which every agent call must carry (only its hash is recorded).
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { LocalFolderWorkspace, WorkspaceAccessError, type PersonalWorkspace, type WorkspaceInspection } from '@ensemble/agents';
 import {
-  MAX_REQUEST_DEPTH, openRequests, participation, project, requestDepthFor, workStatus,
+  LINK_REQUEST_TTL_MS, MAX_REQUEST_DEPTH, openRequests, participation, project, requestDepthFor, workStatus,
   type Actor, type Id, type LedgerEvent, type NewLedgerEvent, type ParticipantScopes, type ParticipationPayloads,
   type ParticipationState, type SpacePost, type SpacePostKind,
 } from '@ensemble/core';
 import type { LlmProvider } from '@ensemble/llm';
 import type { LedgerStore } from '@ensemble/store';
 
-export type ParticipationErrorCode = 'not_found' | 'forbidden' | 'invalid_input' | 'workspace_unreachable' | 'permission_denied';
+export type ParticipationErrorCode = 'not_found' | 'forbidden' | 'unauthorized' | 'invalid_input' | 'workspace_unreachable' | 'permission_denied';
 export class ParticipationError extends Error {
   readonly status: number;
   constructor(readonly code: ParticipationErrorCode, message: string) {
     super(message);
     this.name = 'ParticipationError';
-    this.status = code === 'not_found' ? 404 : code === 'forbidden' || code === 'permission_denied' ? 403 : code === 'workspace_unreachable' ? 503 : 400;
+    this.status = code === 'not_found' ? 404 : code === 'unauthorized' ? 401 : code === 'forbidden' || code === 'permission_denied' ? 403 : code === 'workspace_unreachable' ? 503 : 400;
   }
 }
 
@@ -31,7 +33,7 @@ export interface SpaceContext {
   tasks: { id: Id; title: string; status: string; assignee: string }[];
   requests: { requestId: Id; text: string; status: string; createdAt: string; taskId?: Id; inbox?: string }[];
   posts: { postId: Id; kind: SpacePostKind; text: string; at: string; inReplyTo?: Id; taskId?: Id }[];
-  howToPost: { url: string; body: Record<string, string> };
+  howToPost: { url: string; headers: Record<string, string>; body: Record<string, string> };
 }
 export interface ComposeInput {
   participant: ParticipationPayloads['participant_linked'];
@@ -56,6 +58,8 @@ export interface SpaceParticipationOptions {
   clock?: () => Date;
 }
 export interface LinkInput { participantId: Id; displayName: string; tool: string; workspaceRoot: string; allowedPaths?: string[]; scopes?: Partial<ParticipantScopes>; spaceUrl?: string }
+/** A pending link. `code` goes to the person out of band (the server console), never to the HTTP caller. */
+export interface LinkRequestIssued { linkRequestId: Id; participantId: Id; workspaceRoot: string; allowedPaths: string[]; expiresAt: string; code: string }
 export interface PostInput { kind: SpacePostKind; text: string; clientPostId: string; taskId?: Id; inReplyTo?: Id }
 export interface RequestInput {
   participantId: Id; text: string;
@@ -70,11 +74,22 @@ export type LiaisonOutcome = ParticipationPayloads['liaison_considered'] & { del
 const PM: Actor = { kind: 'pm', id: 'pm' };
 const KINDS: SpacePostKind[] = ['result', 'question', 'blocked', 'note'];
 const DEFAULT_SCOPES: ParticipantScopes = { readSpace: true, post: true, receiveRequests: true, pmReadWorkspace: true };
-const shortHash = (value: string) => createHash('sha256').update(value).digest('hex').slice(0, 16);
+const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const shortHash = (value: string) => sha256(value).slice(0, 16);
+/** Wrong codes allowed per link request (per server run) before it must be asked again. */
+const MAX_CONFIRM_FAILURES = 5;
+// No 0/O or 1/I: the code is read off a console and typed by a person.
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const newCode = () => { const bytes = randomBytes(8); const c = [...bytes].map(b => CODE_ALPHABET[b % 32]).join(''); return `${c.slice(0, 4)}-${c.slice(4)}`; };
+const codeHash = (linkRequestId: Id, code: string) => sha256(`${linkRequestId}:${code.toUpperCase().replace(/[^A-Z0-9]/g, '')}`);
+const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+/** Agents send `Authorization: Bearer <token>` on every Space call. */
+export const TOKEN_HINT = 'Bearer <연결 토큰>';
 const WORK_LABEL: Record<string, string> = { todo: '할 일', in_progress: '진행 중', in_review: '검토 중', waiting_human: '사람 결정 대기', blocked: '막힘', done: '완료', cancelled: '취소' };
 
 export class SpaceParticipation {
   private queue: Promise<unknown> = Promise.resolve();
+  private readonly failedConfirms = new Map<Id, number>();
   constructor(private readonly options: SpaceParticipationOptions) {}
 
   private now() { return (this.options.clock ?? (() => new Date()))(); }
@@ -93,6 +108,17 @@ export class SpaceParticipation {
     if (!entry) throw new ParticipationError('not_found', '연결된 개인 Agent를 찾지 못했습니다.');
     return entry;
   }
+  /** An agent call: the participant must exist and the token must match the confirmed link's hash. */
+  private authenticated(state: ParticipationState, participantId: Id, token: string | undefined) {
+    const entry = this.participant(state, participantId);
+    const expected = entry.link.tokenHash;
+    if (!expected || !token || !sameHash(sha256(token), expected)) {
+      throw new ParticipationError('unauthorized', expected
+        ? '연결 토큰이 없거나 맞지 않습니다. 연결을 확인할 때 받은 토큰을 Authorization: Bearer 헤더로 보내 주세요.'
+        : '이 연결에는 토큰이 없습니다. 대시보드에서 다시 연결해 주세요.');
+    }
+    return entry;
+  }
   private workspace(link: ParticipationPayloads['participant_linked']): PersonalWorkspace {
     return this.options.workspaceFor?.(link) ?? new LocalFolderWorkspace({ root: link.workspaceRoot, allowedPaths: link.allowedPaths });
   }
@@ -102,25 +128,60 @@ export class SpaceParticipation {
     return { postUrl: `${root}/posts`, contextUrl: `${root}/context?format=md` };
   }
 
-  /** A person links their own agent and folder. Only a human member may grant access; re-linking replaces the grant. */
-  async link(input: LinkInput, linkedBy: Id) {
+  /**
+   * Asks to link an agent and folder. Grants nothing yet: returns a pending request and the one-time code the caller must show
+   * the person out of band (the web runtime prints it on the server console, never in the HTTP response).
+   */
+  async requestLink(input: LinkInput, requestedBy: Id): Promise<LinkRequestIssued> {
     if (!/^[\w.-]{1,64}$/.test(input.participantId)) throw new ParticipationError('invalid_input', '참여자 id는 영문·숫자·-_. 64자 이내로 정해 주세요.');
     if (!input.displayName.trim() || !input.tool.trim()) throw new ParticipationError('invalid_input', '이름과 도구를 입력해 주세요.');
     if (!path.isAbsolute(input.workspaceRoot)) throw new ParticipationError('invalid_input', '작업 폴더는 절대 경로로 입력해 주세요.');
-    const allowedPaths = (input.allowedPaths?.length ? input.allowedPaths : ['.']).map(p => p.trim()).filter(Boolean);
+    // Omitted means the whole folder. An explicit list must name something: a blank entry or an empty list is refused, never
+    // widened to the default (fail closed: a malformed narrow grant must not become the whole folder).
+    if (input.allowedPaths && (!input.allowedPaths.length || input.allowedPaths.some(p => !p.trim()))) throw new ParticipationError('invalid_input', '허용 경로를 비우지 말고 작업 폴더 안의 상대 경로로 입력해 주세요. 폴더 전체는 "."입니다.');
+    const allowedPaths = (input.allowedPaths ?? ['.']).map(p => p.trim());
     if (allowedPaths.some(p => path.isAbsolute(p) || path.normalize(p).split(/[\\/]/)[0] === '..')) throw new ParticipationError('invalid_input', '허용 경로는 작업 폴더 안의 상대 경로여야 합니다.');
-    const { result } = await this.options.store.transaction(this.options.projectId, events => {
+    const linkRequestId = `link-${randomUUID()}`, code = newCode();
+    const expiresAt = new Date(this.now().getTime() + LINK_REQUEST_TTL_MS).toISOString();
+    await this.options.store.transaction(this.options.projectId, events => {
       const state = project(events);
-      if (state.members.get(linkedBy)?.kind !== 'human') throw new ParticipationError('forbidden', '프로젝트의 사람만 개인 Agent를 연결할 수 있습니다.');
+      if (state.members.get(requestedBy)?.kind !== 'human') throw new ParticipationError('forbidden', '프로젝트의 사람만 개인 Agent를 연결할 수 있습니다.');
       // A participant is not a member: sharing an id would let Space posts pass as the member's own words.
       if (state.members.has(input.participantId)) throw new ParticipationError('invalid_input', '프로젝트 멤버와 같은 id는 쓸 수 없습니다.');
-      const payload: ParticipationPayloads['participant_linked'] = {
+      const payload: ParticipationPayloads['participant_link_requested'] = {
         participantId: input.participantId, displayName: input.displayName.trim(), tool: input.tool.trim(), workspaceRoot: path.resolve(input.workspaceRoot),
-        allowedPaths, scopes: { ...DEFAULT_SCOPES, ...input.scopes }, linkedBy, ...(input.spaceUrl ? { spaceUrl: input.spaceUrl } : {}),
+        allowedPaths, scopes: { ...DEFAULT_SCOPES, ...input.scopes }, ...(input.spaceUrl ? { spaceUrl: input.spaceUrl } : {}),
+        linkRequestId, requestedBy, codeHash: codeHash(linkRequestId, code), expiresAt,
       };
-      return { append: [this.event('participant_linked', { kind: 'human', id: linkedBy }, payload)], result: payload };
+      return { append: [this.event('participant_link_requested', { kind: 'human', id: requestedBy }, payload)], result: undefined };
     });
-    return result;
+    return { linkRequestId, participantId: input.participantId, workspaceRoot: path.resolve(input.workspaceRoot), allowedPaths, expiresAt, code };
+  }
+
+  /**
+   * A person confirms a pending link with its one-time code (from the dashboard). Activates the grant, replacing any earlier
+   * link and token for the participant, and returns the agent's connection token once; the ledger keeps only its hash.
+   */
+  async confirmLink(linkRequestId: Id, code: string, confirmedBy: Id) {
+    const token = `ens_${randomBytes(32).toString('base64url')}`;
+    const { result } = await this.options.store.transaction(this.options.projectId, events => {
+      if (project(events).members.get(confirmedBy)?.kind !== 'human') throw new ParticipationError('forbidden', '프로젝트의 사람만 개인 Agent 연결을 확인할 수 있습니다.');
+      const entry = participation(events).linkRequests.get(linkRequestId);
+      if (!entry) throw new ParticipationError('not_found', '연결 요청을 찾지 못했습니다.');
+      if (entry.confirmedAt) throw new ParticipationError('invalid_input', '이미 확인한 연결 요청입니다.');
+      if ((this.failedConfirms.get(linkRequestId) ?? 0) >= MAX_CONFIRM_FAILURES) throw new ParticipationError('forbidden', `확인 코드를 ${MAX_CONFIRM_FAILURES}번 틀렸습니다. 연결을 다시 요청해 주세요.`);
+      if (Date.parse(entry.request.expiresAt) <= this.now().getTime()) throw new ParticipationError('invalid_input', '연결 요청이 만료되었습니다. 다시 요청해 주세요.');
+      if (!sameHash(codeHash(linkRequestId, code), entry.request.codeHash)) return { append: [], result: undefined };
+      const { linkRequestId: _id, requestedBy: _by, codeHash: _hash, expiresAt: _expires, ...grant } = entry.request;
+      const payload: ParticipationPayloads['participant_linked'] = { ...grant, linkedBy: confirmedBy, linkRequestId, tokenHash: sha256(token) };
+      return { append: [this.event('participant_linked', { kind: 'human', id: confirmedBy }, payload)], result: payload };
+    });
+    if (!result) {
+      this.failedConfirms.set(linkRequestId, (this.failedConfirms.get(linkRequestId) ?? 0) + 1);
+      throw new ParticipationError('forbidden', '확인 코드가 맞지 않습니다. 서버 콘솔에 표시된 코드를 입력해 주세요.');
+    }
+    this.failedConfirms.delete(linkRequestId);
+    return { link: result, token };
   }
 
   /** Builds what this participant may read. Pure: `readContext` records the read. */
@@ -139,15 +200,15 @@ export class SpaceParticipation {
         ...(r.request.taskId ? { taskId: r.request.taskId } : {}), ...(r.delivered ? { inbox: r.delivered.location } : {}) })),
       posts: [...space.posts.values()].filter(p => p.participantId === participantId).slice(-20)
         .map(p => ({ postId: p.postId, kind: p.kind, text: p.text, at: p.at, ...(p.inReplyTo ? { inReplyTo: p.inReplyTo } : {}), ...(p.taskId ? { taskId: p.taskId } : {}) })),
-      howToPost: { url: urls.postUrl, body: { kind: 'result | question | blocked | note', text: '내용', clientPostId: '같은 글을 다시 보내도 한 번만 남도록 고정한 id', inReplyTo: '(요청에 답할 때) requestId', taskId: '(선택) 작업 id' } },
+      howToPost: { url: urls.postUrl, headers: { Authorization: TOKEN_HINT }, body: { kind: 'result | question | blocked | note', text: '내용', clientPostId: '같은 글을 다시 보내도 한 번만 남도록 고정한 id', inReplyTo: '(요청에 답할 때) requestId', taskId: '(선택) 작업 id' } },
     };
   }
 
   /** The agent reads the Space. Records the read and marks listed requests as seen, so arrival is distinguishable from posting. */
-  async readContext(participantId: Id, format: 'md' | 'json') {
+  async readContext(participantId: Id, token: string | undefined, format: 'md' | 'json') {
     const { result } = await this.options.store.transaction(this.options.projectId, events => {
       const space = participation(events);
-      const { link } = this.participant(space, participantId);
+      const { link } = this.authenticated(space, participantId, token);
       if (!link.scopes.readSpace) throw new ParticipationError('forbidden', '이 개인 Agent에는 Space 읽기 권한이 없습니다.');
       const context = this.contextFor(events, participantId);
       const readId = randomUUID();
@@ -161,14 +222,14 @@ export class SpaceParticipation {
   }
 
   /** A post written by the agent itself. A repeated `clientPostId` returns the first post; a reply marks its request answered. */
-  async post(participantId: Id, input: PostInput) {
+  async post(participantId: Id, token: string | undefined, input: PostInput) {
     if (!KINDS.includes(input.kind)) throw new ParticipationError('invalid_input', 'kind는 result, question, blocked, note 중 하나여야 합니다.');
     if (!input.text.trim()) throw new ParticipationError('invalid_input', '공유할 내용을 입력해 주세요.');
     if (!/^[\w.:-]{1,128}$/.test(input.clientPostId)) throw new ParticipationError('invalid_input', 'clientPostId는 영문·숫자·-_.: 128자 이내여야 합니다.');
     const idempotencyKey = `space-post:${participantId}:${input.clientPostId}`;
     const { result } = await this.options.store.transaction(this.options.projectId, events => {
       const space = participation(events), state = project(events);
-      const { link } = this.participant(space, participantId);
+      const { link } = this.authenticated(space, participantId, token);
       if (!link.scopes.post) throw new ParticipationError('forbidden', '이 개인 Agent에는 Space 공유 권한이 없습니다.');
       const existing = [...space.posts.values()].find(p => p.participantId === participantId && p.clientPostId === input.clientPostId);
       if (existing) return { append: [], result: { postId: existing.postId, duplicate: true } };
@@ -262,10 +323,14 @@ export class SpaceParticipation {
     return outcome;
   }
 
-  /** Retries every pending request (explicitly called: on a timer, a reconnect, or by a person). */
+  /**
+   * Retries every request the folder has not received yet (explicitly called: on a timer, a reconnect, or by a person).
+   * Eligibility is the delivery fact, not the shown status: a request seen in the Space but never written to the folder
+   * still needs its folder copy; an answered one does not.
+   */
   sweep() {
     return this.serial(async () => {
-      const pending = [...participation(await this.read()).requests.values()].filter(r => r.status === 'pending' && !r.delivered);
+      const pending = [...participation(await this.read()).requests.values()].filter(r => !r.delivered && !r.answer);
       const results = [];
       for (const r of pending) results.push(await this.deliverNow(r.request.requestId));
       return results;
@@ -326,9 +391,10 @@ export function spaceContextMarkdown(context: SpaceContext): string {
     '## 나에게 온 PM 요청', ...(context.requests.length ? context.requests.flatMap(r => [`- requestId: ${r.requestId} (${r.status}, ${r.createdAt})${r.inbox ? ` — 요청 파일: ${r.inbox}` : ''}`, ...r.text.split('\n').map(l => `  > ${l}`)]) : ['- (없음)']), '',
     '## 내가 남긴 글', ...(context.posts.length ? context.posts.map(p => `- ${p.at} [${p.kind}] ${p.text.replace(/\s+/g, ' ').slice(0, 200)}${p.inReplyTo ? ` (답: ${p.inReplyTo})` : ''}`) : ['- (없음)']), '',
     '## 공유하는 방법', '',
-    `POST ${context.howToPost.url}`, 'Content-Type: application/json', '',
+    `POST ${context.howToPost.url}`, 'Content-Type: application/json', ...Object.entries(context.howToPost.headers).map(([k, v]) => `${k}: ${v}`), '',
     '```json', JSON.stringify(context.howToPost.body, null, 2), '```', '',
-    'PM 요청에 답할 때는 `inReplyTo`에 requestId를 넣으세요. 같은 `clientPostId`는 한 번만 기록됩니다.', '',
+    'PM 요청에 답할 때는 `inReplyTo`에 requestId를 넣으세요. 같은 `clientPostId`는 한 번만 기록됩니다.',
+    '맥락을 읽을 때와 글을 남길 때 모두 연결을 확인할 때 받은 토큰을 `Authorization: Bearer <토큰>` 헤더로 보냅니다. 토큰은 이 문서에 다시 나오지 않습니다.', '',
   ];
   return lines.join('\n');
 }

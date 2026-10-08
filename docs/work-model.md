@@ -332,7 +332,7 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 
 오류 모양은 `{ error: { code, message } }`.
 
-개인 Agent의 Space 참여 경로(`space/participants/…`, `space/requests/sweep`)와 그 이벤트는 #81 실험이다. 계약은 [실험 기록](experiments/issue-81-personal-agent-space.md) 2절에 둔다.
+개인 Agent의 Space 참여 경로(`space/participants/…`, `space/links/…/confirm`, `space/requests/sweep`. 로컬 전용, Agent 호출은 연결 토큰 필요)와 그 이벤트는 #81 실험이다. 계약은 [실험 기록](experiments/issue-81-personal-agent-space.md) 2절에 둔다.
 
 ### 6.3 런타임과 설정 (`apps/web/lib/runtime.ts`)
 

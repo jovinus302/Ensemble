@@ -20,4 +20,4 @@ export { runDigest, digestText, type DigestOptions } from './digest.ts';
 export { questionRequestId } from './dispatch.ts';
 export type { TrustedValidator, ValidationInput, ValidationOutput, ValidationArtifact, ValidationOptions } from './validation.ts';
 export { SpaceParticipation, ParticipationError, spaceContextMarkdown, llmRequestComposer, ruleRequestComposer } from './space-participation.ts';
-export type { SpaceContext, ComposeInput, RequestComposer, SpaceParticipationOptions, LinkInput, PostInput, RequestInput, LiaisonOutcome, ParticipationErrorCode } from './space-participation.ts';
+export type { SpaceContext, ComposeInput, RequestComposer, SpaceParticipationOptions, LinkInput, LinkRequestIssued, PostInput, RequestInput, LiaisonOutcome, ParticipationErrorCode } from './space-participation.ts';

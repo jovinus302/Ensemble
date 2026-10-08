@@ -164,7 +164,7 @@ export function App() {
         <div className="workspace" data-view={mobileView === "channel" ? "channel" : "panel"}>
           <WorkPanel vm={vm} tab={panelTab} onTab={t => { setPanelTab(t); if (mobileView !== "channel") setMobileView(t === "decisions" ? "decisions" : "work"); }}
             onOpenTask={setOpenTask} onDecide={actions.decideCard} onDecideRequest={actions.decide}
-            onSetAvailability={actions.setAvailability} onResolve={actions.resolveTask} />
+            onSetAvailability={actions.setAvailability} onResolve={actions.resolveTask} onConfirmLink={actions.confirmParticipantLink} />
 
           <main className="channel">
             <div className="channel-head">

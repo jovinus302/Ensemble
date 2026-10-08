@@ -1,4 +1,4 @@
-import { participation, project, forecast, forecastFromState, availabilityWeek, bundleDecisions, isParentTask, openDecisions, taskActivity, waitingOn, workStatus,
+import { participation, pendingLinkRequests, project, forecast, forecastFromState, availabilityWeek, bundleDecisions, isParentTask, openDecisions, taskActivity, waitingOn, workStatus,
   type AnyEvent, type DecisionEffect, type EventPayloads, type LedgerEvent, type PlanOp, type Priority, type ProjectState, type RoutingReason, type TaskActivity, type TaskState, type TaskStatus } from '@ensemble/core';
 import type { ViewModel, VmActivity, VmActivityItem, VmMessage, VmCard, VmDecisionCard, VmPmJudgement, VmPlanTask, VmTaskDetail, VmWork, VmWorkItem, VmWorkStatus, VmWorkTeamRow, VmSpace } from './view-model';
 import { taskResolutions } from './task-resolution';
@@ -301,15 +301,19 @@ export function buildViewModel(events: readonly LedgerEvent[], options: { me: st
 
 const FAILURE_LABEL: Record<string, string> = { unreachable: '작업 폴더에 연결되지 않음', permission_denied: '쓰기 권한 없음', not_permitted: '요청 받기 미허용', error: '전달 오류' };
 /** #81: 개인 Agent의 Space 글과 PM 요청 상태. 연결된 참여자가 없으면 아무것도 더하지 않는다. */
-export function spaceView(events: readonly LedgerEvent[]): { space?: VmSpace } {
+export function spaceView(events: readonly LedgerEvent[], now = new Date()): { space?: VmSpace } {
   const space = participation(events);
-  if (!space.participants.size) return {};
+  const pending = pendingLinkRequests(space, now);
+  if (!space.participants.size && !pending.length) return {};
   return { space: {
-    participants: [...space.participants.values()].map(p => ({ id: p.link.participantId, displayName: p.link.displayName, tool: p.link.tool, workspaceRoot: p.link.workspaceRoot,
+    participants: [...space.participants.values()].map(p => ({ id: p.link.participantId, displayName: p.link.displayName, tool: p.link.tool, workspaceRoot: p.link.workspaceRoot, allowedPaths: p.link.allowedPaths,
       ...(p.lastReadAt ? { lastReadAt: p.lastReadAt } : {}), ...(p.lastObservation ? { lastObservedAt: p.lastObservation.at, observedFiles: p.lastObservation.files.length } : {}) })),
+    // Pending link requests: what a person would grant. The code is never here; it is on the server console.
+    pendingLinks: pending.map(r => ({ id: r.request.linkRequestId, participantId: r.request.participantId, displayName: r.request.displayName, tool: r.request.tool,
+      workspaceRoot: r.request.workspaceRoot, allowedPaths: r.request.allowedPaths, scopes: r.request.scopes, requestedBy: r.request.requestedBy, at: r.at, expiresAt: r.request.expiresAt })),
     posts: [...space.posts.values()].map(p => ({ id: p.postId, participantId: p.participantId, kind: p.kind, text: p.text, at: p.at, ...(p.inReplyTo ? { inReplyTo: p.inReplyTo } : {}), ...(p.taskId ? { taskId: p.taskId } : {}) })),
     requests: [...space.requests.values()].map(r => ({ id: r.request.requestId, participantId: r.request.participantId, text: r.request.text, status: r.status, at: r.createdAt,
-      byPm: r.createdBy.kind === 'pm', attempts: r.attempts, ...(r.delivered ? { location: r.delivered.location } : {}),
+      byPm: r.createdBy.kind === 'pm', attempts: r.attempts, delivered: !!r.delivered, ...(r.delivered ? { location: r.delivered.location } : {}),
       ...(r.lastFailure && !r.delivered ? { failure: FAILURE_LABEL[r.lastFailure.reason] ?? r.lastFailure.reason } : {}),
       ...(r.answer ? { answerPostId: r.answer.postId } : {}), ...(r.request.triggerPostId ? { triggerPostId: r.request.triggerPostId } : {}) })),
     needsHuman: [...space.considerations.values()].filter(c => c.outcome === 'needs_human').map(c => ({ postId: c.triggerPostId, participantId: c.participantId, reason: c.reason })),

@@ -1,6 +1,7 @@
 // Personal agents joining the Space (issue #81). A participant is a person's existing agent (Codex, Claude, …) working in the
 // person's own folder. It is not a project member: the PM never plans work onto it. Three directions share these events:
-//   personal agent → Space   participant_linked, space_context_read, space_post_recorded
+//   person → grant            participant_link_requested (pending), participant_linked (confirmed on the dashboard)
+//   personal agent → Space   space_context_read, space_post_recorded (each call carries the link's token)
 //   PM → personal workspace  workspace_context_observed, personal_request_created/delivered/delivery_failed
 //   personal agent → PM      personal_request_seen, personal_request_answered (with the reply's space_post_recorded)
 // Every PM step on a post is recorded as liaison_considered, so silence and loop guards stay observable.
@@ -13,18 +14,34 @@ export type DeliveryFailure = "unreachable" | "permission_denied" | "not_permitt
 /** The PM asks the personal agent at most this deep in one thread; deeper follow-ups wait for a person. */
 export const MAX_REQUEST_DEPTH = 3;
 
+/** Linking codes expire after this long; an expired request is asked again. */
+export const LINK_REQUEST_TTL_MS = 10 * 60_000;
+
+/** What a person grants an agent and folder. */
+export interface ParticipantGrant {
+  participantId: Id; displayName: string; tool: string;
+  /** Absolute path of the person's existing folder; the only place the PM reads from or writes requests to. */
+  workspaceRoot: string;
+  /** Paths relative to workspaceRoot the PM may read. `.` is the whole folder; never empty. */
+  allowedPaths: string[];
+  scopes: ParticipantScopes;
+  /** Base URL the agent uses to reach the Space (written into delivered requests). */
+  spaceUrl?: string;
+}
+
 export interface ParticipationPayloads {
-  /** A person authorizes their existing agent and folder for this Space. Re-linking replaces the previous link. */
-  participant_linked: {
-    participantId: Id; displayName: string; tool: string;
-    /** Absolute path of the person's existing folder; the only place the PM reads from or writes requests to. */
-    workspaceRoot: string;
-    /** Paths relative to workspaceRoot the PM may read. `.` is the whole folder. */
-    allowedPaths: string[];
-    scopes: ParticipantScopes;
+  /**
+   * Someone asked to link an agent and folder. It grants nothing: a person confirms it on the dashboard with the one-time code
+   * that only the server console shows (so an HTTP caller cannot grant itself a folder). Only the code's hash is kept.
+   */
+  participant_link_requested: ParticipantGrant & { linkRequestId: Id; requestedBy: Id; codeHash: string; expiresAt: string };
+  /** A person confirmed the link. Re-linking replaces the previous link and its token. */
+  participant_linked: ParticipantGrant & {
     linkedBy: Id;
-    /** Base URL the agent uses to reach the Space (written into delivered requests). */
-    spaceUrl?: string;
+    /** The confirmed request; absent on links recorded before confirmation existed. */
+    linkRequestId?: Id;
+    /** SHA-256 of the agent's connection token. Absent on old links, which accept no agent calls until linked again. */
+    tokenHash?: string;
   };
   /** The agent fetched its Space context. Evidence that Space content arrived, separate from posting. */
   space_context_read: { participantId: Id; readId: Id; format: "md" | "json"; requestIds: Id[] };
@@ -75,6 +92,10 @@ export interface ParticipationPayloads {
 export type ParticipationEventType = keyof ParticipationPayloads;
 export type ParticipationEvent = { [K in ParticipationEventType]: LedgerEvent<K, ParticipationPayloads[K]> }[ParticipationEventType];
 
+/**
+ * The furthest step shown for a request. Delivery (`delivered`), seeing (`seenAt`) and answering (`answer`) are separate facts:
+ * an agent can see a request in the Space before the folder copy lands, so `seen` does not imply `delivered`.
+ */
 export type PersonalRequestStatus = "pending" | "delivered" | "seen" | "answered";
 export interface PersonalRequestState {
   request: ParticipationPayloads["personal_request_created"];
@@ -94,27 +115,40 @@ export interface ParticipantState {
   lastReadAt?: string;
   lastObservation?: ParticipationPayloads["workspace_context_observed"] & { at: string };
 }
+export interface LinkRequestState {
+  request: ParticipationPayloads["participant_link_requested"];
+  at: string;
+  /** When a person confirmed it; a confirmed request cannot be confirmed again. */
+  confirmedAt?: string;
+}
 export interface ParticipationState {
+  /** Confirmed links only: a pending request is not a participant. */
   participants: Map<Id, ParticipantState>;
+  linkRequests: Map<Id, LinkRequestState>;
   posts: Map<Id, SpacePost>;
   requests: Map<Id, PersonalRequestState>;
   considerations: Map<Id, ParticipationPayloads["liaison_considered"]>;
 }
 
-const TYPES = new Set<string>(["participant_linked", "space_context_read", "space_post_recorded", "workspace_context_observed", "personal_request_created",
+const TYPES = new Set<string>(["participant_link_requested", "participant_linked", "space_context_read", "space_post_recorded", "workspace_context_observed", "personal_request_created",
   "personal_request_delivered", "personal_request_delivery_failed", "personal_request_seen", "personal_request_answered", "liaison_considered"]);
 export function isParticipationEvent(event: LedgerEvent): event is ParticipationEvent { return TYPES.has(event.type); }
 
 /** Replays the participation events of one project's ledger. Kept apart from `project()` so planning never sees participants. */
 export function participation(events: readonly LedgerEvent[]): ParticipationState {
-  const state: ParticipationState = { participants: new Map(), posts: new Map(), requests: new Map(), considerations: new Map() };
+  const state: ParticipationState = { participants: new Map(), linkRequests: new Map(), posts: new Map(), requests: new Map(), considerations: new Map() };
   for (const raw of events) {
     if (!isParticipationEvent(raw)) continue;
     const event = structuredClone(raw) as ParticipationEvent;
     switch (event.type) {
+      case "participant_link_requested":
+        if (!state.linkRequests.has(event.payload.linkRequestId)) state.linkRequests.set(event.payload.linkRequestId, { request: event.payload, at: event.at });
+        break;
       case "participant_linked": {
         const previous = state.participants.get(event.payload.participantId);
         state.participants.set(event.payload.participantId, { ...previous, link: event.payload, linkedAt: event.at });
+        const request = event.payload.linkRequestId ? state.linkRequests.get(event.payload.linkRequestId) : undefined;
+        if (request && !request.confirmedAt) request.confirmedAt = event.at;
         break;
       }
       case "space_context_read": {
@@ -159,6 +193,11 @@ export function participation(events: readonly LedgerEvent[]): ParticipationStat
     }
   }
   return state;
+}
+
+/** Link requests a person can still confirm: not confirmed and not expired. */
+export function pendingLinkRequests(state: ParticipationState, now: Date): LinkRequestState[] {
+  return [...state.linkRequests.values()].filter(r => !r.confirmedAt && Date.parse(r.request.expiresAt) > now.getTime());
 }
 
 /** Requests the agent still owes an answer to, oldest first. */
