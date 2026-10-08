@@ -12,7 +12,8 @@
     "test": "node --import tsx --test --test-timeout=10000 test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json && npm run typecheck -w @ensemble/web",
     "live:pm": "tsx packages/orchestrator/scripts/live-coordination.ts",
-    "live:slack": "tsx packages/orchestrator/scripts/slack-live.ts"
+    "live:slack": "tsx packages/orchestrator/scripts/slack-live.ts",
+    "live:meeting": "tsx packages/meeting/scripts/live-meeting.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

@@ -74,6 +74,7 @@ PR #52는 [validation.ts](../app/packages/orchestrator/src/validation.ts)의 `Tr
 | web | `lib/runtime.ts` | 5분 정체 점검 틱 + 하루 요약(`ENSEMBLE_DIGEST`), `task`·`comment`·`decide` |
 | web | `app/api/[...path]/route.ts` | `GET tasks/:id`, `POST tasks/:id/comments`, `POST decisions/:id` (기존 `cards/:id` 유지) |
 | web | `components/WorkPanel.tsx`, `WorkItemDetail.tsx`, `DecisionRequestCard.tsx` | 작업 패널(작업/팀/내 결정/일정), 작업 상세 서랍, 결정 카드 |
+| meeting | `coordinator.ts`, `google.ts`, `projection.ts` | 미팅 주선·초대받기 feasibility(#80): Meet space·Calendar 초대의 멱등 생성, 관찰 상태 구분, 결정/제안/미해결의 Space 기록. 웹 런타임에는 연결하지 않았고 외부 왕복은 미검증. [실험 기록](feasibility/meeting-google-meet.md) |
 
 
 ## 5. 유지할 실행 규칙

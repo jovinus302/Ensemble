@@ -16,7 +16,7 @@
 |---|---|---|
 | 디자인 | [Figma 파일 댓글](https://github.com/jovinus302/Ensemble/issues/78) | 변경 맥락 하나를 읽고 확인 질문/다음 행동을 댓글로 연결 |
 | 메신저 | [Slack App](https://github.com/jovinus302/Ensemble/issues/79) | @Ensemble 멘션 한 건에 같은 스레드로 답변 |
-| 미팅 | [Google Meet 회의 기록 후보](https://github.com/jovinus302/Ensemble/issues/80) | 종료 후 transcript 하나에서 결정·담당·확인 요청 연결 |
+| 미팅 | [Google Meet + Calendar 참여·주선](https://github.com/jovinus302/Ensemble/issues/80) | 초대받아 입장·회의 중 확인, 방 생성·초대, 결정의 Space 기록. 회의록은 보조 입력. [실험 기록](feasibility/meeting-google-meet.md) |
 
 도구 선택은 feasibility 가설이며 특히 회의 도구는 실제 사용 환경을 확인해야 한다. API 권한과 접근 가능성부터 확인하고 한 건의 왕복 또는 기록 연결로 검증한다. 디자인·Slack·미팅이 이미 연동됐다고 표현하지 않는다.
 
