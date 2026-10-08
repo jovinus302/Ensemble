@@ -117,6 +117,21 @@ PM 요청 작성 호출 3건의 Codex 응답 시간은 13.0s·17.4s·14.5s(`[ens
 
 PM 모델 호출: 계획 30.8s, 요청 판단 16.5s·20.2s 등(`[ensemble:pm-model]`).
 
+### 3.3 2026-10-08 재리뷰(N1–N3) 수정 후 다시 한 실제 왕복
+
+원문 증거: `C:/Users/siheon.ryu/AppData/Local/Temp/issue-81-roundtrip-2026-10-08-r2.txt`(HTTP 전사, Codex 두 실행의 명령·메시지, 원장의 #81 이벤트 전부, PM 모델 시간, 폴더 상태. 토큰·확인 코드는 가렸다). 원본(Codex JSONL·서버 콘솔·원장 DB)은 이 작업 세션 scratchpad의 `rt2/`에 있고 임시 폴더다. 아래 seq는 그 원장 기준이다.
+
+환경: 커밋 `7812177`, Windows 11, Node 24.18, `codex-cli 0.159.2`, `next dev -H 127.0.0.1 -p 3191`(netstat `127.0.0.1:3191 LISTENING`만), `ENSEMBLE_PM_RUNTIME=codex`, `ENSEMBLE_AGENT_RUNTIME=fake`. 개인 폴더는 연결 전에 새로 만든 git 저장소(README.md, copy.md, 커밋 `37fea61`).
+
+1. **목표**: `free/start`로 "로그인 화면 문구를 이메일 로그인 기준으로 정리한다"를 넣고 Codex PM 계획 카드를 승인했다.
+2. **경계 확인과 연결 (N2·N3)**: 실제 전송 Host를 바꿔(node:http) `/api/state`에 `Host: rebinding.attacker.invalid:3191` → 403, `Host: 127.0.0.1:4000`(다른 포트) → 403, `Origin: http://evil.example` → 403, `/api/archives`에 다른 Host → 403. `spaceUrl: "https://attacker.invalid"`로 연결 요청 → 400이고 대기 연결은 0건. `spaceUrl` 없이 연결 요청 → 202(seq 33), 콘솔 코드로 확인 → 201(seq 36). 확인 응답의 `contextUrl`·`postUrl`은 `http://localhost:3191/api/space/participants/owner-codex/…`(서버 자신의 주소)였고, 작업자가 토큰을 `.ensemble/space-token`에 저장했다. 토큰 없이 맥락 읽기 401, 토큰으로 읽은 JSON의 `howToPost.url`도 같은 로컬 주소(seq 37, 작업자의 확인용 읽기).
+3. **개인 Agent → Space**: 폴더에서 `codex exec --json -s workspace-write -c sandbox_workspace_write.network_access=true`(세션 `01a11ae8-89ae-78f1-950e-7513ad5902eb`). 프롬프트에는 확인 응답의 두 URL과 토큰 파일 위치만 주었다. Codex가 토큰으로 맥락 Markdown을 읽고(seq 38), copy.md의 "구글로 계속하기"를 "이메일로 계속하기"로 바꾸고 입력 안내·오류 문구를 더한 뒤 결과(seq 39)와 질문 "비밀번호·이메일 인증 코드·로그인 링크 중 어떤 방식인가, 미가입 이메일은 어떻게 할까"(seq 41)를 직접 POST했다. 첫 POST 명령은 PowerShell 구문 오류로 아무것도 보내지 못했고, Codex가 스스로 고쳐 다시 보내 202 두 건을 받았다.
+4. **PM → 개인 환경 → PM**: PM이 글마다 폴더를 직접 읽었다(seq 40·43, `copy.md` `0bce44cd9028`, 로컬 sha256과 일치). 결과 글은 `none`(seq 42), 질문 글은 Codex PM이 "결정은 사람이 하니 공통 문구를 유지하고 방식별·미가입 처리별 조건부 초안을 정리하라"는 요청을 써서(seq 44, depth 1) `.ensemble/inbox/req-b9e145796d02c6da.md`에 전달했다(seq 45, attempt 1. 판단 기록 seq 46). 요청 파일의 주소는 `http://localhost:3191/…/posts`와 `…/context?format=md` 두 개뿐이고 토큰 값은 없다(N3). 같은 세션을 `codex exec resume`으로 이어 "PM 요청이 도착했는지 확인하고 처리한 뒤 답하라"고만 했다. Codex는 맥락을 읽어(seq 47, `personal_request_seen` seq 48) 요청 파일 경로를 얻고 그 파일을 읽은 뒤 copy.md에 조건부 초안을 더하고 `inReplyTo=req-b9e1…`로 결과를 답했다(seq 49). 요청은 `answered`(seq 50), PM 관찰은 `copy.md` 해시 변경(`3596c2120fda`, seq 51, 로컬과 일치), 그 답에는 `none`(seq 52, depth 2).
+5. **끊김 + Space 읽기 + 재연결 (F1)**: 폴더 이름을 바꿔 끊고 사람이 요청을 보내자 `unreachable`(seq 53–54, attempt 1), `inspect` 503. 끊긴 동안 토큰으로 맥락을 읽어(작업자의 호출) 요청이 `seen`(seq 55–56). 폴더를 되돌린 뒤 sweep이 전달(seq 57, attempt 2), 다음 sweep은 0건.
+6. Codex JSONL·stderr와 요청 파일 어디에도 토큰 값은 없었다(검색 0건). 폴더의 `git status`는 `copy.md`와 `.ensemble/`(요청 파일 2개, 토큰 파일)뿐이다. Codex는 3.2절과 같이 사용자 전역 지침에 따라 worktree를 만들려다 샌드박스의 `.git` 쓰기 제한으로 실패했고 커밋하지 않았다(실험 범위 밖).
+
+PM 모델 호출: 계획 35.7s, 요청 판단 15.7s·17.9s·17.7s(`[ensemble:pm-model]`). 3.2절과 달리 Agent가 같은 요청에 두 번째 답을 달지 않아 depth 2 요청은 생기지 않았다.
+
 ## 4. 완료 기준별 상태
 
 2026-10-08 리뷰 반영 후 기준. "검증됨"은 3.2절 원문 증거나 자동 테스트가 뒷받침하는 범위만 뜻한다.
