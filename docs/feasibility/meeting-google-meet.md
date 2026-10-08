@@ -1,8 +1,8 @@
 # 미팅 참여·주선 feasibility 기록 — Google Meet + Calendar (#80)
 
-기준: 2026-10-07, 실계정 관찰 2026-10-08. 대상 이슈: [#80](https://github.com/jovinus302/Ensemble/issues/80). 제품 의도(미팅에 초대받아 참여하고, 위임 범위에서 미팅을 주선하고, 결과를 같은 Space와 후속 작업에 잇는다)는 확정이며 도구·매체·구현 수단은 EXPERIMENT다.
+기준: 2026-10-07, 실계정 관찰 2026-10-08(B 실제 발송·입장 관찰 포함). 대상 이슈: [#80](https://github.com/jovinus302/Ensemble/issues/80). 제품 의도(미팅에 초대받아 참여하고, 위임 범위에서 미팅을 주선하고, 결과를 같은 Space와 후속 작업에 잇는다)는 확정이며 도구·매체·구현 수단은 EXPERIMENT다.
 
-**이 기록의 결론부터.** 2026-10-08 실제 Google API로 접근 확인, Meet space 생성, 발송 없는 Calendar 일정 생성, 재시도 중복 방지를 관찰했다([6절](#6-실계정-관찰-기록)). 참석자에게 초대를 보내는 단계는 승인 대기라 실행하지 않았고, 초대 도착·참여자 입장·초대받은 미팅 참여(A)·회의 중 수신/응답·후속 전달은 여전히 미검증이다. 따라서 이슈의 완료 기준은 아직 하나도 충족되지 않았다. "구현만"은 코드와 fake·mock fetch 테스트로만 확인했다는 뜻이다. 링크 생성, Calendar의 초대 요청 수락, 종료 후 회의록 처리는 각각 그 자체로만 기록하고 초대 도착·입장·회의 중 응답 성공으로 보고하지 않는다.
+**이 기록의 결론부터.** 2026-10-08 실제 Google API로 접근 확인, Meet space 생성, 발송 없는 Calendar 일정 생성, 재시도 중복 방지를 관찰했다. 이어 승인된 B 흐름 실제 발송에서 참석자 1명에게 `sendUpdates=all` 초대를 한 번 보냈고, Calendar API로 참석 응답 `accepted`를, Meet REST `conferenceRecords/participants`로 참여자 2명의 입장을 관찰해 Space 원장에 기록했다([6절](#6-실계정-관찰-기록)). 단, 외부(개인 Gmail) 참석자는 링크로 바로 들어오지 못하고 참여 요청(노크) 후 호스트가 승인해야 했다. 초대받은 미팅 참여(A)·회의 중 수신/응답·후속 전달은 여전히 미검증이므로 이슈의 완료 기준은 B의 초대 도착·참여자 입장 부분만 관찰로 채워졌다. "구현만"은 코드와 fake·mock fetch 테스트로만 확인했다는 뜻이다. 링크 생성, Calendar의 초대 요청 수락, 종료 후 회의록 처리는 각각 그 자체로만 기록하고 초대 도착·입장·회의 중 응답 성공으로 보고하지 않는다.
 
 ## 1. 선택한 경로와 이유
 
@@ -22,15 +22,15 @@
 
 | 능력 | 브라우저 참여 | 플랫폼 봇/SDK/API | 일정 API | 현재 상태 |
 |---|---|---|---|---|
-| 초대 수신·방 입장 (A) | PM Agent용 Google 계정이 브라우저로 링크 입장. 조직 밖 계정은 호스트 승인 필요, 자동화 계정 차단 가능성 있음 | Meet REST에는 입장 API 없음. Media API는 신규 불가 | PM 계정 캘린더에서 초대 수신 확인 가능(미구현) | **미검증.** 사람이 Space·목적·링크를 지정하는 `registerInvitation`과 입장/거절/끊김을 남기는 `report`만 **구현만** |
+| 초대 수신·방 입장 (A) | PM Agent용 Google 계정이 브라우저로 링크 입장. 조직 밖 계정은 호스트 승인 필요, 자동화 계정 차단 가능성 있음. 2026-10-08 Orca 내장 브라우저에서는 Google 로그인이 차단되어(코디네이터 보고) 이 경로를 시험하지 못함 | Meet REST에는 입장 API 없음. Media API는 신규 불가 | PM 계정 캘린더에서 초대 수신 확인 가능(미구현) | **미검증.** 사람이 Space·목적·링크를 지정하는 `registerInvitation`과 입장/거절/끊김을 남기는 `report`만 **구현만** |
 | 회의 중 맥락 수신 | 브라우저 자막·채팅 화면 읽기(자동화 필요, 약관·안정성 확인 필요) | Media API(불가). Meet add-on SDK는 참가자 측 패널이며 PM 입장과 다름 | 없음 | **미검증.** 받은 발화를 Space에 넣는 `ingest`(자기 메시지 제외·중복 제거)만 **구현만** |
 | 회의 중 응답 | 브라우저 채팅 입력(가설), 음성 발언은 별도 TTS·오디오 경로 필요 | Meet REST에 채팅 송신 없음 → `unsupported` | 없음 | **미검증.** Google adapter는 `chat_send`를 `unsupported`로 반환하고 그대로 기록. 질문 송신·답 수신·`no_response` 만료 흐름은 fake로 **구현만** |
 | 접근 확인 | 해당 없음 | OAuth refresh token 교환, Meet `conferenceRecords.list` 읽기 | Calendar `events.list` 읽기 | **검증됨** (2026-10-08). 부여 범위는 `calendar.events`, `meetings.space.created`(`meetings.space.readonly` 없음) |
 | 방 생성 (B) | 해당 없음 | Meet REST `spaces.create` | — | **검증됨** (2026-10-08). 실제 Meet 링크 생성. 링크 생성은 초대·입장 성공이 아님 |
 | 일정 생성, 발송 없음 (B) | 해당 없음 | — | Calendar `events.insert` + `sendUpdates=none`, 참석자 없음 | **검증됨** (2026-10-08). 결정적 이벤트 id로 생성, 상태 `created` |
 | 재시도 중복 방지 (B) | 해당 없음 | 원장 시도 예약 | 결정적 이벤트 id → 409 → 기존 이벤트 조회 | **검증됨** (2026-10-08). 같은 상태 파일 재실행은 API 호출 0회, 상태 파일 삭제 후 재실행은 409 재조회로 원래 링크 유지. 대신 쓰이지 않는 space 1개가 실제로 남음 |
-| 참여자 초대 전달 (B) | 해당 없음 | — | Calendar `events.insert` + `sendUpdates=all` | **미검증.** `--confirm-send` 실행이 승인 대기. 요청 형태는 mock fetch로만 확인(**구현만**). 초대 메일 도착은 참석자 계정에서 따로 확인해야 함 |
-| 입장 관찰 | 사람의 확인 | Meet REST `conferenceRecords` + `participants` | 참석 응답(`responseStatus`)은 일정 수락이며 입장이 아님 | **미검증.** 목록 읽기 권한은 확인(빈 목록 포함 200)했지만 실제 회의가 열리지 않아 참여자 기록은 관찰하지 않음. 코드는 **구현만**(참여자 이름을 멤버로 추정하지 않음) |
+| 참여자 초대 전달 (B) | 해당 없음 | — | Calendar `events.insert` + `sendUpdates=all` | **검증됨** (2026-10-08). 발송 1회, 같은 키 재실행은 API 호출 0회. 참석자가 메일함에서 초대를 수락했고(사람 보고) Calendar `responseStatus`가 `needsAction` → `accepted`로 바뀐 것을 API로 관찰 |
+| 입장 관찰 | 사람의 확인 | Meet REST `conferenceRecords` + `participants` | 참석 응답(`responseStatus`)은 일정 수락이며 입장이 아님 | **검증됨** (2026-10-08). 앱이 만든 space의 conferenceRecord 1건에서 signed-in 참여자 2명을 `api_poll` 근거로 기록. 범위 `meetings.space.created`만으로 조회됨(`meetings.space.readonly` 불필요). 참여자 표시 이름 ↔ 초대 이메일 대응은 API가 주지 않아 사람 확인이 필요하며, 코드는 추정하지 않아 참석자별 `joined`는 `false`로 남음 |
 | 후속 조율 | — | — | — | Space 기록(결정/제안/미해결, 작성 주체·원본 참조·관찰 시각)은 **구현만**. 작업환경으로의 후속 요청 전달은 #79/#81 접점 의존으로 **미검증** |
 | 종료 후 회의록 | — | Meet REST transcript 산출물 | — | 보조 경로. 회의록 근거만 있으면 `transcriptOnly`로 표시하고 참여 증거로 세지 않음 |
 
@@ -114,11 +114,12 @@ npm run live:meeting -- observe --key live-b-send-1
 - 다시 실행할 때 `--start`를 생략하면 원장에 저장된 일정을 재사용한다. 처음 실행에서 생략하면 다음 정시 + 1시간, 30분이다.
 - 공급자 수준 멱등성(선택): 같은 키를 새 `--state` 파일로 실행하면 원장이 비어 있어 Meet space를 하나 더 만들지만, Calendar insert는 409 → 기존 이벤트 조회(`replayed=true`)로 끝나 메일이 다시 나가지 않는다. 이때 새 space는 쓰이지 않으며 실행기는 이벤트의 원래 링크를 보여준다. 빈 space가 하나 남으므로 필요할 때만 한다.
 - 일정을 Calendar에서 지우면 그 이벤트 id는 다시 쓸 수 없다. 새 키를 쓴다.
+- 외부 계정(조직 밖, 개인 Gmail 포함) 참석자는 기본 접근 유형에서 링크로 바로 입장하지 못하고 참여 요청(노크)을 보낸다. 호스트(일정을 만든 PM 계정)가 같은 Meet에 들어가 승인해야 입장이 된다. 현재는 사람이 하는 수동 단계다.
 - 실제 Google 응답으로 실행한 결과는 6절에 남긴다.
 
 ## 6. 실계정 관찰 기록
 
-2026-10-08, 코디네이터가 제공된 OAuth 자격 증명(`.env.local`)으로 `npm run live:meeting`을 실행하고 결과를 전달했다. 이 문서 작성자는 실행기를 직접 돌리지 않았다. 참석자 이메일, 토큰, htmlLink는 기록하지 않는다.
+2026-10-08. #1~4는 코디네이터가 `.env.local` 자격 증명으로 실행하고 결과를 전달했다. #5~9는 사용자의 발송 승인 후 워커가 같은 실행기로 직접 실행했고, 사람 조치(초대 수락, 입장, 노크 승인)는 코디네이터를 통해 사용자가 수행했다. 참석자 이메일, 토큰, htmlLink, 참여자 표시 이름은 기록하지 않는다(원장에만 있음).
 
 | # | 실행 | 관찰한 API 응답 | 원장·상태 | 결론 |
 |---|---|---|---|---|
@@ -126,13 +127,22 @@ npm run live:meeting -- observe --key live-b-send-1
 | 2 | `create --key live-b-dry-1` (참석자 없음, `sendUpdates=none`) | `POST meet/v2/spaces` 200 → `spaces/bixMLAxMVUkB`, `https://meet.google.com/xet-xxai-ydn`. `POST calendar/v3/…/events` 200 → 이벤트 id `ens5d4cd0fbf93b3a38b0792bba37a9ea7f83ac7491` | 원장 기록 5건, 상태 `created` | 실제 방과 무발송 일정 생성. 아무에게도 초대가 가지 않았으므로 초대·입장 증거가 아님 |
 | 3 | 같은 키·같은 상태 파일로 재실행 | API 호출 0회 | 새 원장 기록 0건 | 프로세스 간 재실행이 원장만으로 멈춤 |
 | 4 | 같은 키, 상태 파일 삭제 후 재실행 | `spaces.create` 200(새 space), `events.insert` 409, 기존 이벤트 `GET` 200 | `replayed=true`, 일정은 원래 링크 유지, 새 space는 미사용으로 표시(`spaceMismatch`) | Calendar 쪽 중복 방지가 실제 API에서 동작. 원장을 잃으면 Meet space가 하나 더 생기는 한계도 실제로 관찰 |
+| 5 | `create --key live-b-send-1 --attendee <테스트 참석자 1명> --start <실행 +30분> --minutes 30 --confirm-send` | `POST meet/v2/spaces` 200 → `https://meet.google.com/eqr-quyc-kre`. `POST calendar/v3/…/events?sendUpdates=all` 200 → 이벤트 id `ens03cabac9392a47cac6dd99a762b5c10358d5ad23` | 원장 기록 7건, 상태 `invite_sent`, 참석자 `sent_unconfirmed` | 실제 초대 발송 요청 1회. Calendar가 받은 것까지가 API 증거 |
+| 6 | 같은 명령 재실행 | API 호출 0회 | 새 원장 기록 0건 | 발송 단계도 재실행 멱등. 두 번째 메일 없음 |
+| 7 | 발송 직후 `observe` | Calendar `GET` 200(`responseStatus=needsAction`), `conferenceRecords` 200(빈 목록) | 새 기록 0건 | 아직 응답·입장 없음 |
+| 8 | 참석자가 메일함에서 수락 후 `observe` | Calendar `GET` 200(`accepted`), `conferenceRecords` 200(1건), `participants` 200(1명) | `invite_accepted`(`api_poll`), `joined` 참여자 1건 | 초대 도착·수락을 API로 관찰. 참석자는 노크 대기였고, 이때 보인 1명은 노크를 승인하러 먼저 들어온 호스트(PM 계정, 사람이 브라우저로 조작) |
+| 9 | 호스트가 노크 승인 후 `observe`(30초 간격 재시도) | 같은 호출 4건 모두 200, `participants` 2명 | `joined` 참여자 1건 추가 | 초대받은 참석자 입장을 API로 관찰(사람 확인 매핑, 아래). PM 계정의 입장은 사람이 조작한 것이라 PM Agent 입장(`pm participation`)은 `not_joined`로 남는 것이 맞다 |
 
-**아직 관찰하지 않은 것**: 참석자에게 초대 발송(`--confirm-send`, 승인 대기), 참석자 계정에서의 초대 메일 수신, 참석 응답, 참여자 입장과 `participants` 기록, A 흐름(초대받은 미팅에 PM Agent 입장), 회의 중 맥락 수신·응답, Space 기록을 근거로 한 후속 요청 전달. 위 관찰은 방·일정 생성과 중복 방지까지만 보여 주며 미팅 참여·주선의 완료를 뜻하지 않는다.
+참여자 매핑(사람 확인): API의 표시 이름만으로는 계정을 알 수 없어 사용자에게 확인했다. #8에서 먼저 보인 참여자 = 호스트/PM 계정, #9에서 추가된 참여자 = 초대받은 참석자. 이 대응은 API 증거가 아니라 사람 보고다.
+
+정리: 드라이런 이벤트(`ens5d4cd…7491`, 참석자 없음)는 발송 전에 `events.delete?sendUpdates=none`(204)로 지웠다. Meet REST에는 space 삭제 API가 없어 미사용 space 2개(드라이런 1, 상태 파일 유실 재실행 1)는 남아 있다. 아무도 초대받지 않았으므로 참석자에게 보이지 않는다.
+
+**아직 관찰하지 않은 것**: A 흐름(초대받은 미팅에 PM Agent 입장 — Orca 내장 브라우저의 Google 로그인 차단으로 이번 범위에서 제외), 회의 중 맥락 수신·응답, Space 기록을 근거로 한 후속 요청 전달, 거절·무응답 상태의 실계정 관찰. 초대 메일 도착은 사람의 수락 보고와 `accepted` 응답으로 간접 확인했고 메일 원문은 보지 않았다. 참여자 표시 이름과 초대 이메일의 대응은 사람 확인에 의존한다. 외부 참석자 입장에는 호스트의 노크 승인이 필요했으므로, PM 계정이 회의에 없으면 외부 참석자는 들어오지 못한다.
 
 ## 7. 수동 검증 절차 (자격 증명 확보 후)
 
 1. 위 실행기의 `check`로 토큰과 범위를 확인한다(B 경로는 5절 명령 그대로).
-2. **B**: `create`를 같은 키로 두 번 실행한다. Meet 링크 1개, 캘린더 이벤트 1개, 참여자별 메일 1통인지 각 계정에서 확인한다. 참여자가 응답하고 링크로 입장한 뒤 `observe`의 결과를 기록한다.
+2. **B**: `create`를 같은 키로 두 번 실행한다. Meet 링크 1개, 캘린더 이벤트 1개, 참여자별 메일 1통인지 각 계정에서 확인한다. 참여자가 응답하고 링크로 입장한 뒤 `observe`의 결과를 기록한다. 외부 참석자는 노크하므로 호스트(PM 계정)가 다른 브라우저/프로필로 같은 Meet에 들어가 승인한다(수동 단계). 참여자 목록은 입장이 승인된 뒤에야 나타난다.
 3. 실패 확인: 잘못된 token(`unauthenticated`), 범위 누락(`permission_denied`), 거절 응답(`declined`), 시작 후 무응답(`no_response`)이 각각 성공과 다른 상태로 남는지 본다.
 4. **A**: 사람이 만든 미팅 링크로 `registerInvitation`을 호출한다. PM 계정이 브라우저로 입장을 시도하고 결과(입장/거절/끊김)를 `report`로 남긴다. 회의 중 채팅을 사람이 옮겨 적는 경우 근거는 `human_report`로 구분한다.
 5. 결정/제안/미해결을 `recordNotes`로 원문 위치와 함께 남기고, 후속 요청 전달은 #79/#81 경로가 생긴 뒤 시험한다.
@@ -144,6 +154,8 @@ npm run live:meeting -- observe --key live-b-send-1
 - **#79 Slack**: 초대 안내·후속 연락을 Slack 스레드로 보낼 경우 그 접점을 재사용한다.
 - 회의 중 맥락 수신·응답의 실제 경로(브라우저 참여 또는 add-on)는 정해지지 않았다.
 - PM 계정 캘린더의 초대 수신 감지(`events.list`)는 미구현이다.
-- lease 만료나 상태 파일 유실 뒤 남는 빈 Meet space 정리는 미구현이다(2026-10-08 실제로 1개 발생).
+- lease 만료나 상태 파일 유실 뒤 남는 빈 Meet space 정리는 미구현이다(2026-10-08 실제로 1개 발생). Meet REST v2에는 space 삭제가 없어 `endActiveConference` 외에는 남겨 둘 수밖에 없다.
+- 외부 참석자의 노크 승인을 PM Agent가 대신할 경로가 없다. space `accessType`을 `OPEN`으로 바꾸면 노크가 사라지지만 링크를 아는 누구나 들어올 수 있어 제품 결정이 필요하다(이번 실험에서는 접근 설정을 바꾸지 않음).
+- 참여자 표시 이름을 Space 멤버에 대응시키는 근거(예: 사람 확인, Workspace 디렉터리 조회)는 미구현이다.
 - 빈 space가 생긴 경우 일정의 원래 링크로 입장자를 찾으려면 회의 코드(`space.meeting_code`) 기준 조회가 필요하다(미구현).
 - 미팅 주선 권한은 현재 "사람(`confirmedBy`)이 참여자·일정을 확인함"으로만 표현한다. 프로젝트 위임 설정(`pmMayApply`)에 미팅 생성 권한을 넣을지는 제품 결정이 필요하다.
