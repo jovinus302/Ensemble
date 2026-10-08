@@ -90,6 +90,8 @@ const PM_ACTOR = { kind: 'pm' as const, id: 'pm' };
 
 export const slackMessageId = (teamId: string, channelId: string, ts: string) => `slack:${teamId}:${channelId}:${ts}`;
 const threadKey = (source: Pick<ExternalSourceRef, 'channelId' | 'messageTs' | 'threadTs'>) => `${source.channelId}:${source.threadTs ?? source.messageTs}`;
+/** Ends the text with one sentence mark, so a reason that already ends with '.' does not get two. */
+const sentence = (text: string) => { const t = text.trim(); return /[.!?。]$/.test(t) ? t : `${t}.`; };
 const strings = (value: unknown, max = 8): string[] => (Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && !!v.trim()).slice(0, max) : []);
 
 export class SlackCoordinator {
@@ -291,12 +293,12 @@ export class SlackCoordinator {
     if (e.type === 'task_blocked' && triggers.has('agent_blocker')) {
       const task = agentTask(e.payload.taskId);
       if (task) return { trigger: 'agent_blocker', reason: 'agent_blocker', taskIds: [task.spec.id],
-        text: `${name(task.spec.assignee)}가 "${task.spec.title}" 작업에서 막혔어요: ${e.payload.reason}. 어떻게 진행할지 이 스레드에 답해 주세요.` };
+        text: `${name(task.spec.assignee)}가 "${task.spec.title}" 작업에서 막혔어요: ${sentence(e.payload.reason)} 어떻게 진행할지 이 스레드에 답해 주세요.` };
     }
     if (e.type === 'result_submitted' && triggers.has('agent_result') && e.actor.kind === 'agent') {
       const task = agentTask(e.payload.taskId);
       if (task) return { trigger: 'agent_result', reason: 'agent_result', taskIds: [task.spec.id],
-        text: `${name(task.spec.assignee)}가 "${task.spec.title}" 결과를 Space에 남겼어요: ${e.payload.summary}. 이대로 진행해도 되는지, 바꿀 점이 있는지 이 스레드에 답해 주세요.` };
+        text: `${name(task.spec.assignee)}가 "${task.spec.title}" 결과를 Space에 남겼어요: ${sentence(e.payload.summary)} 이대로 진행해도 되는지, 바꿀 점이 있는지 이 스레드에 답해 주세요.` };
     }
     if (e.type === 'decision_recorded' && triggers.has('decision_followup')) {
       return { trigger: 'decision_followup', reason: 'decision_followup', taskIds: [],
