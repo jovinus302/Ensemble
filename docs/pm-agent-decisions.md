@@ -41,6 +41,10 @@
 | 실행 Agent 런타임 | "실행 Agent는 claude code나 codex 세션 자체를 실행 agent 런타임으로 하는것 좋네" | 실행 Agent는 앱이 직접 돌리는 API 루프가 아니라 Claude Code 또는 Codex 세션이다. 두 CLI 모두 mid-turn steering을 지원한다는 사용자 지적에 따른 결정 |
 
 
+## 2026-10-08 미팅 space 접근 유형 (#80)
+
+사용자 결정: PM Agent가 만드는 Google Meet 회의는 외부 참석자의 노크를 PM이 승인 대행하는 대신, 누구나 링크로 바로 들어올 수 있게 연다(`spaces.create`의 `config.accessType=OPEN` 기본, 설정으로 `TRUSTED`/`RESTRICTED` 선택 가능). Meet REST에는 노크 승인 API가 없고 실관찰에서 외부 참석자가 호스트 승인 없이는 들어오지 못했기 때문이다. 대가로 링크를 아는 누구나 입장할 수 있으며 통제 수단은 링크 공유 범위뿐이다. 근거·검증은 [미팅 feasibility 기록](feasibility/meeting-google-meet.md#space-접근-유형-결정-2026-10-08).
+
 ## 2. 현재 실행 선택
 
 - 자체 Slack형 웹앱, TypeScript·Next.js·SQLite와 이벤트 원장을 사용한다.

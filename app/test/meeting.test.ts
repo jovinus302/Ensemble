@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { inspect } from 'node:util';
 import type { NewLedgerEvent } from '@ensemble/core';
 import {
-  FakeMeetingAdapter, GoogleMeetCalendarAdapter, MeetingCoordinator, MeetingRequestError, OAuthTokenError, RefreshTokenProvider, calendarEventIdFor, meetingViews,
+  DEFAULT_MEET_ACCESS_TYPE, FakeMeetingAdapter, GoogleMeetCalendarAdapter, MeetingCoordinator, MeetingRequestError, OAuthTokenError, RefreshTokenProvider, calendarEventIdFor, meetingViews,
   type ArrangeInput,
 } from '@ensemble/meeting';
 import { MemoryLedgerStore } from '@ensemble/store';
@@ -277,7 +277,8 @@ test('google adapter: spaces.create and events.insert request shape', async () =
   assert.equal(calls[0]!.method, 'POST');
   assert.equal(calls[0]!.url, 'https://meet.googleapis.com/v2/spaces');
   assert.equal(calls[0]!.headers.authorization, `Bearer ${SECRET}`);
-  assert.deepEqual(calls[0]!.body, { config: { accessType: 'TRUSTED' } });
+  // Product decision 2026-10-08: PM-created meetings open without knocking unless configured otherwise.
+  assert.deepEqual(calls[0]!.body, { config: { accessType: 'OPEN' } });
   const inserted = await adapter.insertInvite(invite);
   assert.deepEqual(inserted, { status: 'ok', value: { eventId: 'ens0123abcd', htmlLink: 'https://calendar.google.com/event?eid=x', link: 'https://meet.google.com/abc-defg-hij' } });
   assert.equal(calls[1]!.url, 'https://www.googleapis.com/calendar/v3/calendars/pm-agent%40example.test/events?sendUpdates=all');
@@ -292,6 +293,23 @@ test('google adapter: spaces.create and events.insert request shape', async () =
   assert.deepEqual(body.start, { dateTime: '2026-10-07T05:00:00.000Z', timeZone: 'Asia/Seoul' });
   assert.deepEqual(body.extendedProperties, { private: { ensembleMeetingId: 'meeting-1', ensembleProjectId: 'space-a' } });
   assert.equal(body.guestsCanInviteOthers, false);
+});
+
+test('google adapter: space access defaults to OPEN, is configurable, and reads back via spaces.get', async () => {
+  const { calls, fetchImpl } = mockFetch([
+    () => ({ status: 200, body: { name: 'spaces/abc', meetingUri: 'https://meet.google.com/abc-defg-hij' } }),
+    () => ({ status: 200, body: { name: 'spaces/abc', config: { accessType: 'TRUSTED' } } }),
+    () => ({ status: 403, body: { error: { status: 'PERMISSION_DENIED' } } }),
+  ]);
+  const trusted = new GoogleMeetCalendarAdapter({ accessToken: async () => SECRET, fetch: fetchImpl, accessType: 'TRUSTED' });
+  await trusted.createSpace({ meetingId: 'm', attempt: 1 });
+  assert.deepEqual(calls[0]!.body, { config: { accessType: 'TRUSTED' } });
+  assert.deepEqual(await trusted.readSpaceAccess('spaces/abc'), { status: 'ok', value: { accessType: 'TRUSTED' } });
+  assert.equal(calls[1]!.method, 'GET');
+  assert.equal(calls[1]!.url, 'https://meet.googleapis.com/v2/spaces/abc');
+  const denied = await trusted.readSpaceAccess('spaces/abc');
+  assert.equal(denied.status, 'failed');
+  assert.equal(DEFAULT_MEET_ACCESS_TYPE, 'OPEN');
 });
 
 test('google adapter: 409 reads the event back; a foreign or cancelled holder is a failure', async () => {
