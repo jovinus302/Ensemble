@@ -2,15 +2,18 @@
 
 기준: 2026-10-07. 제품 의도는 [#78](https://github.com/jovinus302/Ensemble/issues/78)과 [intent.md](../../intent.md)를 따른다. 이 문서는 연결 수단(EXPERIMENT)의 선택과 현재까지의 증거를 기록한다.
 
-**결론: 실제 Figma 계정에서 읽기와 댓글 게시까지는 관찰했고, 상대 응답을 받는 왕복은 아직 관찰하지 않았다.** 2026-10-07 테스트 파일(사용자 계정으로 만든 테스트용 파일 1개)에서 `live-figma.ts` preflight·post를 실제로 실행했다. PM 댓글에 대한 스레드 답글이 아직 달리지 않아 poll은 `awaiting_reply` 상태다. 완료 기준의 "실제 Figma 댓글 흐름에서 한 번 왕복"은 답글 수신 전까지 충족되지 않는다.
+**결론: 실제 Figma 댓글 흐름에서 질문 게시 → 사람 답글 수신 → Space 후속 항목 연결까지 한 번 왕복을 관찰했다.** 2026-10-07 테스트 파일(사용자 계정으로 만든 테스트용 파일 1개)에서 `live-figma.ts` preflight·post를 실행했고, 2026-10-08 같은 스레드에 단 사람 역할 답글을 poll이 받아 기록했다. 단, PM과 답글 작성자가 같은 Figma 계정이어서 참여자 식별은 검증하지 못했다(아래 '같은 계정으로 시험할 때').
 
-### 실제 관찰 기록 (2026-10-07)
+### 실제 관찰 기록 (2026-10-07 ~ 10-08)
 
 | 단계 | 결과 |
 |---|---|
 | preflight (읽기만) | `GET /v1/me` 성공(사용자 본인 계정). 파일 이름·`version`·`lastModified`(06:44:51Z) 조회, 첫 페이지 첫 FRAME `1:2` 발견, 기존 댓글 0개. 토큰 값은 출력되지 않음 |
 | post | `figma_inspected`(version·프레임 발견) 후 `POST /comments` 성공. Figma가 댓글 id `1955923874`를 반환해 `awaiting_reply`. 본문에 `[ensemble-req:figma-838d006a0bdf7ad4]` 태그 |
-| poll | post 후 약 6시간 동안 반복했으나 새 답 0, 자기 댓글 건너뜀 0 → `awaiting_reply`. **답글 수신은 미관찰** |
+| poll (답글 전) | post 후 약 6시간 동안, 그리고 2026-10-08 08:2x에 다시 실행했으나 새 답 0 → `awaiting_reply` |
+| 사람 역할 답글 | 2026-10-08 08:23:23Z, 사용자 결정에 따라 Codex 워커가 Orca 브라우저의 사용자 Figma 세션(PM과 같은 계정)으로 댓글 `1955923874` 스레드에 답글: "프레임 1:2 버튼 색상은 유지, 라벨만 변경해 주세요." (태그 없음) |
+| poll 1회차 | 08:28:25Z 관찰. `new=1 skippedOwn=0 duplicates=0`, 상태 `reply_received`. 원장에 `figma_reply_received`(답 id `1958022831`, parent `1955923874`, 작성자 id·handle, `createdAt`·`observedAt`, `sameAccountAsPm=true`)와 `figma_followup_linked`(`figma-followup:<fileKey>:1958022831`, `verification=claimed`)가 쌓이고 Space 보기에 미해결 후속 항목 1개가 나타남 |
+| poll 2회차 | `new=0 duplicates=1`. figma 이벤트 수 6 → 6으로 변화 없음(재수신 중복 없음). 두 poll 모두 `figma_comment_attempted`/`posted`를 새로 남기지 않음 — PM은 답글이나 자기 댓글에 다시 쓰지 않음 |
 
 주의: 토큰이 사용자 본인 계정이라 PM 댓글과 이후 답글의 작성자가 같은 계정이 된다(아래 '같은 계정으로 시험할 때' 참고).
 
@@ -71,9 +74,9 @@ Space는 기존 프로젝트 원장이다. Figma 기록은 같은 원장에 `fig
 |---|---|---|
 | 개인 Agent가 Space에서 맥락을 읽고 질문/링크를 직접 공유 | **미검증** (#81 의존) | `shareLink`는 Agent를 기록 주체로 남기는 최소 진입점이다. 실제 개인 Agent가 Space에 접속하는 경로는 #81 범위이며 HTTP/UI 진입점은 만들지 않았다. |
 | PM이 허용된 Figma 원본에 접근해 확인 범위와 출처를 남김 | **실제 검증** (테스트 파일 1개) | `figma_inspected`: 실제 파일 version·lastModified·프레임 `1:2`·관찰 시각을 기록. |
-| PM 질문과 상대 응답이 실제 Figma 댓글에서 한 번 왕복 | **절반 검증** — 발송 실제 성공, 응답 수신 미관찰 | 실제 댓글 id `1955923874` 게시 확인. 스레드 답글이 아직 없어 poll이 받은 응답은 0. |
-| Space에서 시작한 조율도 Figma에 도달, 응답이 다음 행동으로 연결 | 구현 + fake 검증 (일부) | `relayDecision` → 댓글. 응답은 `figma_followup_linked`까지다. 기존 작업·결정 요청으로의 변환은 미구현. |
-| 파일/프레임·댓글·버전·관찰 시각·참여자 식별 보존, 재수신 중복 없음, 자기 댓글에 답하지 않음 | 구현 + fake 검증 | 공유 재수신·결정 재전달·재조회·동시 전달·자기 댓글 테스트. |
+| PM 질문과 상대 응답이 실제 Figma 댓글에서 한 번 왕복 | **실제 검증** (같은 계정) | 댓글 `1955923874` 게시 → 답글 `1958022831` 수신 → 후속 항목 연결. 답한 사람 식별은 같은 계정이라 미검증. |
+| Space에서 시작한 조율도 Figma에 도달, 응답이 다음 행동으로 연결 | 응답→후속 항목은 실제 검증, 나머지는 fake (일부) | 실제 답글이 `figma_followup_linked`(Space 미해결 항목)로 기록됨. `relayDecision` → 댓글은 fake만. 기존 작업·결정 요청으로의 변환은 미구현. |
+| 파일/프레임·댓글·버전·관찰 시각·참여자 식별 보존, 재수신 중복 없음, 자기 댓글에 답하지 않음 | 식별 외 실제 검증, 식별은 미검증 | 실제: 댓글 id·parent·작성 시각·관찰 시각 기록, 재poll 시 이벤트 증가 0, poll이 댓글을 쓰지 않음. 자기 댓글 판별(원장 comment id)은 fake 테스트. 참여자 식별은 PM 전용 계정 필요. |
 | 접근 실패·전달 실패·미반영 상태 노출, 결과·수동 단계·미검증 기록 | 구현 + fake 검증, 이 문서 | 403·401·프레임 없음·쓰기 거절·결과 불명·429 테스트. |
 
 검증 명령: `app/`에서 `npm test`, `npm run typecheck`. fake 테스트는 실제 Figma를 호출하지 않는다.
