@@ -30,7 +30,7 @@ npm run dev
 
 각 이슈에서 먼저 대상 도구, PM Agent가 붙는 위치, 입력과 응답 경로를 검증한다. 미구현 도구의 가상 기록을 대시보드에 채우지 않는다. 제품 방향은 [intent.md](../../intent.md), 검사 방법은 [QA 안내](../../docs/qa/README.md)를 따른다.
 
-CLI 현재 방식과 발전 방식은 [#81](https://github.com/jovinus302/Ensemble/issues/81)에서 관리한다. 현재 managed 세션과 기존 개인 CLI 환경에 MCP 접점을 붙이는 가설을 구분한다.
+CLI 현재 방식과 발전 방식은 [#81](https://github.com/jovinus302/Ensemble/issues/81)에서 관리한다. 현재 managed 세션과, 사용자의 기존 Agent·폴더가 Space에 참여하는 경로를 구분한다. 첫 실험은 MCP 대신 HTTP(Space 맥락 읽기·글 공유)와 폴더 안 요청함(`.ensemble/inbox/`)을 썼고, 실제 Codex CLI 한 세션의 왕복을 [실험 기록](../../docs/experiments/issue-81-personal-agent-space.md)에 남겼다. MCP와 Skill은 아직 후보다.
 
 ### 이번 실행에서 확인한 한계
 

@@ -7,13 +7,14 @@ import type { DecideRequest } from "./DecisionRequestCard";
 import { formatDate } from "./format";
 import { Avatar } from "./Message";
 import { RoadmapCard } from "./Roadmap";
+import { SpacePanel } from "./SpacePanel";
 import type { ResolveTask } from "./TaskResolution";
-import type { ActionResult } from "./use-view-model";
+import type { ActionResult, ConfirmLinkResult } from "./use-view-model";
 import { WORK_STATUS_LABEL, decisionTotal, WORK_STATUS_TONE, groupWorkItems, teamLines, waitingLabel, type WorkGroup, type WorkRow } from "./work-view";
 
-export type PanelTab = "work" | "team" | "decisions" | "schedule";
+export type PanelTab = "work" | "team" | "decisions" | "schedule" | "space";
 const TABS: { key: PanelTab; label: string }[] = [
-  { key: "work", label: "작업" }, { key: "team", label: "팀" }, { key: "decisions", label: "내 결정" }, { key: "schedule", label: "일정" },
+  { key: "work", label: "작업" }, { key: "team", label: "팀" }, { key: "decisions", label: "내 결정" }, { key: "schedule", label: "일정" }, { key: "space", label: "개인 Agent" },
 ];
 const KIND_LABEL = { human: "사람", agent: "Agent", pm: "PM" } as const;
 
@@ -114,10 +115,11 @@ export function TeamList({ vm, onOpen }: { vm: ViewModel; onOpen: (id: string) =
   );
 }
 
-export function WorkPanel({ vm, tab, onTab, onOpenTask, onDecide, onDecideRequest, onSetAvailability, onResolve }: {
+export function WorkPanel({ vm, tab, onTab, onOpenTask, onDecide, onDecideRequest, onSetAvailability, onResolve, onConfirmLink }: {
   vm: ViewModel; tab: PanelTab; onTab: (tab: PanelTab) => void; onOpenTask: (id: string) => void;
   onDecide: (cardId: string, approve: boolean) => Promise<unknown>; onDecideRequest: DecideRequest;
   onSetAvailability: (memberId: string, weeklyHours: number) => Promise<ActionResult>; onResolve?: ResolveTask;
+  onConfirmLink?: (linkRequestId: string, code: string) => Promise<ConfirmLinkResult>;
 }) {
   const decisions = [...(vm.decisionCards ?? []), ...vm.cards];
   return (
@@ -146,6 +148,7 @@ export function WorkPanel({ vm, tab, onTab, onOpenTask, onDecide, onDecideReques
           <RoadmapCard roadmap={vm.roadmap} deadline={vm.project.deadline} members={vm.members} me={vm.me}
             onSetAvailability={onSetAvailability} onResolve={onResolve} showTasks={!vm.work} />
         )}
+        {tab === "space" && <SpacePanel space={vm.space} onConfirmLink={onConfirmLink} />}
       </div>
     </aside>
   );

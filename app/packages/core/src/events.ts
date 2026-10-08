@@ -1,5 +1,6 @@
 import type { Id, LedgerEvent } from "./ledger.ts";
 import type { PlanOp } from "./plan-ops.ts";
+import type { ParticipationPayloads } from "./participation.ts";
 import type { ExternalEventPayloads } from "./external.ts";
 export type ChangeKind = "reorder" | "split_task" | "reassign_agent" | "scope_reduce" | "scope_add" | "deadline_change" | "goal_change" | "human_commitment";
 export interface TaskSpec {
@@ -58,8 +59,9 @@ export type ValidationStatus = 'awaiting' | 'not_run' | 'environment_blocked' | 
 export interface ValidationEvidence extends ValidationBinding {
   attemptId: Id; status: ValidationStatus; checks: ValidationCheck[]; summary: string;
 }
-/** External conversation records (Slack, #79) live in external.ts. */
-export interface EventPayloads extends ExternalEventPayloads {
+/** Personal-agent participation events (#81) live in participation.ts;
+ *  external conversation records (Slack, #79) live in external.ts. */
+export interface EventPayloads extends ParticipationPayloads, ExternalEventPayloads {
   judgement_failed: { triggerId: Id; stage: "interpretation" | "judgement"; reason: string };
   member_joined: { memberId: Id; kind: "human" | "agent"; displayName: string; role?: string };
   goal_set: { text: string; deadline?: string; decider: Id; delegation: { pmMayApply: ChangeKind[] } };

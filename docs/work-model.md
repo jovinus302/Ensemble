@@ -332,6 +332,8 @@ LLM은 초안에 `executor`·`reason`(그리고 역할)을 제안하고, 코드�
 
 오류 모양은 `{ error: { code, message } }`.
 
+개인 Agent의 Space 참여 경로(`space/participants/…`, `space/links/…/confirm`, `space/requests/sweep`. 로컬 전용, Agent 호출은 연결 토큰 필요)와 그 이벤트는 #81 실험이다. 계약은 [실험 기록](experiments/issue-81-personal-agent-space.md) 2절에 둔다.
+
 ### 6.3 런타임과 설정 (`apps/web/lib/runtime.ts`)
 
 - 정체 점검 틱 `SWEEP_INTERVAL_MS` = 5분. 틱마다 `pm.sweep(now)`, 요약이 켜져 있으면 `pm.digest(now)`. 자유 시작 모드에서만 돌고, 틱은 겹치지 않는다. 시나리오 모드에서는 아무것도 하지 않는다.

@@ -21,6 +21,7 @@ export const API = {
   scenarioNext: "/api/scenario/next",
   scenarioRetry: "/api/scenario/retry",
   scenarioSkip: "/api/scenario/skip",
+  spaceLinkConfirm: (id: string) => `/api/space/links/${encodeURIComponent(id)}/confirm`,
 } as const;
 
 const ME_KEY = "ensemble.me";
@@ -31,6 +32,8 @@ const LOST_AFTER_MS = 1500;
 
 export type ActionResult = { ok: true } | { ok: false; code?: string; message: string };
 export type DecisionInput = Omit<DecisionAnswer, "me">;
+/** 개인 Agent 연결 확인 결과. 토큰은 이 응답에서 한 번만 받는다. */
+export type ConfirmLinkResult = { ok: true; participantId: string; token: string } | { ok: false; code?: string; message: string };
 export type LoadTaskResult = { ok: true; detail: VmTaskDetail } | { ok: false; code?: string; message: string };
 
 export interface ViewModelActions {
@@ -51,6 +54,8 @@ export interface ViewModelActions {
   /** confirmReplace 없이 진행 중 프로젝트가 있으면 code "project_exists"로 실패한다(오류 배너 없이). */
   startFree(goal: string, deadline?: string, confirmReplace?: boolean): Promise<ActionResult>;
   startScenario(name: string, confirmReplace?: boolean): Promise<ActionResult>;
+  /** #81 개인 Agent 연결 확인(`POST space/links/:id/confirm`): 서버 콘솔의 코드로 확인하면 Agent 토큰을 한 번 돌려준다. */
+  confirmParticipantLink(linkRequestId: string, code: string): Promise<ConfirmLinkResult>;
   switchMe(memberId: string): void;
   dismissError(): void;
 }
@@ -271,6 +276,17 @@ export function useViewModel(options: { allowMock?: boolean } = {}): UseViewMode
     scenarioSkip: () => post(API.scenarioSkip, {}),
     startFree: (goal, deadline, confirmReplace) => post(API.freeStart, { goal, deadline, ...(confirmReplace ? { confirmReplace: true } : {}) }, ["project_exists"]),
     startScenario: (name, confirmReplace) => post(API.scenarioStart, { name, ...(confirmReplace ? { confirmReplace: true } : {}) }, ["project_exists"]),
+    confirmParticipantLink: async (linkRequestId, code) => {
+      if (mock) { setError(MOCK_ONLY); return { ok: false, code: "mock", message: MOCK_ONLY }; }
+      setPending(true);
+      try {
+        const result = await call(API.spaceLinkConfirm(linkRequestId), { me, code });
+        void refresh();
+        if (!result.ok) return result;
+        const data = result.data as { participantId?: unknown; token?: unknown } | null;
+        return typeof data?.participantId === "string" && typeof data.token === "string" ? { ok: true, participantId: data.participantId, token: data.token } : { ok: false, message: GENERIC_ERROR };
+      } finally { setPending(false); }
+    },
     switchMe: memberId => {
       setMe(memberId); setError(null);
       try { window.localStorage.setItem(ME_KEY, memberId); } catch { /* 저장소를 못 쓰면 이번 탭에서만 유지 */ }

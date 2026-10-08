@@ -4,12 +4,12 @@ import { readFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { SqliteLedgerStore, type LedgerStore } from '@ensemble/store';
 import { loadEnv, modelFor, pmRuntimeFromEnv, type LlmProvider } from '@ensemble/llm';
-import { ClaudeSessionConnector, CodexSessionConnector, CodexLlmProvider, codexSettingsFromEnv, type SessionConnector } from '@ensemble/agents';
-import { DecisionRequestError, ProjectManager, SlackCoordinator, SlackWebApi, slackBindingFromConfig, slackConfigFromEnv, TaskResolutionError, type FreeStartResult, type ProactiveTrigger } from '@ensemble/orchestrator';
-import { DEFAULT_DIGEST_SETTINGS, DEFAULT_PM_MAY_APPLY, project, taskThreadId, type AnyEvent, type DecisionAnswer, type EventPayloads, type LedgerEvent, type ProjectState } from '@ensemble/core';
+import { ClaudeSessionConnector, CodexSessionConnector, CodexLlmProvider, codexSettingsFromEnv, type PersonalWorkspace, type SessionConnector } from '@ensemble/agents';
+import { DecisionRequestError, ParticipationError, ProjectManager, SlackCoordinator, SlackWebApi, slackBindingFromConfig, slackConfigFromEnv, SpaceParticipation, TaskResolutionError, llmRequestComposer, ruleRequestComposer, spaceContextMarkdown, type FreeStartResult, type LinkInput, type LinkRequestIssued, type PostInput, type ProactiveTrigger, type RequestComposer } from '@ensemble/orchestrator';
+import { DEFAULT_DIGEST_SETTINGS, DEFAULT_PM_MAY_APPLY, project, taskThreadId, type ParticipationPayloads, type AnyEvent, type DecisionAnswer, type EventPayloads, type LedgerEvent, type ProjectState } from '@ensemble/core';
 import { continuousScenario, advanceScript, createRevisionGenerator, sceneEvents, SCENE_NOW, type ScriptProgress, type Condition, type RevisionGenerator } from '@ensemble/scenarios';
 import { FakeConnector, FakePmLlm } from './fake-connector';
-import { buildTaskDetail, buildViewModel, projectTitle } from './build-view-model';
+import { buildTaskDetail, buildViewModel, projectTitle, spaceView } from './build-view-model';
 import { taskResolutions, type ResolutionAction } from './task-resolution';
 import { stallGuidance } from '../components/work-view';
 import type { DecisionAnswer as WebDecisionAnswer, VmActivity } from './view-model';
@@ -21,6 +21,18 @@ export const FREE_FAKE_AGENT_DELAY_MS = 30_000;
 const SCENARIO_FAKE_AGENT_DELAY_MS = 2000;
 /** Q4 switch: ENSEMBLE_DIGEST=off turns the daily digest off (on by default). */
 export function digestEnabledFromEnv(env: NodeJS.ProcessEnv = process.env): boolean { return !/^(?:0|false|off|no)$/i.test(env.ENSEMBLE_DIGEST?.trim() ?? ''); }
+/** #81 switch: ENSEMBLE_SPACE_LIAISON=off records personal-agent posts without the PM's automatic folder check and follow-up. */
+export function spaceLiaisonFromEnv(env: NodeJS.ProcessEnv = process.env): boolean { return !/^(?:0|false|off|no)$/i.test(env.ENSEMBLE_SPACE_LIAISON?.trim() ?? ''); }
+/** #81: where a link's one-time code goes. Default: the server console, which an HTTP caller cannot read. */
+export type LinkCodeNotice = LinkRequestIssued;
+function printLinkCode(notice: LinkCodeNotice) {
+  console.log(`[ensemble] 개인 Agent 연결 확인 코드 ${notice.code} — 참여자 ${notice.participantId}, 폴더 ${notice.workspaceRoot}, 허용 경로 ${notice.allowedPaths.join(', ')}. `
+    + `직접 요청한 연결이면 ${notice.expiresAt}까지 대시보드 "개인 Agent" 탭에서 이 코드로 확인하세요. 모르는 요청이면 입력하지 마세요.`);
+}
+/** Participation errors keep their message and status for the API. */
+function participationCall<T>(action: () => Promise<T>): Promise<T> {
+  return action().catch((error: unknown) => { throw error instanceof ParticipationError ? new RuntimeError(error.code, error.message, error.status) : error; });
+}
 
 /** Cuts at a word boundary so the title (with "…") stays within `max` characters; a single long word is cut at `max`. */
 export function shortTitle(text: string, max = 40) {
@@ -89,6 +101,8 @@ export class WebRuntime {
   readonly store: LedgerStore;
   meta: Metadata;
   pm!: ProjectManager;
+  /** #81: personal agents' Space participation for the current project. */
+  space!: SpaceParticipation;
   private pmLlm!: LlmProvider;
   private pmModel = '';
   busy = false;
@@ -116,7 +130,12 @@ export class WebRuntime {
    * `timers: false` leaves the sweep/digest timer off (callers run `tick` themselves); `fakeAgentDelayMs` sets the fake agents' turn length in
    * free projects; `digest` is the Q4 on/off switch.
    */
-  constructor(private readonly options: { dataDir?: string; store?: LedgerStore; llm?: LlmProvider; connector?: SessionConnector; generateRevision?: RevisionGenerator; timers?: boolean; fakeAgentDelayMs?: number; digest?: boolean } = {}) {
+  /**
+   * `composer`/`workspaceFor` replace the personal-agent liaison's request writer and folder access (#81; tests use fakes);
+   * `liaison: false` keeps posts from triggering the PM automatically; `announceLinkCode` replaces the console notice of a link code.
+   */
+  constructor(private readonly options: { dataDir?: string; store?: LedgerStore; llm?: LlmProvider; connector?: SessionConnector; generateRevision?: RevisionGenerator; timers?: boolean; fakeAgentDelayMs?: number; digest?: boolean;
+    composer?: RequestComposer; workspaceFor?: (link: ParticipationPayloads['participant_linked']) => PersonalWorkspace; liaison?: boolean; announceLinkCode?: (notice: LinkCodeNotice) => void } = {}) {
     loadEnv();
     this.dataDir = options.dataDir ?? process.env.ENSEMBLE_DATA_DIR ?? path.join(appRoot(), 'data');
     this.metaFile = path.join(this.dataDir, 'runtime.json');
@@ -178,6 +197,8 @@ export class WebRuntime {
       const pm = this.pm;
       await pm.sweep(now);
       if (this.digestEnabled) await pm.digest(now);
+      // Requests that could not reach a personal folder are retried on the same tick.
+      await this.space.sweep();
     } catch (error) { console.error('[ensemble] 정체 점검·하루 요약을 마치지 못했습니다', error); }
     finally { this.ticking = false; }
   }
@@ -233,6 +254,9 @@ export class WebRuntime {
       // Live scenario inputs and PM/agent replies share the store's wall clock.
       clock: () => new Date(),
     });
+    // #81: the rule-based demo PM has no prose model, so its follow-ups come from the deterministic composer.
+    const composer = this.options.composer ?? (this.pmLlm instanceof FakePmLlm ? ruleRequestComposer : llmRequestComposer(this.pmLlm, this.pmModel));
+    this.space = new SpaceParticipation({ ...this.context(), store: this.store, composer, ...(this.options.workspaceFor ? { workspaceFor: this.options.workspaceFor } : {}) });
   }
   private async seed(decider: string, scenario: boolean) {
     const ctx = this.context();
@@ -551,6 +575,68 @@ export class WebRuntime {
       if (error instanceof DecisionRequestError || error instanceof TaskResolutionError) throw new RuntimeError(error.code === 'not_found' ? 'decision_not_found' : error.code, error.message, error.status);
       throw error;
     }
+  }
+  /**
+   * `POST space/participants`: asks to link an existing agent and folder (#81). Grants nothing: the one-time code goes to the
+   * server console only, and a person confirms it on the dashboard. The response never carries the code.
+   */
+  async requestParticipantLink(input: LinkInput, me: string) {
+    await this.ready;
+    const { code, ...pending } = await participationCall(() => this.space.requestLink(input, me));
+    (this.options.announceLinkCode ?? printLinkCode)({ ...pending, code });
+    return { ...pending, status: 'pending' as const };
+  }
+  /** `POST space/links/:id/confirm`: the person confirms with the code; the agent's token is returned this once. */
+  async confirmParticipantLink(linkRequestId: string, me: string, code: string) {
+    await this.ready;
+    const { link, token } = await participationCall(() => this.space.confirmLink(linkRequestId, code, me));
+    return { participantId: link.participantId, workspaceRoot: link.workspaceRoot, allowedPaths: link.allowedPaths, scopes: link.scopes, token };
+  }
+  /** `GET space/participants/:id/context`: what the personal agent reads (with its token); reading is recorded. */
+  async spaceContext(participantId: string, format: 'md' | 'json', token: string | undefined) {
+    await this.ready;
+    const context = await participationCall(() => this.space.readContext(participantId, token, format));
+    return format === 'md' ? spaceContextMarkdown(context) : context;
+  }
+  /**
+   * `POST space/participants/:id/posts`: the personal agent's own post. Accepted at once; the PM's folder check and any
+   * follow-up request run in the background, like message processing (a repeated post triggers nothing).
+   */
+  async spacePost(participantId: string, token: string | undefined, input: PostInput) {
+    await this.ready;
+    if (this.replacing) throw new RuntimeError('project_switching', '프로젝트를 전환 중입니다. 잠시 후 다시 보내 주세요.');
+    const space = this.space;
+    const result = await participationCall(() => space.post(participantId, token, input));
+    if (!result.duplicate && (this.options.liaison ?? spaceLiaisonFromEnv())) {
+      this.pendingMessages++; this.changed();
+      void space.liaison(result.postId).catch(error => console.error('[ensemble] personal agent liaison failed', error)).finally(() => { this.pendingMessages--; this.changed(); });
+    }
+    return { accepted: true as const, ...result };
+  }
+  /** `POST space/participants/:id/inspect`: the PM reads the granted folder now and records what it saw. */
+  async inspectParticipant(participantId: string, me: string, paths?: string[]) {
+    await this.ready;
+    this.assertHuman(me, await this.store.read({ projectId: this.meta.projectId }));
+    const { observation } = await participationCall(() => this.space.inspect(participantId, paths));
+    return observation;
+  }
+  /** `POST space/participants/:id/requests`: a person sends a request to the personal folder through the PM's delivery path. */
+  async requestParticipant(participantId: string, me: string, text: string, taskId?: string) {
+    await this.ready;
+    return participationCall(() => this.space.createRequest({ participantId, text, actor: { kind: 'human', id: me }, ...(taskId ? { taskId } : {}) }));
+  }
+  /** `POST space/requests/sweep`: retries every request still waiting to reach its folder. */
+  async sweepRequests() {
+    await this.ready;
+    return { attempts: await participationCall(() => this.space.sweep()) };
+  }
+  /** `GET space`: participants, posts and requests (the same block as the dashboard state). */
+  async spaceStatus() {
+    await this.ready;
+    return spaceView(await this.store.read({ projectId: this.meta.projectId })).space ?? { participants: [], pendingLinks: [], posts: [], requests: [], needsHuman: [] };
+  }
+  private assertHuman(me: string, events: readonly LedgerEvent[]) {
+    if (project(events).members.get(me)?.kind !== 'human') throw new RuntimeError('forbidden', '프로젝트의 사람만 할 수 있습니다.', 403);
   }
   async persistAttachments() {
     for (const e of await this.store.read({ projectId: this.meta.projectId }) as AnyEvent[]) {
