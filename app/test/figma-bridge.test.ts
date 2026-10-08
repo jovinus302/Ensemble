@@ -74,9 +74,8 @@ test('one round trip: share → inspect → tagged frame comment → reply becom
 
   assert.equal((await f.bridge.pollReplies(shared.requestId)).newReplies, 0);
   const reply = f.figma.addComment(FILE, designer, '네, 하단 고정으로 바꾸겠습니다. 오늘 반영할게요.', pmComment.id);
-  await f.figma.postComment(FILE, { message: `PM 추가 메모 ${pmTag(shared.requestId)}`, replyTo: pmComment.id });
   const polled = await f.bridge.pollReplies(shared.requestId);
-  assert.deepEqual([polled.newReplies, polled.skippedOwn], [1, 1]);
+  assert.deepEqual([polled.newReplies, polled.skippedOwn], [1, 0]);
   assert.equal(polled.view.status, 'reply_received');
   assert.deepEqual(polled.view.replies.map(r => [r.commentId, r.parentId, r.author.id, r.sameAccountAsPm]), [[reply.id, pmComment.id, 'figma-designer', false]]);
   const followUp = polled.view.followUps[0]!;
@@ -173,17 +172,26 @@ test('an unknown write outcome is reconciled against Figma before posting again'
   assert.deepEqual([reposted.status, reposted.delivery?.reconciled, g.figma.commentsOf(FILE).length], ['awaiting_reply', false, 1]);
 });
 
-test('replies from the PM account are skipped only with the PM tag; untagged ones are kept and flagged', async () => {
+test('own comments are judged by ledger-recorded comment ids, so same-account human replies are kept', async () => {
   const f = await fixture();
   const { requestId } = await share(f);
   await f.bridge.inspect(requestId);
   const root = (await f.bridge.deliver(requestId)).delivery!.commentId;
-  f.figma.addComment(FILE, f.figma.user, '(같은 계정의 디자이너) 확인했어요', root);
-  f.figma.addComment(FILE, f.figma.user, `자동 메모 ${pmTag('figma-other')}`, root);
+  const other = await f.bridge.shareLink({ url: URL_WITH_FRAME, question: '두 번째 질문', sharedBy: 'mina-agent', onBehalfOf: 'mina' });
+  await f.bridge.inspect(other.requestId);
+  const otherRoot = (await f.bridge.deliver(other.requestId)).delivery!.commentId;
+  f.figma.reparent(FILE, otherRoot, root);
+  const plain = f.figma.addComment(FILE, f.figma.user, '(같은 계정의 디자이너) 프레임 1:2 버튼 색상은 유지, 라벨만 변경', root);
+  const quoted = f.figma.addComment(FILE, f.figma.user, `${pmTag(requestId)} 이 요청 말씀이시죠? 반영할게요`, root);
   f.figma.addComment(FILE, designer, '다른 스레드 댓글');
   const polled = await f.bridge.pollReplies(requestId);
-  assert.deepEqual([polled.newReplies, polled.skippedOwn], [1, 1]);
-  assert.equal(polled.view.replies[0]?.sameAccountAsPm, true);
+  assert.deepEqual([polled.newReplies, polled.skippedOwn], [2, 1], 'only the comment id the PM posted is skipped');
+  assert.deepEqual(polled.view.replies.map(r => [r.commentId, r.sameAccountAsPm]), [[plain.id, true], [quoted.id, true]]);
+  assert.ok(!polled.view.replies.some(r => r.commentId === otherRoot), 'the PM never answers its own comment');
+  const count = (await f.events()).length;
+  const repoll = await f.bridge.pollReplies(requestId);
+  assert.deepEqual([repoll.newReplies, repoll.skippedOwn, repoll.duplicates], [0, 1, 2]);
+  assert.equal((await f.events()).length, count, 're-polling writes nothing');
   f.figma.failNext('comments', new FigmaApiError('rate_limited', '429', 429));
   const limited = await f.bridge.pollReplies(requestId);
   assert.equal(limited.view.problem?.kind, 'rate_limited');

@@ -155,8 +155,10 @@ export class FigmaBridge {
   }
 
   /**
-   * Step 4: read the PM comment's thread. New replies from others become open follow-ups in the Space; replies
-   * already recorded and the PM's own tagged comments are skipped.
+   * Step 4: read the PM comment's thread. New replies become open follow-ups in the Space; replies already recorded
+   * and comments the PM itself posted are skipped. "Posted by the PM" means the comment id is recorded in the ledger
+   * as a `figma_comment_posted` — not the Figma user id, because with a shared token the PM and the human replying
+   * are the same Figma account, and filtering by user id would drop every human reply.
    */
   pollReplies(requestId: Id): Promise<PollResult> {
     return this.locked(requestId, async () => {
@@ -170,12 +172,14 @@ export class FigmaBridge {
       try { comments = await this.options.client.comments(view.fileKey); }
       catch (error) { await this.fail(requestId, 'comments', error, observedAt); return { view: await this.view(requestId), newReplies: 0, skippedOwn: 0, duplicates: 0 }; }
       const thread = comments.filter(c => c.parentId === delivery.commentId && c.id !== delivery.commentId);
-      const own = thread.filter(c => c.user.id === me.id && c.message.includes('[ensemble-req:'));
-      const others = thread.filter(c => !own.includes(c));
       const { result } = await this.options.store.transaction(this.context.projectId, events => {
-        const known = new Set(figmaRequests(events).get(requestId)?.replies.map(r => r.commentId));
+        const requests = figmaRequests(events);
+        const pmPosted = new Set([...requests.values()].flatMap(r => r.delivery ? [r.delivery.commentId] : []));
+        const own = thread.filter(c => pmPosted.has(c.id));
+        const others = thread.filter(c => !pmPosted.has(c.id));
+        const known = new Set(requests.get(requestId)?.replies.map(r => r.commentId));
         const fresh = others.filter(c => !known.has(c.id));
-        return { result: { fresh: fresh.length, duplicates: others.length - fresh.length }, append: fresh.flatMap(c => {
+        return { result: { fresh: fresh.length, own: own.length, duplicates: others.length - fresh.length }, append: fresh.flatMap(c => {
           const author = { ...c.user };
           return [
             figmaEvent(this.context, 'figma_reply_received', { requestId, commentId: c.id, parentId: delivery.commentId, fileKey: view.fileKey, author, message: c.message, createdAt: c.createdAt, observedAt, sameAccountAsPm: c.user.id === me.id }, PM, `figma-reply:${view.fileKey}:${c.id}`),
@@ -183,7 +187,7 @@ export class FigmaBridge {
           ];
         }) };
       });
-      return { view: await this.view(requestId), newReplies: result.fresh, skippedOwn: own.length, duplicates: result.duplicates };
+      return { view: await this.view(requestId), newReplies: result.fresh, skippedOwn: result.own, duplicates: result.duplicates };
     });
   }
 

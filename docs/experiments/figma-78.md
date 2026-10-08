@@ -57,7 +57,7 @@ Space는 기존 프로젝트 원장이다. Figma 기록은 같은 원장에 `fig
 - **전달 성공 판정:** Figma가 돌려준 댓글 id가 기록된 때만 `awaiting_reply`다. 초안(`attempted`)이나 대시보드 표시는 전달이 아니다.
 - **결과를 모르는 쓰기:** 네트워크 오류·5xx는 `delivery_unknown`으로 남긴다. 다시 전달하기 전에 댓글 목록에서 PM 계정 + 같은 태그의 루트 댓글을 찾고, 있으면 그 id로 확정(`reconciled`)한다. 목록을 읽지 못하면 새로 쓰지 않는다.
 - **중복 방지:** 같은 공유·결정 전달은 같은 요청 id로 모이고, 답은 Figma 댓글 id로 한 번만 기록된다. 같은 프로세스 안의 동시 전달은 요청별로 직렬화한다.
-- **자기 댓글:** PM은 Figma 댓글에 자동으로 답하지 않는다. 스레드의 PM 계정 + 태그 댓글은 응답으로 받지 않는다. PM 계정이지만 태그가 없는 댓글은 받되 `sameAccountAsPm`으로 표시한다(같은 계정을 사람이 쓰면 작성자를 구분할 수 없음).
+- **자기 댓글:** PM은 Figma 댓글에 자동으로 답하지 않는다. 자기 댓글은 **원장에 `figma_comment_posted`로 기록된 comment id**로만 판별한다. Figma user id나 태그 문자열로는 판별하지 않는다. 같은 토큰을 쓰면 PM과 답하는 사람이 같은 Figma 계정이어서, user id로 거르면 사람의 답이 모두 버려지고, 태그로 거르면 사람이 태그를 인용한 답이 버려지기 때문이다. 같은 계정 답은 받되 `sameAccountAsPm=true`로 표시한다(작성자를 Figma 기록으로 구분할 수 없음). 결과를 모르는 쓰기의 재확인(`reconciled`)만 PM 계정 + 태그 루트 댓글을 찾는다. 이때는 원장에 아직 id가 없기 때문이다.
 - **확인과 주장의 구분:** 답은 `claimed`다. 재확인은 파일 버전이 바뀌었는지만 본다(`file_changed_unconfirmed` / `no_change_observed`). 디자인 반영 완료를 코드가 확정하는 상태는 없다. 참여자의 반영 보고도 검증 등급을 올리지 않는다.
 - **확인하지 못한 프레임에는 쓰지 않는다:** 접근 실패(`access_failed`), 프레임 없음(`frame_not_found`)이면 전달을 거절한다.
 
@@ -107,7 +107,9 @@ Space는 기존 프로젝트 원장이다. Figma 기록은 같은 원장에 `fig
 
 ### 같은 계정으로 시험할 때
 
-첫 실측은 사용자 본인 계정 토큰으로 할 가능성이 높다. 이때 PM 댓글과 사람의 답이 같은 Figma 계정에서 나온다. `poll`은 PM 계정 + `[ensemble-req:` 태그가 있는 댓글만 자기 댓글로 건너뛰고, 태그 없는 같은 계정 답은 응답으로 받아 `sameAccountAsPm=true`로 표시한다(테스트: "replies from the PM account are skipped only with the PM tag"). 따라서 같은 계정으로도 왕복은 관찰할 수 있지만, 답한 사람이 누구인지는 Figma 기록으로 구분되지 않는다. 이 실측은 "참여자 식별" 기준의 증거로 쓰지 않고, 식별은 PM 전용 계정으로 다시 확인한다.
+첫 실측은 사용자 본인 계정 토큰으로 했다. 이때 PM 댓글과 사람의 답이 같은 Figma 계정에서 나온다. `poll`은 원장에 기록된 PM 게시 comment id만 자기 댓글로 건너뛰고, 같은 계정의 다른 답(태그를 인용한 답 포함)은 응답으로 받아 `sameAccountAsPm=true`로 표시한다(테스트: "own comments are judged by ledger-recorded comment ids, so same-account human replies are kept").
+
+제약: 같은 계정으로도 왕복은 관찰할 수 있지만, 답한 사람이 누구인지는 Figma 기록으로 구분되지 않는다. 원장 밖에서 같은 토큰으로 쓴 댓글(다른 도구·수동 스크립트)도 사람의 답으로 받아들여진다. 그래서 이 실측은 "참여자 식별" 기준의 증거로 쓰지 않는다. **실사용에는 PM 전용 Figma 계정(별도 토큰)이 필요하다.** 그래야 `author.id`로 PM과 사람이 구분되고, `sameAccountAsPm=true`인 답은 이상 신호로 다룰 수 있다.
 
 ## 미검증·한계·열린 결정
 

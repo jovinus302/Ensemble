@@ -36,6 +36,14 @@ export class FakeFigma implements FigmaClient {
     return comment;
   }
 
+  /** Move an existing comment under another thread (to simulate a PM-posted comment showing up as a reply). */
+  reparent(fileKey: string, commentId: string, parentId: string): void {
+    const comment = this.mustFile(fileKey).comments.find(c => c.id === commentId);
+    if (!comment) throw new Error(`no comment ${commentId}`);
+    comment.parentId = parentId;
+    delete comment.nodeId;
+  }
+
   /** Queue a failure for the next call of `op`. */
   failNext(op: Operation, error: FigmaApiError, afterWrite = false): void {
     this.faults.set(op, [...(this.faults.get(op) ?? []), { error, ...(afterWrite ? { afterWrite } : {}) }]);
