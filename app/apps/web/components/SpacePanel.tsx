@@ -18,7 +18,10 @@ const POST_KIND = { result: "결과", question: "질문", blocked: "막힘", not
 const SCOPE_LABEL: Record<string, string> = { readSpace: "Space 읽기", post: "글 남기기", receiveRequests: "요청 받기", pmReadWorkspace: "PM 폴더 읽기" };
 type ConfirmLink = (linkRequestId: string, code: string) => Promise<ConfirmLinkResult>;
 
-function PendingLink({ link, onConfirm, onIssued }: { link: VmSpace["pendingLinks"][number]; onConfirm?: ConfirmLink; onIssued: (issued: { participantId: string; token: string }) => void }) {
+/** What a confirmation hands the person once: the token, and this server's own URLs where the agent uses it. */
+type Issued = { participantId: string; token: string; contextUrl?: string; postUrl?: string };
+
+function PendingLink({ link, onConfirm, onIssued }: { link: VmSpace["pendingLinks"][number]; onConfirm?: ConfirmLink; onIssued: (issued: Issued) => void }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -27,7 +30,7 @@ function PendingLink({ link, onConfirm, onIssued }: { link: VmSpace["pendingLink
     setBusy(true); setMessage(null);
     try {
       const result = await onConfirm(link.id, code);
-      if (result.ok) onIssued({ participantId: result.participantId, token: result.token });
+      if (result.ok) onIssued({ participantId: result.participantId, token: result.token, ...(result.contextUrl ? { contextUrl: result.contextUrl } : {}), ...(result.postUrl ? { postUrl: result.postUrl } : {}) });
       else setMessage(result.message);
     } finally { setBusy(false); }
   };
@@ -46,12 +49,13 @@ function PendingLink({ link, onConfirm, onIssued }: { link: VmSpace["pendingLink
 }
 
 export function SpacePanel({ space, onConfirmLink }: { space?: VmSpace; onConfirmLink?: ConfirmLink }) {
-  const [issued, setIssued] = useState<{ participantId: string; token: string } | null>(null);
+  const [issued, setIssued] = useState<Issued | null>(null);
   const tokenNotice = issued && (
     <div className="card" role="status">
       <p><strong>{issued.participantId}</strong> 연결을 확인했어요. 아래 토큰을 그 개인 Agent에게 전달하세요. 이 화면을 벗어나면 다시 볼 수 없어요(다시 연결하면 새 토큰이 나오고 이전 토큰은 막혀요).</p>
       <p><code>{issued.token}</code></p>
-      <p className="muted small">개인 Agent는 Space를 읽고 글을 남길 때 <code>Authorization: Bearer &lt;토큰&gt;</code> 헤더로 보냅니다.</p>
+      <p className="muted small">개인 Agent는 Space를 읽고 글을 남길 때 <code>Authorization: Bearer &lt;토큰&gt;</code> 헤더로 보냅니다. 토큰은 아래 이 서버 주소로만 보내게 하세요.</p>
+      {issued.contextUrl && <p className="muted small">맥락 읽기 <code>{issued.contextUrl}</code>{issued.postUrl && <> · 글 남기기 <code>{issued.postUrl}</code></>}</p>}
       <button type="button" className="btn-text" onClick={() => setIssued(null)}>전달했어요</button>
     </div>
   );

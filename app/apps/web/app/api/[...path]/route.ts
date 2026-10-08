@@ -28,20 +28,29 @@ function stringList(value: unknown, message: string): string[] | undefined {
   return value as string[];
 }
 /**
- * #81 personal agents in the Space. Every `space/…` route answers only this machine (`localOnlyRefusal`).
+ * #81 personal agents in the Space. Like every route here, these answer only this machine (`localOnlyRefusal`).
  * Reading and posting are for the linked agent itself and carry its connection token (`Authorization: Bearer`).
  * Asking to link, confirming (with the console code), inspecting and sending requests are for a project person (`me`).
  */
+/** `origin` is this server's own (from `request.url`, which Next builds from its bound address), never the caller's. */
 async function spacePost(parts: string[], body: Record<string, unknown>, origin: string, token: string | undefined) {
   const app = getRuntime();
   if (parts.length === 2 && parts[1] === 'participants') {
     const scopes = body.scopes;
     if (scopes !== undefined && (!scopes || typeof scopes !== 'object' || Array.isArray(scopes) || Object.values(scopes).some(v => typeof v !== 'boolean'))) throw new InputError('권한 범위 형식이 올바르지 않습니다.');
     const allowedPaths = stringList(body.allowedPaths, '허용 경로는 글 목록으로 입력해 주세요.');
+    // The agent will send its connection token to this URL, so it is always this server's own origin. A different one in the
+    // body is refused rather than silently replaced, so the caller learns that it is not used.
+    const requested = optionalText(body.spaceUrl, 'Space 주소 형식이 올바르지 않습니다.');
+    if (requested !== undefined) {
+      let requestedOrigin: string | undefined;
+      try { requestedOrigin = new URL(requested).origin; } catch { requestedOrigin = undefined; }
+      if (requestedOrigin !== origin) throw new InputError('Space 주소는 이 서버 자신의 주소만 쓸 수 있습니다. 비워 두면 이 서버 주소를 씁니다.');
+    }
     // 202: only a pending request. Nothing is granted until a person confirms it on the dashboard.
     return json(await app.requestParticipantLink({ participantId: text(body.participantId, 'participantId'), displayName: text(body.displayName, 'displayName'), tool: text(body.tool, 'tool'),
       workspaceRoot: text(body.workspaceRoot, 'workspaceRoot'), ...(allowedPaths ? { allowedPaths } : {}),
-      ...(scopes ? { scopes: scopes as Record<string, boolean> } : {}), spaceUrl: optionalText(body.spaceUrl, 'Space 주소 형식이 올바르지 않습니다.') ?? origin }, text(body.me, 'me')), 202);
+      ...(scopes ? { scopes: scopes as Record<string, boolean> } : {}), spaceUrl: origin }, text(body.me, 'me')), 202);
   }
   if (parts.length === 4 && parts[1] === 'links' && parts[3] === 'confirm') return json(await app.confirmParticipantLink(parts[2]!, text(body.me, 'me'), text(body.code, 'code')), 201);
   if (parts.length === 3 && parts[1] === 'requests' && parts[2] === 'sweep') return json(await app.sweepRequests());
@@ -72,9 +81,11 @@ function errorResponse(error: unknown) {
 
 export async function GET(request: Request, context: Context) {
   try {
+    // Refused before the runtime starts: a foreign caller gets nothing from any route (state, archives and tasks carry the
+    // same Space and project data as the `space/…` routes).
+    const refused = localOnly(request);
+    if (refused) return refused;
     const parts = (await context.params).path, route = parts.join('/');
-    // Refused before the runtime starts: a foreign caller gets nothing from these routes.
-    if (parts[0] === 'space') { const refused = localOnly(request); if (refused) return refused; }
     const app = getRuntime();
     if (route === 'archives') return json(await app.archives());
     if (parts[0] === 'archives' && parts.length === 2) return json(await app.archivedState(parts[1]!, new URL(request.url).searchParams.get('me') ?? 'owner'));
@@ -114,10 +125,10 @@ export async function GET(request: Request, context: Context) {
 
 export async function POST(request: Request, context: Context) {
   try {
+    const refused = localOnly(request);
+    if (refused) return refused;
     const parts = (await context.params).path, route = parts.join('/');
     if (parts[0] === 'space') {
-      const refused = localOnly(request);
-      if (refused) return refused;
       let parsed: unknown;
       try { parsed = await request.json(); } catch { throw new InputError('요청 내용을 읽을 수 없습니다.'); }
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new InputError('요청 형식이 올바르지 않습니다.');

@@ -53,11 +53,15 @@ export interface SpaceParticipationOptions {
   composer: RequestComposer;
   /** Defaults to the person's local folder with the granted allowlist. */
   workspaceFor?: (link: ParticipationPayloads['participant_linked']) => PersonalWorkspace;
-  /** Used when a link carries no Space URL. */
+  /** This server's own Space URL (server configuration, trusted). Used when a link carries no local Space URL. */
   defaultSpaceUrl?: string;
   clock?: () => Date;
 }
-export interface LinkInput { participantId: Id; displayName: string; tool: string; workspaceRoot: string; allowedPaths?: string[]; scopes?: Partial<ParticipantScopes>; spaceUrl?: string }
+export interface LinkInput {
+  participantId: Id; displayName: string; tool: string; workspaceRoot: string; allowedPaths?: string[]; scopes?: Partial<ParticipantScopes>;
+  /** Where the agent reaches this Space. Must be a loopback origin (`localSpaceOrigin`); the web route passes the server's own. */
+  spaceUrl?: string;
+}
 /** A pending link. `code` goes to the person out of band (the server console), never to the HTTP caller. */
 export interface LinkRequestIssued { linkRequestId: Id; participantId: Id; workspaceRoot: string; allowedPaths: string[]; expiresAt: string; code: string }
 export interface PostInput { kind: SpacePostKind; text: string; clientPostId: string; taskId?: Id; inReplyTo?: Id }
@@ -83,6 +87,17 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newCode = () => { const bytes = randomBytes(8); const c = [...bytes].map(b => CODE_ALPHABET[b % 32]).join(''); return `${c.slice(0, 4)}-${c.slice(4)}`; };
 const codeHash = (linkRequestId: Id, code: string) => sha256(`${linkRequestId}:${code.toUpperCase().replace(/[^A-Z0-9]/g, '')}`);
 const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+/**
+ * The agent is told to send its connection token to the Space URL, so that URL must be this machine's own Space: the Space
+ * routes answer only loopback callers anyway. Returns the normalized origin of a loopback http(s) URL with no path, query or
+ * credentials (localhost, 127.0.0.1, [::1]), or undefined for anything else.
+ */
+export function localSpaceOrigin(value: string): string | undefined {
+  let url: URL;
+  try { url = new URL(value); } catch { return undefined; }
+  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password || url.pathname !== '/' || url.search || url.hash) return undefined;
+  return ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) ? url.origin : undefined;
+}
 /** Agents send `Authorization: Bearer <token>` on every Space call. */
 export const TOKEN_HINT = 'Bearer <연결 토큰>';
 const WORK_LABEL: Record<string, string> = { todo: '할 일', in_progress: '진행 중', in_review: '검토 중', waiting_human: '사람 결정 대기', blocked: '막힘', done: '완료', cancelled: '취소' };
@@ -122,8 +137,10 @@ export class SpaceParticipation {
   private workspace(link: ParticipationPayloads['participant_linked']): PersonalWorkspace {
     return this.options.workspaceFor?.(link) ?? new LocalFolderWorkspace({ root: link.workspaceRoot, allowedPaths: link.allowedPaths });
   }
-  private urls(link: ParticipationPayloads['participant_linked']) {
-    const base = (link.spaceUrl ?? this.options.defaultSpaceUrl ?? 'http://localhost:3000').replace(/\/+$/, '');
+  /** Where this participant's agent reads the Space and posts (the token goes only there). */
+  urls(link: ParticipationPayloads['participant_linked']) {
+    // A link recorded before the Space URL was checked may carry a foreign one: never point the agent's token there.
+    const base = ((link.spaceUrl && localSpaceOrigin(link.spaceUrl)) || this.options.defaultSpaceUrl || 'http://localhost:3000').replace(/\/+$/, '');
     const root = `${base}/api/space/participants/${encodeURIComponent(link.participantId)}`;
     return { postUrl: `${root}/posts`, contextUrl: `${root}/context?format=md` };
   }
@@ -141,6 +158,8 @@ export class SpaceParticipation {
     if (input.allowedPaths && (!input.allowedPaths.length || input.allowedPaths.some(p => !p.trim()))) throw new ParticipationError('invalid_input', '허용 경로를 비우지 말고 작업 폴더 안의 상대 경로로 입력해 주세요. 폴더 전체는 "."입니다.');
     const allowedPaths = (input.allowedPaths ?? ['.']).map(p => p.trim());
     if (allowedPaths.some(p => path.isAbsolute(p) || path.normalize(p).split(/[\\/]/)[0] === '..')) throw new ParticipationError('invalid_input', '허용 경로는 작업 폴더 안의 상대 경로여야 합니다.');
+    const spaceUrl = input.spaceUrl === undefined ? undefined : localSpaceOrigin(input.spaceUrl);
+    if (input.spaceUrl !== undefined && !spaceUrl) throw new ParticipationError('invalid_input', 'Space 주소는 이 컴퓨터의 Ensemble 주소(예: http://127.0.0.1:3000)만 쓸 수 있습니다.');
     const linkRequestId = `link-${randomUUID()}`, code = newCode();
     const expiresAt = new Date(this.now().getTime() + LINK_REQUEST_TTL_MS).toISOString();
     await this.options.store.transaction(this.options.projectId, events => {
@@ -150,7 +169,7 @@ export class SpaceParticipation {
       if (state.members.has(input.participantId)) throw new ParticipationError('invalid_input', '프로젝트 멤버와 같은 id는 쓸 수 없습니다.');
       const payload: ParticipationPayloads['participant_link_requested'] = {
         participantId: input.participantId, displayName: input.displayName.trim(), tool: input.tool.trim(), workspaceRoot: path.resolve(input.workspaceRoot),
-        allowedPaths, scopes: { ...DEFAULT_SCOPES, ...input.scopes }, ...(input.spaceUrl ? { spaceUrl: input.spaceUrl } : {}),
+        allowedPaths, scopes: { ...DEFAULT_SCOPES, ...input.scopes }, ...(spaceUrl ? { spaceUrl } : {}),
         linkRequestId, requestedBy, codeHash: codeHash(linkRequestId, code), expiresAt,
       };
       return { append: [this.event('participant_link_requested', { kind: 'human', id: requestedBy }, payload)], result: undefined };
@@ -171,17 +190,18 @@ export class SpaceParticipation {
       if (entry.confirmedAt) throw new ParticipationError('invalid_input', '이미 확인한 연결 요청입니다.');
       if ((this.failedConfirms.get(linkRequestId) ?? 0) >= MAX_CONFIRM_FAILURES) throw new ParticipationError('forbidden', `확인 코드를 ${MAX_CONFIRM_FAILURES}번 틀렸습니다. 연결을 다시 요청해 주세요.`);
       if (Date.parse(entry.request.expiresAt) <= this.now().getTime()) throw new ParticipationError('invalid_input', '연결 요청이 만료되었습니다. 다시 요청해 주세요.');
-      if (!sameHash(codeHash(linkRequestId, code), entry.request.codeHash)) return { append: [], result: undefined };
+      // Counted here, inside the same synchronous transaction as the admission check above, so concurrent wrong codes cannot
+      // all pass the check before any of them is counted.
+      if (!sameHash(codeHash(linkRequestId, code), entry.request.codeHash)) { this.failedConfirms.set(linkRequestId, (this.failedConfirms.get(linkRequestId) ?? 0) + 1); return { append: [], result: undefined }; }
       const { linkRequestId: _id, requestedBy: _by, codeHash: _hash, expiresAt: _expires, ...grant } = entry.request;
       const payload: ParticipationPayloads['participant_linked'] = { ...grant, linkedBy: confirmedBy, linkRequestId, tokenHash: sha256(token) };
       return { append: [this.event('participant_linked', { kind: 'human', id: confirmedBy }, payload)], result: payload };
     });
     if (!result) {
-      this.failedConfirms.set(linkRequestId, (this.failedConfirms.get(linkRequestId) ?? 0) + 1);
       throw new ParticipationError('forbidden', '확인 코드가 맞지 않습니다. 서버 콘솔에 표시된 코드를 입력해 주세요.');
     }
     this.failedConfirms.delete(linkRequestId);
-    return { link: result, token };
+    return { link: result, token, ...this.urls(result) };
   }
 
   /** Builds what this participant may read. Pure: `readContext` records the read. */

@@ -33,7 +33,8 @@ const LOST_AFTER_MS = 1500;
 export type ActionResult = { ok: true } | { ok: false; code?: string; message: string };
 export type DecisionInput = Omit<DecisionAnswer, "me">;
 /** 개인 Agent 연결 확인 결과. 토큰은 이 응답에서 한 번만 받는다. */
-export type ConfirmLinkResult = { ok: true; participantId: string; token: string } | { ok: false; code?: string; message: string };
+/** `contextUrl`/`postUrl`: this server's own Space URLs for the agent (the only place its token goes). */
+export type ConfirmLinkResult = { ok: true; participantId: string; token: string; contextUrl?: string; postUrl?: string } | { ok: false; code?: string; message: string };
 export type LoadTaskResult = { ok: true; detail: VmTaskDetail } | { ok: false; code?: string; message: string };
 
 export interface ViewModelActions {
@@ -283,8 +284,9 @@ export function useViewModel(options: { allowMock?: boolean } = {}): UseViewMode
         const result = await call(API.spaceLinkConfirm(linkRequestId), { me, code });
         void refresh();
         if (!result.ok) return result;
-        const data = result.data as { participantId?: unknown; token?: unknown } | null;
-        return typeof data?.participantId === "string" && typeof data.token === "string" ? { ok: true, participantId: data.participantId, token: data.token } : { ok: false, message: GENERIC_ERROR };
+        const data = result.data as { participantId?: unknown; token?: unknown; contextUrl?: unknown; postUrl?: unknown } | null;
+        if (typeof data?.participantId !== "string" || typeof data.token !== "string") return { ok: false, message: GENERIC_ERROR };
+        return { ok: true, participantId: data.participantId, token: data.token, ...(typeof data.contextUrl === "string" ? { contextUrl: data.contextUrl } : {}), ...(typeof data.postUrl === "string" ? { postUrl: data.postUrl } : {}) };
       } finally { setPending(false); }
     },
     switchMe: memberId => {

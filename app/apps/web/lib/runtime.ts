@@ -589,8 +589,9 @@ export class WebRuntime {
   /** `POST space/links/:id/confirm`: the person confirms with the code; the agent's token is returned this once. */
   async confirmParticipantLink(linkRequestId: string, me: string, code: string) {
     await this.ready;
-    const { link, token } = await participationCall(() => this.space.confirmLink(linkRequestId, code, me));
-    return { participantId: link.participantId, workspaceRoot: link.workspaceRoot, allowedPaths: link.allowedPaths, scopes: link.scopes, token };
+    const { link, token, contextUrl, postUrl } = await participationCall(() => this.space.confirmLink(linkRequestId, code, me));
+    // Where the agent uses the token: always this server's own Space URL (never one taken from the link request body).
+    return { participantId: link.participantId, workspaceRoot: link.workspaceRoot, allowedPaths: link.allowedPaths, scopes: link.scopes, token, contextUrl, postUrl };
   }
   /** `GET space/participants/:id/context`: what the personal agent reads (with its token); reading is recorded. */
   async spaceContext(participantId: string, format: 'md' | 'json', token: string | undefined) {
