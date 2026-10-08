@@ -44,11 +44,47 @@ export interface FigmaEventPayloads {
   figma_followup_rechecked: { followUpId: Id; requestId: Id; inspectionId: Id; baselineVersion: string; observedVersion: string; observedAt: string; verification: Exclude<FollowUpVerification, 'claimed'> };
   /** A member (personal Agent) reports applying the item or being blocked. Still a claim. */
   figma_followup_reported: { followUpId: Id; by: Id; outcome: 'applied' | 'blocked'; note: string };
+  /**
+   * A human comment (top-level or a reply anywhere in the file) that calls the PM by text (`@ensemble`, `@pm_agent`).
+   * `rootId` is where the answer goes: the comment itself when top-level, else its thread root (`parentId`).
+   * `author` is recorded as-is; it is usually the account the PM acts through.
+   */
+  figma_mention_received: {
+    mentionId: Id; fileKey: string; commentId: string; rootId: string; parentId?: string; nodeId?: string;
+    author: FigmaUser; message: string; query: string; triggers: MentionTrigger[]; createdAt: string; observedAt: string;
+  };
+  /** The drafted answer. `citedItemIds` are the Space goal/decision/open item ids the answer quotes. */
+  figma_mention_answer_attempted: { mentionId: Id; attemptId: Id; fileKey: string; replyTo: string; message: string; selection: MentionSelection; citedItemIds: string[] };
+  /** Only a comment id returned (or found by tag) on Figma counts as answered. */
+  figma_mention_answer_posted: { mentionId: Id; attemptId: Id; fileKey: string; commentId: string; replyTo: string; author: FigmaUser; createdAt: string; reconciled: boolean };
+  figma_mention_answer_failed: { mentionId: Id; attemptId: Id; kind: FigmaErrorKind | 'unknown'; status?: number; detail: string; ambiguous: boolean };
+  /**
+   * A member (e.g. a designer Agent) reports a canvas change back into the Space. A claim only. `baseline` is the
+   * file version the PM last inspected before the report (the request's delivery inspection when a request is linked).
+   */
+  figma_change_reported: {
+    reportId: Id; by: Id; summary: string; url?: string; fileKey: string; nodeId?: string; requestId?: Id; mentionId?: Id;
+    baseline?: { inspectionId: Id; version: string; lastModified: string; observedAt: string };
+    verification: 'claimed';
+  };
+  /** The PM re-read the file after a change report: changed or not, content not judged. */
+  figma_change_rechecked: {
+    reportId: Id; fileKey: string; observedVersion: string; observedLastModified: string; observedAt: string; baselineVersion?: string;
+    verification: Exclude<FollowUpVerification, 'claimed'> | 'no_baseline';
+  };
 }
 export type FigmaEventType = keyof FigmaEventPayloads;
 export type FigmaEvent = { [K in FigmaEventType]: LedgerEvent<K, FigmaEventPayloads[K]> }[FigmaEventType];
+export type MentionTrigger = 'ensemble' | 'pm_agent';
+/** keyword: items overlapping the query; fallback: no overlap, current items listed; caller: body written by the caller (model). */
+export type MentionSelection = 'keyword' | 'fallback' | 'caller';
+type MentionEventType = 'figma_mention_received' | 'figma_mention_answer_attempted' | 'figma_mention_answer_posted' | 'figma_mention_answer_failed';
+export type FigmaMentionEvent = Extract<FigmaEvent, { type: MentionEventType }>;
+export type FigmaChangeEvent = Extract<FigmaEvent, { type: 'figma_change_reported' | 'figma_change_rechecked' }>;
 
 export const isFigmaEvent = (event: LedgerEvent): event is FigmaEvent => event.type.startsWith('figma_');
+export const isFigmaMentionEvent = (event: LedgerEvent): event is FigmaMentionEvent => event.type.startsWith('figma_mention_');
+export const isFigmaChangeEvent = (event: LedgerEvent): event is FigmaChangeEvent => event.type.startsWith('figma_change_');
 
 export type FigmaRequestStatus =
   | 'opened'
@@ -89,8 +125,8 @@ export function figmaRequests(events: readonly LedgerEvent[]): Map<Id, FigmaRequ
   const requests = new Map<Id, FigmaRequestView>();
   const attempts = new Map<Id, FigmaEventPayloads['figma_comment_attempted']>();
   for (const original of events) {
-    if (!isFigmaEvent(original)) continue;
-    const event = structuredClone(original);
+    if (!isFigmaEvent(original) || isFigmaMentionEvent(original) || isFigmaChangeEvent(original)) continue;
+    const event = structuredClone(original) as Exclude<FigmaEvent, FigmaMentionEvent | FigmaChangeEvent>;
     if (event.type === 'figma_request_opened') {
       const p = event.payload;
       if (!requests.has(p.requestId)) requests.set(p.requestId, { ...p, status: 'opened', replies: [], followUps: [], seq: event.seq });
@@ -171,4 +207,106 @@ export function figmaSpaceItems(events: readonly LedgerEvent[]): FigmaSpaceItem[
     ...(r.problem ? { problem: r.problem.detail } : {}),
     followUps: r.followUps.map(f => ({ followUpId: f.followUpId, text: f.text, author: f.author.handle, verification: f.verification, reports: f.reports.length })),
   }));
+}
+
+export type FigmaMentionStatus =
+  | 'received'
+  /** An answer attempt has no recorded outcome yet. */
+  | 'answering'
+  | 'answer_failed'
+  /** An answer that may or may not exist on Figma; reconcile by tag before posting again. */
+  | 'answer_unknown'
+  | 'answered';
+export type FigmaMentionView = FigmaEventPayloads['figma_mention_received'] & {
+  status: FigmaMentionStatus;
+  pendingAttempt?: FigmaEventPayloads['figma_mention_answer_attempted'];
+  /** Latest attempt whose outcome was ambiguous. Kept until answered: it may still land on Figma, so every later attempt reconciles first. */
+  unconfirmedAttemptId?: Id;
+  problem?: FigmaEventPayloads['figma_mention_answer_failed'];
+  answer?: FigmaEventPayloads['figma_mention_answer_posted'] & Pick<FigmaEventPayloads['figma_mention_answer_attempted'], 'message' | 'selection' | 'citedItemIds'>;
+  seq: number;
+};
+
+/** Replays the text-trigger context queries (`@ensemble`/`@pm_agent` comments) of one Space. */
+export function figmaMentions(events: readonly LedgerEvent[]): Map<Id, FigmaMentionView> {
+  const mentions = new Map<Id, FigmaMentionView>();
+  const attempts = new Map<Id, FigmaEventPayloads['figma_mention_answer_attempted']>();
+  for (const original of events) {
+    if (!isFigmaMentionEvent(original)) continue;
+    const event = structuredClone(original);
+    if (event.type === 'figma_mention_received') {
+      if (!mentions.has(event.payload.mentionId)) mentions.set(event.payload.mentionId, { ...event.payload, status: 'received', seq: event.seq });
+      continue;
+    }
+    const mention = mentions.get(event.payload.mentionId);
+    if (!mention || mention.answer) continue;
+    switch (event.type) {
+      case 'figma_mention_answer_attempted':
+        attempts.set(event.payload.attemptId, event.payload);
+        mention.pendingAttempt = event.payload;
+        mention.status = 'answering';
+        break;
+      case 'figma_mention_answer_failed':
+        if (mention.pendingAttempt?.attemptId === event.payload.attemptId && !event.payload.ambiguous) delete mention.pendingAttempt;
+        if (event.payload.ambiguous) mention.unconfirmedAttemptId = event.payload.attemptId;
+        mention.problem = event.payload;
+        mention.status = event.payload.ambiguous ? 'answer_unknown' : 'answer_failed';
+        break;
+      case 'figma_mention_answer_posted': {
+        const attempt = attempts.get(event.payload.attemptId);
+        delete mention.pendingAttempt;
+        delete mention.unconfirmedAttemptId;
+        delete mention.problem;
+        mention.answer = { ...event.payload, message: attempt?.message ?? '', selection: attempt?.selection ?? 'fallback', citedItemIds: attempt?.citedItemIds ?? [] };
+        mention.status = 'answered';
+        break;
+      }
+    }
+  }
+  return mentions;
+}
+
+/**
+ * Comment ids the PM posted, as recorded in the ledger: request comments and mention answers. This is the only
+ * authorship test for comments (same-account premise: never the Figma user id).
+ */
+export function pmCommentIds(events: readonly LedgerEvent[]): Set<string> {
+  const ids = new Set<string>();
+  for (const event of events) {
+    if (event.type === 'figma_comment_posted') ids.add((event.payload as FigmaEventPayloads['figma_comment_posted']).commentId);
+    else if (event.type === 'figma_mention_answer_posted') ids.add((event.payload as FigmaEventPayloads['figma_mention_answer_posted']).commentId);
+  }
+  return ids;
+}
+
+/** What a member reading the Space sees for each `@ensemble` query: who asked what, and whether the PM answered. */
+export interface FigmaMentionItem {
+  mentionId: Id; fileKey: string; commentId: string; rootId: string; nodeId?: string; author: string; query: string;
+  status: FigmaMentionStatus; answerCommentId?: string; citedItemIds: string[]; problem?: string;
+}
+export function figmaMentionItems(events: readonly LedgerEvent[]): FigmaMentionItem[] {
+  return [...figmaMentions(events).values()].sort((a, b) => a.seq - b.seq).map(m => ({
+    mentionId: m.mentionId, fileKey: m.fileKey, commentId: m.commentId, rootId: m.rootId, ...(m.nodeId ? { nodeId: m.nodeId } : {}),
+    author: m.author.handle, query: m.query, status: m.status,
+    ...(m.answer ? { answerCommentId: m.answer.commentId } : {}),
+    citedItemIds: m.answer?.citedItemIds ?? m.pendingAttempt?.citedItemIds ?? [],
+    ...(m.problem ? { problem: m.problem.detail } : {}),
+  }));
+}
+
+export type FigmaChangeReport = FigmaEventPayloads['figma_change_reported'] & {
+  /** Latest PM re-read; absent until rechecked. The report itself stays `claimed`. */
+  recheck?: FigmaEventPayloads['figma_change_rechecked'];
+  seq: number;
+};
+/** Change reports from members (designer Agents) and the PM's file re-reads, in ledger order. */
+export function figmaChangeReports(events: readonly LedgerEvent[]): Map<Id, FigmaChangeReport> {
+  const reports = new Map<Id, FigmaChangeReport>();
+  for (const original of events) {
+    if (!isFigmaChangeEvent(original)) continue;
+    const event = structuredClone(original);
+    if (event.type === 'figma_change_reported') { if (!reports.has(event.payload.reportId)) reports.set(event.payload.reportId, { ...event.payload, seq: event.seq }); }
+    else { const report = reports.get(event.payload.reportId); if (report) report.recheck = event.payload; }
+  }
+  return reports;
 }

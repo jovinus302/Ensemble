@@ -2,13 +2,19 @@
 // Flow: a Figma link + question enters the Space (or a Space decision is relayed) → the PM reads the file/frame
 // and its comments itself → posts one tagged comment on that frame → polls the thread → each new reply becomes
 // an open follow-up in the Space ledger. Every Figma call happens outside a ledger transaction; every record is
-// keyed so re-running a step never duplicates work. The PM never answers comments, so it cannot loop on its own.
+// keyed so re-running a step never duplicates work. The PM answers only human comments that call it by text
+// (`@ensemble`/`@pm_agent`, pollMentions), once per comment; its own comments (ledger ids, or its signature line)
+// never trigger, so it cannot loop on itself. A member's canvas-change report is a claim the PM re-checks by version.
 import { createHash, randomUUID } from 'node:crypto';
 import { project, type ActorKind, type EventContext, type Id, type LedgerEvent, type NewLedgerEvent, type ProjectState } from '@ensemble/core';
 import type { LedgerStore } from '@ensemble/store';
 import { FigmaApiError, type FigmaClient, type FigmaComment, type FigmaFileSnapshot, type FigmaUser } from './client.ts';
 import { parseFigmaLink } from './link.ts';
-import { figmaRequests, type FigmaEventPayloads, type FigmaEventType, type FigmaFollowUp, type FigmaOrigin, type FigmaRequestView, type FigmaStage } from './ledger.ts';
+import {
+  figmaChangeReports, figmaMentions, figmaRequests, pmCommentIds,
+  type FigmaChangeReport, type FigmaEventPayloads, type FigmaEventType, type FigmaFollowUp, type FigmaMentionView, type FigmaOrigin, type FigmaRequestView, type FigmaStage,
+} from './ledger.ts';
+import { composeMentionAnswer, mentionQuery, mentionTriggers, pmSignature, spaceContextItems } from './mentions.ts';
 
 export class FigmaBridgeError extends Error {
   readonly status: number;
@@ -34,6 +40,25 @@ export interface ShareFigmaLinkInput {
   sourceMessageId?: Id;
 }
 export interface PollResult { view: FigmaRequestView; newReplies: number; skippedOwn: number; duplicates: number }
+/** Mention-bearing comments in a file, classified. `fresh` are human comments not yet recorded. */
+export interface MentionScan { fresh: FigmaComment[]; skippedOwn: number; duplicates: number }
+export interface PollMentionsResult {
+  newMentions: number; skippedOwn: number; duplicates: number;
+  /** Answers posted (or reconciled) during this poll. */
+  answered: number;
+  /** Every mention of the file after this poll, in ledger order. */
+  mentions: FigmaMentionView[];
+  /** Reading comments failed; nothing was recorded or posted. */
+  problem?: string;
+}
+/** Model hook: return a body for this mention's answer, or undefined for the code-written answer. */
+export type MentionComposer = (mention: FigmaMentionView) => string | undefined | Promise<string | undefined>;
+export interface ReportChangeInput {
+  /** Space member reporting (e.g. a designer Agent). */
+  by: Id; summary: string;
+  /** A figma.com link to what changed; defaults to the linked request's or mention's file. */
+  url?: string; requestId?: Id; mentionId?: Id;
+}
 
 const PM = { kind: 'pm' as const, id: 'pm' };
 const QUESTION_MAX = 2_000;
@@ -42,6 +67,8 @@ const TAG = /\[ensemble-req:[A-Za-z0-9:_-]+\]/g;
 /** Machine tag that ties a Figma comment to its Space request. */
 export const pmTag = (requestId: Id) => `[ensemble-req:${requestId}]`;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+/** Stable id of the mention comment `commentId` in `fileKey`; it is also the answer's tag. */
+export const mentionIdFor = (fileKey: string, commentId: string) => `figma-mention-${hash(['mention', fileKey, commentId]).slice(0, 16)}`;
 const clip = (value: string, max: number) => value.length > max ? `${value.slice(0, max - 1)}…` : value;
 
 function figmaEvent<K extends FigmaEventType>(context: EventContext, type: K, payload: FigmaEventPayloads[K], actor: { kind: ActorKind; id: Id } = PM, idempotencyKey?: string): NewLedgerEvent {
@@ -160,7 +187,8 @@ export class FigmaBridge {
    * Step 4: read the PM comment's thread. New replies become open follow-ups in the Space; replies already recorded
    * and comments the PM itself posted are skipped. The PM acts through the user's own Figma account, so the PM and
    * the human replying are the same Figma user by design: authorship is never judged by user id. "Posted by the PM"
-   * means the comment id is recorded in the ledger as a `figma_comment_posted`. Only replies in the PM comment's
+   * means the comment id is recorded in the ledger (`figma_comment_posted`, `figma_mention_answer_posted`), or the comment
+   * carries this Space's PM signature line (an unrecorded PM write). Only replies in the PM comment's
    * thread are read; new top-level comments (tagged or not) are ignored.
    */
   pollReplies(requestId: Id): Promise<PollResult> {
@@ -175,9 +203,13 @@ export class FigmaBridge {
       const thread = comments.filter(c => c.parentId === delivery.commentId && c.id !== delivery.commentId);
       const { result } = await this.options.store.transaction(this.context.projectId, events => {
         const requests = figmaRequests(events);
-        const pmPosted = new Set([...requests.values()].flatMap(r => r.delivery ? [r.delivery.commentId] : []));
-        const own = thread.filter(c => pmPosted.has(c.id));
-        const others = thread.filter(c => !pmPosted.has(c.id));
+        const pmPosted = pmCommentIds(events);
+        // A PM write whose id is not recorded (an unknown outcome, or a duplicate that landed beside the recorded one)
+        // still carries this Space's PM signature line; it is never taken as a human reply (no self-echo follow-ups).
+        const signature = pmSignature(this.context.projectId);
+        const isOwn = (c: FigmaComment) => pmPosted.has(c.id) || c.message.includes(signature);
+        const own = thread.filter(isOwn);
+        const others = thread.filter(c => !isOwn(c));
         const known = new Set(requests.get(requestId)?.replies.map(r => r.commentId));
         const fresh = others.filter(c => !known.has(c.id));
         return { result: { fresh: fresh.length, own: own.length, duplicates: others.length - fresh.length }, append: fresh.flatMap(c => {
@@ -229,6 +261,115 @@ export class FigmaBridge {
     return (await this.followUp(followUpId)).followUp;
   }
 
+  /**
+   * Read-only: mention-bearing comments in the file, classified against the ledger. PM comments are skipped when
+   * their id is recorded (request comments, mention answers) or when they carry this Space's PM signature line
+   * (a PM write not yet recorded). The Figma user id is never consulted: the PM uses the user's own account.
+   */
+  async scanMentions(fileKey: string): Promise<MentionScan & { comments: FigmaComment[] }> {
+    const comments = await this.options.client.comments(fileKey);
+    return { ...this.classifyMentions(fileKey, comments, await this.options.store.read({ projectId: this.context.projectId })), comments };
+  }
+
+  /**
+   * Text-trigger context query: a human comment anywhere in the file (top-level or reply) containing `@ensemble`
+   * or `@pm_agent` is recorded once, then answered once in its thread (reply to the comment, or to its root when it
+   * is a reply) with the Space items it overlaps. Unanswered mentions (failed or unknown writes) are retried here;
+   * an unknown write is first looked up by its tag. Comments without a trigger are not read as mentions.
+   */
+  pollMentions(fileKey: string, options: { compose?: MentionComposer } = {}): Promise<PollMentionsResult> {
+    return this.locked(`mentions:${fileKey}`, async () => {
+      const observedAt = this.now();
+      let comments: FigmaComment[];
+      try { comments = await this.options.client.comments(fileKey); }
+      catch (error) { return { newMentions: 0, skippedOwn: 0, duplicates: 0, answered: 0, mentions: await this.mentions(fileKey), problem: clip(errorText(error), 300) }; }
+      const { result } = await this.options.store.transaction(this.context.projectId, events => {
+        const scan = this.classifyMentions(fileKey, comments, events);
+        return { result: scan, append: scan.fresh.map(c => figmaEvent(this.context, 'figma_mention_received', {
+          mentionId: mentionIdFor(fileKey, c.id), fileKey, commentId: c.id, rootId: c.parentId ?? c.id, ...(c.parentId ? { parentId: c.parentId } : {}), ...(c.nodeId ? { nodeId: c.nodeId } : {}),
+          author: { ...c.user }, message: c.message, query: mentionQuery(c.message), triggers: mentionTriggers(c.message), createdAt: c.createdAt, observedAt,
+        }, PM, `figma-mention:${fileKey}:${c.id}`)) };
+      });
+      let answered = 0;
+      for (const mention of await this.mentions(fileKey)) {
+        if (mention.answer) continue;
+        const text = await options.compose?.(mention);
+        if ((await this.locked(mention.mentionId, () => this.answer(mention.mentionId, text))).answer) answered++;
+      }
+      return { newMentions: result.fresh.length, skippedOwn: result.skippedOwn, duplicates: result.duplicates, answered, mentions: await this.mentions(fileKey) };
+    });
+  }
+
+  /** Answer one recorded mention (idempotent). `text` replaces the code-written body (e.g. a model answer); the tag line stays. */
+  answerMention(mentionId: Id, input: { text?: string } = {}): Promise<FigmaMentionView> {
+    return this.locked(mentionId, () => this.answer(mentionId, input.text));
+  }
+
+  async mention(mentionId: Id): Promise<FigmaMentionView> {
+    const mention = figmaMentions(await this.options.store.read({ projectId: this.context.projectId })).get(mentionId);
+    if (!mention) throw new FigmaBridgeError('not_found', `Figma 멘션 ${mentionId}이(가) 없습니다.`);
+    return mention;
+  }
+
+  async mentions(fileKey?: string): Promise<FigmaMentionView[]> {
+    return [...figmaMentions(await this.options.store.read({ projectId: this.context.projectId })).values()]
+      .filter(m => !fileKey || m.fileKey === fileKey).sort((a, b) => a.seq - b.seq);
+  }
+
+  /**
+   * A member (e.g. a designer Agent) reports a canvas change back into the Space: a claim, linked to a request
+   * and/or a mention. The baseline is the file version the PM last inspected before the report.
+   */
+  async reportChange(input: ReportChangeInput): Promise<FigmaChangeReport> {
+    const summary = input.summary.trim();
+    if (!summary || summary.length > QUESTION_MAX) throw new FigmaBridgeError('invalid_input', `변경 요약은 1~${QUESTION_MAX}자여야 합니다.`);
+    const link = input.url ? parseFigmaLink(input.url) : undefined;
+    if (input.url && !link) throw new FigmaBridgeError('invalid_input', 'figma.com 파일/프레임 링크가 아닙니다.');
+    const { result } = await this.options.store.transaction(this.context.projectId, events => {
+      const member = project(events).members.get(input.by);
+      if (!member) throw new FigmaBridgeError('forbidden', `${input.by}은(는) 이 Space의 참여자가 아닙니다.`);
+      const request = input.requestId ? figmaRequests(events).get(input.requestId) : undefined;
+      if (input.requestId && !request) throw new FigmaBridgeError('not_found', `Figma 요청 ${input.requestId}이(가) 없습니다.`);
+      const mention = input.mentionId ? figmaMentions(events).get(input.mentionId) : undefined;
+      if (input.mentionId && !mention) throw new FigmaBridgeError('not_found', `Figma 멘션 ${input.mentionId}이(가) 없습니다.`);
+      const fileKey = link?.fileKey ?? request?.fileKey ?? mention?.fileKey;
+      if (!fileKey) throw new FigmaBridgeError('invalid_input', '변경된 Figma 파일을 알 수 없습니다 (링크, 요청 또는 멘션이 필요합니다).');
+      const nodeId = link?.nodeId ?? request?.nodeId ?? mention?.nodeId;
+      const inspections = events.filter(e => e.type === 'figma_inspected').map(e => e.payload as FigmaEventPayloads['figma_inspected']).filter(i => i.fileKey === fileKey);
+      const base = inspections.find(i => i.inspectionId === request?.delivery?.inspectionId) ?? inspections.at(-1);
+      const reportId = `figma-change-${hash([input.by, fileKey, nodeId ?? '', summary, input.requestId ?? '', input.mentionId ?? '']).slice(0, 16)}`;
+      return { result: reportId, append: [figmaEvent(this.context, 'figma_change_reported', {
+        reportId, by: input.by, summary, ...(link ? { url: link.url } : {}), fileKey, ...(nodeId ? { nodeId } : {}),
+        ...(input.requestId ? { requestId: input.requestId } : {}), ...(input.mentionId ? { mentionId: input.mentionId } : {}),
+        ...(base ? { baseline: { inspectionId: base.inspectionId, version: base.version, lastModified: base.lastModified, observedAt: base.observedAt } } : {}),
+        verification: 'claimed',
+      }, { kind: member.kind, id: input.by }, `figma-change:${reportId}`)] };
+    });
+    return this.changeReport(result);
+  }
+
+  /** The PM re-reads the file after a change report. "Changed" never confirms the claimed change. */
+  async recheckChange(reportId: Id): Promise<FigmaChangeReport> {
+    const report = await this.changeReport(reportId);
+    const observedAt = this.now();
+    let snapshot: FigmaFileSnapshot;
+    try { snapshot = await this.options.client.file(report.fileKey, report.nodeId ? [report.nodeId] : []); }
+    catch (error) { throw new FigmaBridgeError('invalid_state', `파일을 다시 확인하지 못했습니다: ${clip(errorText(error), 300)}`); }
+    const base = report.baseline;
+    const verification = !base ? 'no_baseline' : base.version !== snapshot.version || base.lastModified !== snapshot.lastModified ? 'file_changed_unconfirmed' : 'no_change_observed';
+    await this.options.store.append([figmaEvent(this.context, 'figma_change_rechecked', {
+      reportId, fileKey: report.fileKey, observedVersion: snapshot.version, observedLastModified: snapshot.lastModified, observedAt,
+      ...(base ? { baselineVersion: base.version } : {}), verification,
+    })]);
+    return this.changeReport(reportId);
+  }
+
+  async changeReport(reportId: Id): Promise<FigmaChangeReport> {
+    const report = figmaChangeReports(await this.options.store.read({ projectId: this.context.projectId })).get(reportId);
+    if (!report) throw new FigmaBridgeError('not_found', `변경 보고 ${reportId}이(가) 없습니다.`);
+    return report;
+  }
+
   async view(requestId: Id): Promise<FigmaRequestView> {
     const view = figmaRequests(await this.options.store.read({ projectId: this.context.projectId })).get(requestId);
     if (!view) throw new FigmaBridgeError('not_found', `Figma 요청 ${requestId}이(가) 없습니다.`);
@@ -256,6 +397,65 @@ export class FigmaBridge {
     }, PM, `figma-posted:${view.requestId}`);
   }
 
+  private classifyMentions(fileKey: string, comments: readonly FigmaComment[], events: readonly LedgerEvent[]): MentionScan {
+    const own = pmCommentIds(events);
+    const signature = pmSignature(this.context.projectId);
+    const known = new Set([...figmaMentions(events).values()].filter(m => m.fileKey === fileKey).map(m => m.commentId));
+    const scan: MentionScan = { fresh: [], skippedOwn: 0, duplicates: 0 };
+    for (const c of comments) {
+      if (!mentionTriggers(c.message).length) continue;
+      if (own.has(c.id) || c.message.includes(signature)) scan.skippedOwn++;
+      else if (known.has(c.id)) scan.duplicates++;
+      else scan.fresh.push(c);
+    }
+    return scan;
+  }
+
+  /**
+   * Caller holds the mention lock. The ledger is re-read here, and when any earlier attempt may have landed the
+   * comments are re-read too: a list read before the lock (e.g. by the poll) can predate a concurrent attempt.
+   */
+  private async answer(mentionId: Id, text?: string): Promise<FigmaMentionView> {
+    const mention = await this.mention(mentionId);
+    if (mention.answer) return mention;
+    const unknownAttempt = mention.pendingAttempt?.attemptId ?? mention.unconfirmedAttemptId;
+    if (unknownAttempt) {
+      // No answer id is recorded yet, so the answer's own tag + signature identifies it; the author check only narrows.
+      // If the thread cannot be read, nothing is posted again.
+      let list: FigmaComment[];
+      try { list = await this.options.client.comments(mention.fileKey); } catch { return mention; }
+      let me: FigmaUser;
+      try { me = this.self ??= await this.options.client.me(); } catch { return mention; }
+      const signed = `${pmSignature(this.context.projectId)}${mentionId}]`;
+      const found = list.find(c => c.parentId === mention.rootId && c.user.id === me.id && c.message.includes(signed));
+      if (found) {
+        await this.options.store.append([this.answered(mention, unknownAttempt, found, true)]);
+        return this.mention(mentionId);
+      }
+    }
+    const draft = composeMentionAnswer(this.context.projectId, mention, spaceContextItems(await this.options.store.read({ projectId: this.context.projectId })), text);
+    const attemptId = randomUUID();
+    await this.options.store.append([figmaEvent(this.context, 'figma_mention_answer_attempted', {
+      mentionId, attemptId, fileKey: mention.fileKey, replyTo: mention.rootId, message: draft.message, selection: draft.selection, citedItemIds: draft.citedItemIds,
+    }, PM, `figma-mention-attempt:${attemptId}`)]);
+    try {
+      const comment = await this.options.client.postComment(mention.fileKey, { message: draft.message, replyTo: mention.rootId });
+      await this.options.store.append([this.answered(mention, attemptId, comment, false)]);
+    } catch (error) {
+      const e = error instanceof FigmaApiError ? error : undefined;
+      await this.options.store.append([figmaEvent(this.context, 'figma_mention_answer_failed', {
+        mentionId, attemptId, kind: e?.kind ?? 'unknown', ...(e?.status ? { status: e.status } : {}), detail: clip(errorText(error), 300), ambiguous: e ? e.ambiguous : true,
+      }, PM, `figma-mention-failed:${attemptId}`)]);
+    }
+    return this.mention(mentionId);
+  }
+
+  private answered(mention: FigmaMentionView, attemptId: Id, comment: FigmaComment, reconciled: boolean): NewLedgerEvent {
+    return figmaEvent(this.context, 'figma_mention_answer_posted', {
+      mentionId: mention.mentionId, attemptId, fileKey: mention.fileKey, commentId: comment.id, replyTo: mention.rootId, author: { ...comment.user }, createdAt: comment.createdAt, reconciled,
+    }, PM, `figma-mention-posted:${mention.mentionId}`);
+  }
+
   private async me(view: FigmaRequestView, at: string): Promise<FigmaUser | undefined> {
     if (this.self) return this.self;
     try { this.self = await this.options.client.me(); return this.self; }
@@ -278,7 +478,7 @@ export class FigmaBridge {
   }
 
   /** One Figma write per request at a time in this process. */
-  private locked<T>(requestId: Id, fn: () => Promise<T>): Promise<T> {
+  private locked<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
     const run = (this.locks.get(requestId) ?? Promise.resolve()).catch(() => {}).then(fn);
     this.locks.set(requestId, run);
     return run;
