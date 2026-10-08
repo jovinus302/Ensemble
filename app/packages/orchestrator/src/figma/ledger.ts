@@ -37,11 +37,8 @@ export interface FigmaEventPayloads {
   /** Only a comment id returned (or found) on Figma counts as delivery. */
   figma_comment_posted: { requestId: Id; attemptId: Id; commentId: string; fileKey: string; nodeId?: string; author: FigmaUser; createdAt: string; reconciled: boolean };
   figma_comment_failed: { requestId: Id; attemptId: Id; kind: FigmaErrorKind | 'unknown'; status?: number; detail: string; ambiguous: boolean };
-  figma_reply_received: {
-    requestId: Id; commentId: string; parentId: string; fileKey: string; author: FigmaUser; message: string; createdAt: string; observedAt: string;
-    /** The reply came from the PM's own Figma account without the PM tag: the person behind it is not identifiable. */
-    sameAccountAsPm: boolean;
-  };
+  /** `author` is the Figma account as recorded; it is usually the same account the PM acts through. */
+  figma_reply_received: { requestId: Id; commentId: string; parentId: string; fileKey: string; author: FigmaUser; message: string; createdAt: string; observedAt: string };
   /** A reply becomes an open item in the Space for the next action. */
   figma_followup_linked: { followUpId: Id; requestId: Id; replyCommentId: string; text: string; author: FigmaUser; verification: 'claimed' };
   figma_followup_rechecked: { followUpId: Id; requestId: Id; inspectionId: Id; baselineVersion: string; observedVersion: string; observedAt: string; verification: Exclude<FollowUpVerification, 'claimed'> };

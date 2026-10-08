@@ -120,7 +120,7 @@ if (phase === 'preflight') {
     const polled = await bridge.pollReplies(requestId);
     const view = polled.view;
     console.log(`poll: status=${view.status} new=${polled.newReplies} skippedOwn=${polled.skippedOwn} duplicates=${polled.duplicates} problem=${view.problem?.detail ?? '-'}`);
-    for (const r of view.replies) console.log(`reply ${r.commentId} (parent ${r.parentId}) by ${r.author.handle}/${r.author.id} sameAccountAsPm=${r.sameAccountAsPm}: ${r.message.slice(0, 200)}`);
+    for (const r of view.replies) console.log(`reply ${r.commentId} (parent ${r.parentId}) by ${r.author.handle}/${r.author.id}: ${r.message.slice(0, 200)}`);
     for (const f of view.followUps) console.log(`follow-up ${f.followUpId}: verification=${f.verification} reports=${f.reports.length}`);
     await report(store);
   } finally { store.close(); }

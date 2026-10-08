@@ -15,7 +15,7 @@ export class FakeFigma implements FigmaClient {
   private nextId = 1;
   private tick = 0;
 
-  constructor(readonly user: FigmaUser = { id: 'pm-bot', handle: 'Ensemble PM' }) {}
+  constructor(readonly user: FigmaUser = { id: 'user-account', handle: 'Owner' }) {}
 
   addFile(fileKey: string, name: string, nodes: FigmaNodeSummary[]): this {
     this.files.set(fileKey, { name, version: 1, lastModified: this.now(), nodes: new Map(nodes.map(n => [n.id, n])), comments: [] });

@@ -59,7 +59,7 @@ test('one round trip: share → inspect → tagged frame comment → reply becom
   assert.ok(inspected.inspection?.lastModified && inspected.inspection.observedAt);
   assert.deepEqual(inspected.inspection?.relatedCommentIds, [before.id]);
   assert.deepEqual(inspected.inspection?.space, { goal: '가입 전환율을 높이는 결제 화면', decisionIds: ['d-coupon'] });
-  assert.equal(inspected.inspection?.pm.id, 'pm-bot');
+  assert.equal(inspected.inspection?.pm.id, 'user-account', 'the PM acts through the user’s own account');
 
   const [delivered, again] = await Promise.all([f.bridge.deliver(shared.requestId), f.bridge.deliver(shared.requestId)]);
   assert.equal(f.posts(), 1, 'concurrent delivery posts once');
@@ -77,7 +77,7 @@ test('one round trip: share → inspect → tagged frame comment → reply becom
   const polled = await f.bridge.pollReplies(shared.requestId);
   assert.deepEqual([polled.newReplies, polled.skippedOwn], [1, 0]);
   assert.equal(polled.view.status, 'reply_received');
-  assert.deepEqual(polled.view.replies.map(r => [r.commentId, r.parentId, r.author.id, r.sameAccountAsPm]), [[reply.id, pmComment.id, 'figma-designer', false]]);
+  assert.deepEqual(polled.view.replies.map(r => [r.commentId, r.parentId, r.author.id]), [[reply.id, pmComment.id, 'figma-designer']]);
   const followUp = polled.view.followUps[0]!;
   assert.equal(followUp.verification, 'claimed', 'a reply is a claim, not an inspected change');
   const count = (await f.events()).length;
@@ -172,7 +172,7 @@ test('an unknown write outcome is reconciled against Figma before posting again'
   assert.deepEqual([reposted.status, reposted.delivery?.reconciled, g.figma.commentsOf(FILE).length], ['awaiting_reply', false, 1]);
 });
 
-test('own comments are judged by ledger-recorded comment ids, so same-account human replies are kept', async () => {
+test('PM and user share one Figma account: own comments are judged by ledger comment ids, human replies are kept', async () => {
   const f = await fixture();
   const { requestId } = await share(f);
   await f.bridge.inspect(requestId);
@@ -184,9 +184,12 @@ test('own comments are judged by ledger-recorded comment ids, so same-account hu
   const plain = f.figma.addComment(FILE, f.figma.user, '(같은 계정의 디자이너) 프레임 1:2 버튼 색상은 유지, 라벨만 변경', root);
   const quoted = f.figma.addComment(FILE, f.figma.user, `${pmTag(requestId)} 이 요청 말씀이시죠? 반영할게요`, root);
   f.figma.addComment(FILE, designer, '다른 스레드 댓글');
+  f.figma.addComment(FILE, f.figma.user, '(같은 계정) 태그 없는 새 최상위 댓글: 헤더도 바꿔 주세요', undefined, '12:34');
+  f.figma.addComment(FILE, f.figma.user, `${pmTag(requestId)} 태그를 붙인 새 최상위 댓글`, undefined, '12:34');
   const polled = await f.bridge.pollReplies(requestId);
-  assert.deepEqual([polled.newReplies, polled.skippedOwn], [2, 1], 'only the comment id the PM posted is skipped');
-  assert.deepEqual(polled.view.replies.map(r => [r.commentId, r.sameAccountAsPm]), [[plain.id, true], [quoted.id, true]]);
+  assert.deepEqual([polled.newReplies, polled.skippedOwn], [2, 1], 'only the comment id the PM posted is skipped; top-level comments are not read');
+  assert.deepEqual(polled.view.replies.map(r => [r.commentId, r.author.id]), [[plain.id, f.figma.user.id], [quoted.id, f.figma.user.id]]);
+  assert.equal(polled.view.followUps.length, 2);
   assert.ok(!polled.view.replies.some(r => r.commentId === otherRoot), 'the PM never answers its own comment');
   const count = (await f.events()).length;
   const repoll = await f.bridge.pollReplies(requestId);

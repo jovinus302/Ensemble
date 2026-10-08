@@ -131,6 +131,8 @@ export class FigmaBridge {
         let comments: FigmaComment[];
         try { comments = await this.options.client.comments(view.fileKey); }
         catch (error) { await this.fail(requestId, 'comments', error, at); return this.view(requestId); }
+        // No comment id is recorded yet, so the request tag identifies the PM's comment. The author check only narrows
+        // the search (a PM write is always by the token's account); it does not tell the PM apart from the user.
         const found = comments.find(c => !c.parentId && c.user.id === me.id && c.message.includes(pmTag(requestId)));
         if (found) {
           await this.options.store.append([this.posted(view, unknownAttempt, found, true)]);
@@ -156,9 +158,10 @@ export class FigmaBridge {
 
   /**
    * Step 4: read the PM comment's thread. New replies become open follow-ups in the Space; replies already recorded
-   * and comments the PM itself posted are skipped. "Posted by the PM" means the comment id is recorded in the ledger
-   * as a `figma_comment_posted` — not the Figma user id, because with a shared token the PM and the human replying
-   * are the same Figma account, and filtering by user id would drop every human reply.
+   * and comments the PM itself posted are skipped. The PM acts through the user's own Figma account, so the PM and
+   * the human replying are the same Figma user by design: authorship is never judged by user id. "Posted by the PM"
+   * means the comment id is recorded in the ledger as a `figma_comment_posted`. Only replies in the PM comment's
+   * thread are read; new top-level comments (tagged or not) are ignored.
    */
   pollReplies(requestId: Id): Promise<PollResult> {
     return this.locked(requestId, async () => {
@@ -166,8 +169,6 @@ export class FigmaBridge {
       const delivery = view.delivery;
       if (!delivery) throw new FigmaBridgeError('invalid_state', `아직 Figma에 전달되지 않은 요청입니다 (상태: ${view.status}).`);
       const observedAt = this.now();
-      const me = await this.me(view, observedAt);
-      if (!me) return { view: await this.view(requestId), newReplies: 0, skippedOwn: 0, duplicates: 0 };
       let comments: FigmaComment[];
       try { comments = await this.options.client.comments(view.fileKey); }
       catch (error) { await this.fail(requestId, 'comments', error, observedAt); return { view: await this.view(requestId), newReplies: 0, skippedOwn: 0, duplicates: 0 }; }
@@ -182,7 +183,7 @@ export class FigmaBridge {
         return { result: { fresh: fresh.length, own: own.length, duplicates: others.length - fresh.length }, append: fresh.flatMap(c => {
           const author = { ...c.user };
           return [
-            figmaEvent(this.context, 'figma_reply_received', { requestId, commentId: c.id, parentId: delivery.commentId, fileKey: view.fileKey, author, message: c.message, createdAt: c.createdAt, observedAt, sameAccountAsPm: c.user.id === me.id }, PM, `figma-reply:${view.fileKey}:${c.id}`),
+            figmaEvent(this.context, 'figma_reply_received', { requestId, commentId: c.id, parentId: delivery.commentId, fileKey: view.fileKey, author, message: c.message, createdAt: c.createdAt, observedAt }, PM, `figma-reply:${view.fileKey}:${c.id}`),
             figmaEvent(this.context, 'figma_followup_linked', { followUpId: `figma-followup:${view.fileKey}:${c.id}`, requestId, replyCommentId: c.id, text: clip(c.message, QUESTION_MAX), author, verification: 'claimed' }, PM, `figma-followup:${view.fileKey}:${c.id}`),
           ];
         }) };
