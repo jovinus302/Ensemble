@@ -11,7 +11,8 @@
     "build": "npm run build -w @ensemble/web",
     "test": "node --import tsx --test --test-timeout=10000 test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json && npm run typecheck -w @ensemble/web",
-    "live:pm": "tsx packages/orchestrator/scripts/live-coordination.ts"
+    "live:pm": "tsx packages/orchestrator/scripts/live-coordination.ts",
+    "live:meeting": "tsx packages/meeting/scripts/live-meeting.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
