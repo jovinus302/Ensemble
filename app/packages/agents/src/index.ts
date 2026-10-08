@@ -42,4 +42,4 @@ export type { ClaudeConnectorOptions } from './claude/connector.ts';
 export { builtInRoles, prototypeAgentRole, researchAgentRole, roleFor } from './roles.ts';
 export { codexSettingsFromEnv, DEFAULT_TURN_TIMEOUT_MINUTES, type CodexRuntimeSettings } from './codex/settings.ts';
 export { LocalFolderWorkspace, WorkspaceAccessError, inboxDocument, INBOX_DIR } from './personal/workspace.ts';
-export type { PersonalWorkspace, PersonalRequest, WorkspaceFile, WorkspaceInspection, WorkspaceStatus, DeliveryResult, DeliveryFailureReason, LocalFolderOptions } from './personal/workspace.ts';
+export type { PersonalWorkspace, PersonalRequest, WorkspaceFile, WorkspaceInspection, WorkspaceStatus, DeliveryResult, DeliveryFailureReason, LocalFolderOptions, WorkspaceFs } from './personal/workspace.ts';

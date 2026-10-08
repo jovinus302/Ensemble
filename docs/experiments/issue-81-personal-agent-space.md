@@ -42,12 +42,12 @@ Skill의 위치: "작업 시작·막힘·결과 공유 시점에 Space를 읽고
 
 ### 2.2 HTTP (`app/apps/web/app/api/[...path]/route.ts`)
 
-모든 `space/…` 경로는 이 컴퓨터에서 온 요청만 받는다(아래 2.5). 아니면 403 `local_only`.
+`space/…`뿐 아니라 이 라우트의 **모든 API 경로**(`state`, `archives`, `tasks`, `events`, `attachments`, 쓰기 경로 포함)는 이 컴퓨터에서 온 요청만 받는다(아래 2.5). 아니면 런타임을 부르기 전에 403 `local_only`. 재리뷰 N2: `/api/state`가 같은 Space 데이터(글·요청 본문·폴더 경로·대기 연결)를 보여 주는데 Host 검사 없이 열려 있었다. Slack Events(`/api/slack/events`)는 Slack 서버가 부르는 별도 라우트라 이 검사 대상이 아니며 서명으로 확인한다.
 
 | 경로 | 호출자 | 동작 |
 |---|---|---|
-| `POST /api/space/participants { me, participantId, displayName, tool, workspaceRoot, allowedPaths?, scopes?, spaceUrl? }` | 사람(누구든 요청 가능) | 연결 **요청**. 202 `{ linkRequestId, status: "pending", expiresAt, … }`. 확인 코드는 응답에 없고 **서버 콘솔에만** 찍힌다. 사람이 아니면 403, 멤버 id와 겹치면 400, `allowedPaths`가 `[]`이거나 빈 글을 담으면 400(생략하면 `["."]`) |
-| `POST /api/space/links/:linkRequestId/confirm { me, code }` | 사람(대시보드 "개인 Agent" 탭) | 서버 콘솔의 코드로 확인. 201 `{ participantId, workspaceRoot, allowedPaths, scopes, token }`. **토큰은 이 응답에서 한 번만** 나온다. 틀린 코드 403(요청당 5번까지), 만료 400, 이미 확인 400, 사람 아님 403 |
+| `POST /api/space/participants { me, participantId, displayName, tool, workspaceRoot, allowedPaths?, scopes?, spaceUrl? }` | 사람(누구든 요청 가능) | 연결 **요청**. 202 `{ linkRequestId, status: "pending", expiresAt, … }`. 확인 코드는 응답에 없고 **서버 콘솔에만** 찍힌다. 사람이 아니면 403, 멤버 id와 겹치면 400, `allowedPaths`가 `[]`이거나 빈 글을 담으면 400(생략하면 `["."]`). `spaceUrl`은 생략한다: Agent에게 알려 줄 주소는 항상 이 서버 자신의 주소이고, 값을 주면 서버 origin과 같아야 하며 다르면 400(재리뷰 N3) |
+| `POST /api/space/links/:linkRequestId/confirm { me, code }` | 사람(대시보드 "개인 Agent" 탭) | 서버 콘솔의 코드로 확인. 201 `{ participantId, workspaceRoot, allowedPaths, scopes, token, contextUrl, postUrl }`. **토큰은 이 응답에서 한 번만** 나온다. `contextUrl`·`postUrl`은 토큰을 보낼 이 서버 자신의 주소다. 틀린 코드 403(요청당 5번까지), 만료 400, 이미 확인 400, 사람 아님 403 |
 | `GET /api/space/participants/:id/context?format=md\|json` + `Authorization: Bearer <토큰>` | 개인 Agent | 목표·결정·열린 작업·나에게 온 요청·내 글·공유 방법. 읽기 기록. 토큰 없음/틀림 401 |
 | `POST /api/space/participants/:id/posts { kind, text, clientPostId, taskId?, inReplyTo? }` + `Authorization: Bearer <토큰>` | 개인 Agent | 202 `{ accepted, postId, duplicate }`. 새 글이면 PM 연락 단계가 백그라운드로 돈다. 토큰 없음/틀림 401 |
 | `POST /api/space/participants/:id/inspect { me, paths? }` | 사람 | PM이 지금 폴더를 읽고 관찰을 기록. 폴더가 없으면 503 `workspace_unreachable` |
@@ -58,6 +58,10 @@ Skill의 위치: "작업 시작·막힘·결과 공유 시점에 Space를 읽고
 ### 2.3 코드 경계
 
 - `PersonalWorkspace`(`app/packages/agents/src/personal/workspace.ts`): `inspect(paths?)`, `deliverRequest(request)`, `status()`. 원장을 쓰지 않는다. 실제 구현 `LocalFolderWorkspace`는 realpath로 링크·정션을 풀어 루트와 허용 경로 안인지 확인하고(SessionRunner의 결과 파일 확인과 같은 방식), 폴더를 훑을 때 링크는 따라가지 않으며, 파일당 16KB·전체 96KB까지만 내용을 읽고, 5MB 넘는 파일은 해시하지 않는다. 허용 경로를 생략하면 `.`(폴더 전체), **명시한 `[]`는 아무것도 읽지 않음**이고 빈 글 항목은 생성자에서 거부한다(F3). 쓰기는 `.ensemble/inbox/`의 새 파일 하나뿐이며 이미 있으면 덮어쓰지 않는다(임시 파일 후 rename). 요청함은 **한 단계씩** 만든다: 이미 있는 `.ensemble`·`inbox`를 먼저 realpath로 풀어 폴더 밖이면 그 아래를 만들기 전에 `permission_denied`로 멈춘다(F2. 예전 재귀 mkdir은 폴더 밖에 `inbox`를 먼저 만든 뒤 거부했다).
+- **확인과 사용 사이의 경로 바꿔치기(재리뷰 N1)**: 확인을 끝낸 뒤 상위 폴더(`.ensemble`, `inbox`, 허용 경로의 폴더)를 다른 곳으로 옮기고 그 자리에 폴더 밖을 가리키는 정션을 두면, 예전 코드는 폴더 밖에 `inbox`를 만들거나 요청 파일을 밖에 쓰고 `delivered:true`를 냈다(리뷰가 실제 정션으로 재현). Node에는 openat 같은 핸들 기준 API가 없어 확인과 사용을 한 핸들로 묶을 수 없으므로, 보장 범위를 다음으로 좁혀 고쳤다.
+  - 읽기: 파일을 **먼저 열고**, 그 뒤 realpath가 루트·허용 경로 안이고 그 위치의 파일이 열린 핸들과 같은 대상(dev/ino)인지 확인한 다음 **그 핸들로** 읽는다. 바뀐 경로에서는 내용이 나오지 않고 `rejected`에 남는다.
+  - 쓰기: 이번 호출이 만든 폴더는 만든 직후 다시 realpath로 확인해 밖이면 (같은 빈 폴더일 때만) 지운다. 요청 파일은 `wx`(O_CREAT|O_EXCL)로 새로 만들고, 그 핸들이 요청함 안의 새 파일인지 확인한 뒤에만 핸들로 내용을 쓴다. 쓰기 뒤와 rename 뒤에 다시 확인하고, 어긋나면 이번에 만든 파일을 찾아 지우고 `permission_denied`를 낸다. **밖으로 바뀐 것을 `delivered:true`로 보고하지 않는다.** 이미 있는 요청 파일도 요청함 안의 실제 파일일 때만 전달로 친다.
+  - 남는 한계: 확인과 되돌리기 사이의 짧은 틈에 폴더 쓰기 권한을 가진 동시 행위자(예: 같은 사용자의 개인 Agent)가 바꿔치기하면 빈 폴더나 파일이 **잠깐** 밖에 생길 수 있다. 마지막 확인 뒤에 그 행위자가 옮긴 것, 되돌리기 전에 다른 곳으로 옮겨진 파일은 PM이 따라가지 못한다. 대상 비교는 파일 시스템이 실제 파일 id(dev/ino)를 주는 것에 기댄다. 즉 "탐지하고 되돌린다"이지 "밖에는 절대 아무것도 생기지 않는다"가 아니다. 테스트는 파일 시스템 호출 사이에 바꿔치기를 끼워 넣는 주입 지점(`LocalFolderOptions.fs`)으로 실제 정션을 써서 재현한다.
 - `SpaceParticipation`(`app/packages/orchestrator/src/space-participation.ts`): `requestLink`, `confirmLink`, `readContext(id, token, format)`, `post(id, token, input)`, `inspect`, `createRequest`, `deliver`, `sweep`, `liaison(postId)`. 다른 접점은 `createRequest({ participantId, text, actor, dedupeKey: 'meeting:<id>:<item>' })`로 같은 전달·대기·응답 경로를 쓴다.
 - `RequestComposer`: `(participant, context, trigger, observation?, depth) → 요청 본문 | null`. 웹 런타임 기본값은 PM 모델(`ENSEMBLE_PM_RUNTIME`)의 일반 텍스트 호출 `llmRequestComposer`, fake PM이면 규칙 기반 `ruleRequestComposer`.
 
@@ -73,12 +77,14 @@ Skill의 위치: "작업 시작·막힘·결과 공유 시점에 Space를 읽고
 
 리뷰 F4: 인증이 없어서 HTTP에 닿는 누구나 임의의 로컬 폴더를 연결해 PM이 읽고 요청 파일을 쓰게 만들 수 있었다(이미 연결된 참여자 사칭보다 넓은 영향). 고친 경계:
 
-1. **로컬 전용**: `npm run dev`/`start`가 `127.0.0.1`에만 바인딩한다(`next dev -H 127.0.0.1`). 그리고 `space/…` 경로는 Host가 loopback(localhost, 127.0.0.0/8, ::1)이 아니거나, `X-Forwarded-For`에 loopback이 아닌 주소가 있거나, `Origin`이 대시보드 자신이 아니면 런타임을 부르기 전에 403으로 거절한다(`app/apps/web/lib/local-access.ts`). 헤더는 위조할 수 있으므로 원격 차단의 1차 수단은 바인딩이고, 헤더 검사는 프록시·DNS rebinding·다른 사이트 페이지(CSRF)용 2차 방어다.
+1. **로컬 전용**: `npm run dev`/`start`가 `127.0.0.1`에만 바인딩한다(`next dev -H 127.0.0.1`). 그리고 **모든 API 경로**(재리뷰 N2 전에는 `space/…`만)는 Host가 `localhost`·`127.0.0.1`·`[::1]`에 이 서버의 포트가 아니거나, `X-Forwarded-For`에 loopback이 아닌 주소가 있거나, `Origin`이 대시보드 자신의 origin(스킴·호스트·포트 모두)이 아니면 런타임을 부르기 전에 403으로 거절한다(`app/apps/web/lib/local-access.ts`. 전에는 127.0.0.0/8 전체와 `*.localhost`를 받고 Origin은 호스트만 비교했다). 서버 포트는 `request.url`에서 온다: Next는 이것을 Host 헤더가 아니라 서버가 바인딩한 주소·포트로 만든다(2026-10-08 실제 `next start`에서 Host를 바꿔 보내도 `http://localhost:<포트>`였다). 헤더는 위조할 수 있으므로 원격 차단의 1차 수단은 바인딩이고, 헤더 검사는 프록시·DNS rebinding·다른 사이트 페이지(CSRF)용 2차 방어다.
 2. **연결은 사람이 확인해야 생긴다**: `POST space/participants`는 대기 요청만 남긴다. 서버는 8자 확인 코드를 **서버 콘솔에만** 찍는다(응답·원장·`/api/state`에는 없음, 원장에는 해시만). 사람이 대시보드 "개인 Agent" 탭에서 폴더·허용 경로·권한을 보고 코드를 입력해야 `participant_linked`가 기록된다. 코드는 10분 뒤 만료되고 한 요청에 5번 틀리면 잠긴다(서버 실행 단위). HTTP를 부를 수 있는 Agent나 도구는 서버 콘솔을 보지 못하므로 스스로 폴더 권한을 얻지 못한다.
 3. **Space별 연결 토큰**: 확인할 때 `ens_…` 토큰을 만들어 그 응답에서 한 번만 돌려주고, 원장에는 SHA-256만 남긴다. 개인 Agent는 맥락 읽기와 글 남기기(답 포함)에 `Authorization: Bearer <토큰>`을 보낸다. 다시 연결하면 새 토큰이 나오고 예전 토큰은 401이 된다.
 4. **토큰 전달**: 대시보드가 확인 직후 토큰을 한 번 보여 준다. 사람이 그것을 개인 Agent에게 넘긴다(프롬프트에 붙이거나 폴더 안 파일에 저장해 Agent에게 경로를 알려 줌. 3.2절 실험은 `.ensemble/space-token`에 저장했다. PM의 폴더 읽기는 `.ensemble/`을 건너뛴다). 요청 파일과 Space 맥락 문서에는 토큰 값 대신 `Authorization: Bearer <연결 토큰>` 자리만 적힌다.
+5. **토큰을 보낼 곳은 이 서버뿐(재리뷰 N3)**: 예전에는 연결 요청 본문의 `spaceUrl`이 그대로 맥락의 `howToPost`·요청 파일의 curl 주소가 되어, `https://attacker.invalid` 같은 주소로 요청해 사람이 폴더·권한만 보고 확인하면 Agent가 토큰을 그 주소로 보내게 됐다. 이제 라우트는 본문 대신 서버 자신의 origin(`request.url`)을 넘기고 다른 값은 400으로 거절한다. `SpaceParticipation.requestLink`도 loopback http(s) origin(`localhost`·`127.0.0.1`·`[::1]`, 경로·자격 증명 없음)만 받고(`localSpaceOrigin`), 이 검사 전에 원장에 남은 바깥 주소는 쓰지 않고 서버 기본 주소로 바꿔 알려 준다. 확인 응답과 대시보드 토큰 안내에도 같은 `contextUrl`·`postUrl`을 보여 준다. 새 환경 변수는 없다.
+6. **확인 코드 오답 집계**: 오답 횟수를 확인 트랜잭션 안에서 바로 올린다. 예전에는 트랜잭션 뒤에 올려서, 동시에 들어온 오답 여러 개가 모두 한도 검사를 통과한 뒤 맞는 코드가 받아들여질 수 있었다(재리뷰 낮은 등급 관찰).
 
-남는 경계(완료로 표현하지 않는다): 같은 컴퓨터의 같은 사용자 권한 프로세스는 데이터 폴더·개인 폴더를 직접 읽을 수 있어 이 경계의 대상이 아니다. 사람 쪽 호출(`inspect`, `requests`, `sweep`, `confirm`)은 기존 대시보드 API처럼 `me` 이름을 믿는다(로컬 전용 + 확인 코드가 권한 부여를 막는다). 서버 콘솔 출력을 다른 프로그램이 읽는 환경(로그 수집 등)에서는 코드가 새어 나갈 수 있다. 조직 인증·다중 사용자는 후속이다.
+남는 경계(완료로 표현하지 않는다): 같은 컴퓨터의 같은 사용자 권한 프로세스는 데이터 폴더·개인 폴더를 직접 읽을 수 있어 이 경계의 대상이 아니다. 사람 쪽 호출(`inspect`, `requests`, `sweep`, `confirm`)은 기존 대시보드 API처럼 `me` 이름을 믿는다(로컬 전용 + 확인 코드가 권한 부여를 막는다). 서버 콘솔 출력을 다른 프로그램이 읽는 환경(로그 수집 등)에서는 코드가 새어 나갈 수 있다. 개인 폴더에 대한 동시 바꿔치기는 2.3절대로 탐지·되돌리기까지이고 짧은 틈이 남는다. 조직 인증·다중 사용자는 후속이다.
 
 ## 3. 실제로 확인한 것
 
@@ -111,6 +117,21 @@ PM 요청 작성 호출 3건의 Codex 응답 시간은 13.0s·17.4s·14.5s(`[ens
 
 PM 모델 호출: 계획 30.8s, 요청 판단 16.5s·20.2s 등(`[ensemble:pm-model]`).
 
+### 3.3 2026-10-08 재리뷰(N1–N3) 수정 후 다시 한 실제 왕복
+
+원문 증거: `C:/Users/siheon.ryu/AppData/Local/Temp/issue-81-roundtrip-2026-10-08-r2.txt`(HTTP 전사, Codex 두 실행의 명령·메시지, 원장의 #81 이벤트 전부, PM 모델 시간, 폴더 상태. 토큰·확인 코드는 가렸다). 원본(Codex JSONL·서버 콘솔·원장 DB)은 이 작업 세션 scratchpad의 `rt2/`에 있고 임시 폴더다. 아래 seq는 그 원장 기준이다.
+
+환경: 커밋 `7812177`, Windows 11, Node 24.18, `codex-cli 0.159.2`, `next dev -H 127.0.0.1 -p 3191`(netstat `127.0.0.1:3191 LISTENING`만), `ENSEMBLE_PM_RUNTIME=codex`, `ENSEMBLE_AGENT_RUNTIME=fake`. 개인 폴더는 연결 전에 새로 만든 git 저장소(README.md, copy.md, 커밋 `37fea61`).
+
+1. **목표**: `free/start`로 "로그인 화면 문구를 이메일 로그인 기준으로 정리한다"를 넣고 Codex PM 계획 카드를 승인했다.
+2. **경계 확인과 연결 (N2·N3)**: 실제 전송 Host를 바꿔(node:http) `/api/state`에 `Host: rebinding.attacker.invalid:3191` → 403, `Host: 127.0.0.1:4000`(다른 포트) → 403, `Origin: http://evil.example` → 403, `/api/archives`에 다른 Host → 403. `spaceUrl: "https://attacker.invalid"`로 연결 요청 → 400이고 대기 연결은 0건. `spaceUrl` 없이 연결 요청 → 202(seq 33), 콘솔 코드로 확인 → 201(seq 36). 확인 응답의 `contextUrl`·`postUrl`은 `http://localhost:3191/api/space/participants/owner-codex/…`(서버 자신의 주소)였고, 작업자가 토큰을 `.ensemble/space-token`에 저장했다. 토큰 없이 맥락 읽기 401, 토큰으로 읽은 JSON의 `howToPost.url`도 같은 로컬 주소(seq 37, 작업자의 확인용 읽기).
+3. **개인 Agent → Space**: 폴더에서 `codex exec --json -s workspace-write -c sandbox_workspace_write.network_access=true`(세션 `01a11ae8-89ae-78f1-950e-7513ad5902eb`). 프롬프트에는 확인 응답의 두 URL과 토큰 파일 위치만 주었다. Codex가 토큰으로 맥락 Markdown을 읽고(seq 38), copy.md의 "구글로 계속하기"를 "이메일로 계속하기"로 바꾸고 입력 안내·오류 문구를 더한 뒤 결과(seq 39)와 질문 "비밀번호·이메일 인증 코드·로그인 링크 중 어떤 방식인가, 미가입 이메일은 어떻게 할까"(seq 41)를 직접 POST했다. 첫 POST 명령은 PowerShell 구문 오류로 아무것도 보내지 못했고, Codex가 스스로 고쳐 다시 보내 202 두 건을 받았다.
+4. **PM → 개인 환경 → PM**: PM이 글마다 폴더를 직접 읽었다(seq 40·43, `copy.md` `0bce44cd9028`, 로컬 sha256과 일치). 결과 글은 `none`(seq 42), 질문 글은 Codex PM이 "결정은 사람이 하니 공통 문구를 유지하고 방식별·미가입 처리별 조건부 초안을 정리하라"는 요청을 써서(seq 44, depth 1) `.ensemble/inbox/req-b9e145796d02c6da.md`에 전달했다(seq 45, attempt 1. 판단 기록 seq 46). 요청 파일의 주소는 `http://localhost:3191/…/posts`와 `…/context?format=md` 두 개뿐이고 토큰 값은 없다(N3). 같은 세션을 `codex exec resume`으로 이어 "PM 요청이 도착했는지 확인하고 처리한 뒤 답하라"고만 했다. Codex는 맥락을 읽어(seq 47, `personal_request_seen` seq 48) 요청 파일 경로를 얻고 그 파일을 읽은 뒤 copy.md에 조건부 초안을 더하고 `inReplyTo=req-b9e1…`로 결과를 답했다(seq 49). 요청은 `answered`(seq 50), PM 관찰은 `copy.md` 해시 변경(`3596c2120fda`, seq 51, 로컬과 일치), 그 답에는 `none`(seq 52, depth 2).
+5. **끊김 + Space 읽기 + 재연결 (F1)**: 폴더 이름을 바꿔 끊고 사람이 요청을 보내자 `unreachable`(seq 53–54, attempt 1), `inspect` 503. 끊긴 동안 토큰으로 맥락을 읽어(작업자의 호출) 요청이 `seen`(seq 55–56). 폴더를 되돌린 뒤 sweep이 전달(seq 57, attempt 2), 다음 sweep은 0건.
+6. Codex JSONL·stderr와 요청 파일 어디에도 토큰 값은 없었다(검색 0건). 폴더의 `git status`는 `copy.md`와 `.ensemble/`(요청 파일 2개, 토큰 파일)뿐이다. Codex는 3.2절과 같이 사용자 전역 지침에 따라 worktree를 만들려다 샌드박스의 `.git` 쓰기 제한으로 실패했고 커밋하지 않았다(실험 범위 밖).
+
+PM 모델 호출: 계획 35.7s, 요청 판단 15.7s·17.9s·17.7s(`[ensemble:pm-model]`). 3.2절과 달리 Agent가 같은 요청에 두 번째 답을 달지 않아 depth 2 요청은 생기지 않았다.
+
 ## 4. 완료 기준별 상태
 
 2026-10-08 리뷰 반영 후 기준. "검증됨"은 3.2절 원문 증거나 자동 테스트가 뒷받침하는 범위만 뜻한다.
@@ -122,7 +143,7 @@ PM 모델 호출: 계획 30.8s, 요청 판단 16.5s·20.2s 등(`[ensemble:pm-mod
 | PM이 허용된 실제 작업환경 맥락 확인, Space 글과 구분 | 검증됨 | `workspace_context_observed`(해시가 로컬 `sha256sum`과 일치)가 `space_post_recorded`와 별도 이벤트. 허용 경로 안전성: 밖 경로·링크 탈출·허용 밖 내부 링크는 읽지 않음(테스트), **빈/공백 허용 경로는 거부**(F3 테스트, 3.2절 2의 400). 고치기 전에는 `["   "]`가 폴더 전체 허용이 됐다 |
 | PM 요청이 개인 환경에 도착하고 같은 Agent의 응답이 돌아옴 | 검증됨, 단서 있음 | 3.2절 4: 같은 세션 id 재개, 요청 파일 읽기, `inReplyTo` 답(seq 49–50). 단 Codex는 요청 파일 경로를 **Space 맥락에서 먼저 보고** 폴더 파일을 읽었다(두 실행 모두). 폴더만 보고 수신함을 스스로 찾는 경우는 관찰하지 않았다 |
 | 프로젝트·작업·작성 주체·원본 참조 보존, 중복·무한 왕복 방지 | 검증됨(실행 일부) + 테스트 | 실행: actor·source·observedAt·trigger·관찰 id, 같은 요청에 두 번째 답이 와도 `answered`는 한 번, depth 2로 증가. 작성 주체는 이제 연결 토큰으로 묶인다(토큰 없음/틀림 401, 재연결 시 이전 토큰 무효 — 테스트와 3.2절 2). 깊이 상한·PM 글 제외·동시 중복 판단은 테스트로만 확인 |
-| 끊김/권한 부족/비활성에서 대기 유지·기존 작업 무방해, 수동 단계 명시 | 끊김·비활성 검증됨, 권한 부족은 테스트만 | 끊김 중 Space 읽기가 끼어도 재연결 후 sweep이 전달(3.2절 5, F1 테스트). 요청함 링크가 폴더 밖을 가리키면 그 밖에 아무 디렉터리도 만들지 않고 `permission_denied`(F2 테스트, 실제 정션). `permission_denied`의 실제 EACCES 폴더 관찰은 아직 없다(fake 어댑터 테스트) |
+| 끊김/권한 부족/비활성에서 대기 유지·기존 작업 무방해, 수동 단계 명시 | 끊김·비활성 검증됨, 권한 부족은 테스트만 | 끊김 중 Space 읽기가 끼어도 재연결 후 sweep이 전달(3.2절 5, F1 테스트). 요청함 링크가 폴더 밖을 가리키면 그 밖에 아무 디렉터리도 만들지 않고 `permission_denied`(F2 테스트, 실제 정션). 확인 뒤 바꿔치기는 탐지·되돌리기하고 `delivered:true`를 내지 않는다(N1 테스트, 실제 정션. 짧은 틈은 2.3절). `permission_denied`의 실제 EACCES 폴더 관찰은 아직 없다(fake 어댑터 테스트) |
 | managed 세션과 비교, 미검증 능력 기록 | 이 문서 5–6절 | — |
 
 ## 5. 관리형 CLI 세션과 비교
@@ -135,7 +156,7 @@ PM 모델 호출: 계획 30.8s, 요청 판단 16.5s·20.2s 등(`[ensemble:pm-mod
 | 결과 수집 | ensemble-report 블록과 제출 파일 첨부 | Agent의 Space POST. PM은 폴더를 직접 읽어 해시로 대조 |
 | 성공 판정 | 결과 제출·PM 검토 | 전달·확인·응답 이벤트를 각각 기록 |
 
-두 경로는 원장만 공유한다. 기존 managed 경로의 코드와 동작은 바꾸지 않았다(기존 회귀 테스트 6건 통과). 단 웹 서버의 `dev`/`start` 스크립트가 이제 `127.0.0.1`에만 바인딩한다(다른 기기에서 대시보드를 열려면 직접 `-H`를 바꿔야 한다).
+두 경로는 원장만 공유한다. 기존 managed 경로의 코드와 동작은 바꾸지 않았다(기존 회귀 테스트 6건 통과). 단 웹 서버의 `dev`/`start` 스크립트가 이제 `127.0.0.1`에만 바인딩한다. 재리뷰 N2 뒤로는 모든 API가 Host·Origin도 확인하므로 `-H`만 바꿔서는 다른 기기에서 대시보드를 쓸 수 없다(대시보드는 이 컴퓨터 전용이다).
 
 ## 6. 수동 단계와 미검증 능력
 
@@ -175,4 +196,4 @@ npm run dev -w @ensemble/web -- -p 3181
 # 7) 상태: GET /api/space, 재전달: POST /api/space/requests/sweep {}
 ```
 
-테스트: `app/test/essential-space-participation.test.ts`(연결 요청·확인·맥락 md/json, 글 멱등, 폴더 읽기 제한(밖 경로·정션 탈출·크기 상한), 실제 임시 폴더 수신함, 끊김/권한 부족 → 대기 → sweep, `inReplyTo` 답, PM 글·메모·중복 계기 제외, 깊이 상한, 웹 런타임 백그라운드 연락, 리뷰 회귀 F1(끊김 중 Space 읽기 후 재전달), F2(`.ensemble`/`inbox` 정션 탈출 시 폴더 밖 무변경, 허용 밖 내부 링크 읽기 거부), F3(빈/공백 허용 경로 거부, 명시 `[]`는 아무것도 읽지 않음), F4(확인 전 무권한·코드 오답 잠금·만료·토큰 없음/틀림 401·재연결 토큰 교체·예전 연결 거부, 비loopback·다른 Origin 403)).
+테스트: `app/test/essential-space-participation.test.ts`(연결 요청·확인·맥락 md/json, 글 멱등, 폴더 읽기 제한(밖 경로·정션 탈출·크기 상한), 실제 임시 폴더 수신함, 끊김/권한 부족 → 대기 → sweep, `inReplyTo` 답, PM 글·메모·중복 계기 제외, 깊이 상한, 웹 런타임 백그라운드 연락, 리뷰 회귀 F1(끊김 중 Space 읽기 후 재전달), F2(`.ensemble`/`inbox` 정션 탈출 시 폴더 밖 무변경, 허용 밖 내부 링크 읽기 거부), F3(빈/공백 허용 경로 거부, 명시 `[]`는 아무것도 읽지 않음), F4(확인 전 무권한·코드 오답 잠금·만료·토큰 없음/틀림 401·재연결 토큰 교체·예전 연결 거부, 비loopback·다른 Origin 403), 재리뷰 N1(확인 뒤 `.ensemble`/`inbox`/허용 폴더를 바깥 정션으로 바꿔치기해도 밖에 남는 것 없음·`delivered:true` 없음·바깥 내용 읽지 않음), 확인 코드 동시 오답 집계, N2(state·space·archives·tasks·events·attachments와 쓰기 경로가 다른 Host·포트·Origin·전달 주소에 403, 로컬 대시보드는 200), N3(바깥 `spaceUrl` 400, 확인 응답·맥락 `howToPost`·요청 파일의 모든 주소가 서버 자신의 주소, 예전 원장의 바깥 주소 무시)).

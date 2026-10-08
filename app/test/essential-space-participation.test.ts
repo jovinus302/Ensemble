@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import * as nodeFs from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, type TestContext } from 'node:test';
-import { LocalFolderWorkspace, WorkspaceAccessError, type DeliveryResult, type PersonalRequest, type PersonalWorkspace, type WorkspaceInspection } from '@ensemble/agents';
+import { LocalFolderWorkspace, WorkspaceAccessError, type DeliveryResult, type PersonalRequest, type PersonalWorkspace, type WorkspaceFs, type WorkspaceInspection } from '@ensemble/agents';
 import { MAX_REQUEST_DEPTH, participation, project, type AnyEvent, type NewLedgerEvent, type ParticipationPayloads } from '@ensemble/core';
 import { ParticipationError, SpaceParticipation, spaceContextMarkdown, type ComposeInput, type LinkInput, type RequestComposer } from '@ensemble/orchestrator';
 import { MemoryLedgerStore } from '@ensemble/store';
@@ -465,4 +466,175 @@ test('F4: the Space HTTP routes refuse non-loopback callers and cross-site pages
   assert.notEqual(local('localhost:3000', { origin: 'http://localhost:4000' }), null);
   assert.equal(bearerToken(new Request('http://localhost/', { headers: { authorization: 'Bearer ens_abc' } })), 'ens_abc');
   assert.equal(bearerToken(new Request('http://localhost/')), undefined);
+});
+
+// ── Re-review regressions (PR #85: N1 swaps during access, N2 every route local-only, N3 credential destination) ──
+
+/** Real node:fs/promises, with `onCall` run before each call so a test can swap a directory between the adapter's check and use. */
+function racingFs(onCall: (method: string, target: string) => Promise<void>): WorkspaceFs {
+  const wrapped: Record<string, unknown> = {};
+  for (const name of ['lstat', 'mkdir', 'open', 'readdir', 'realpath', 'rename', 'rm', 'rmdir', 'stat', 'unlink'] as const) {
+    const real = nodeFs[name] as (...args: unknown[]) => Promise<unknown>;
+    wrapped[name] = async (...args: unknown[]) => { await onCall(name, String(args[0])); return real(...args); };
+  }
+  return wrapped as unknown as WorkspaceFs;
+}
+const samePath = (a: string, b: string) => process.platform === 'win32' ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b);
+/** Runs `swap` once, right before the first call matching `when`. */
+const swapOnce = (when: (method: string, target: string) => boolean, swap: () => Promise<void>) => {
+  let done = false;
+  return async (method: string, target: string) => { if (!done && when(method, target)) { done = true; await swap(); } };
+};
+/** Replaces `dir` by a junction to `to`; the original directory moves to `keep`. */
+const junctionSwap = async (dir: string, keep: string, to: string) => { await rename(dir, keep); await symlink(to, dir, 'junction'); };
+
+test('N1: a directory swapped for an outside junction between check and use leaves nothing outside and is never reported delivered', async t => {
+  const base = await realpath(await mkdtemp(path.join(tmpdir(), 'ensemble-race-')));
+  t.after(() => rm(base, { recursive: true, force: true }));
+  const request = (requestId: string): PersonalRequest => ({ requestId, projectId: 'p', participantId: 'my-codex', text: 'SYNTHETIC_REQUEST', createdAt: '2026-10-08T00:00:00.000Z',
+    reply: { postUrl: 'http://127.0.0.1:3000/posts', contextUrl: 'http://127.0.0.1:3000/context', inReplyTo: requestId } });
+  const setup = async (name: string) => {
+    const root = path.join(base, name), outside = path.join(base, `${name}-outside`);
+    await mkdir(path.join(root, '.ensemble', 'inbox'), { recursive: true }); await mkdir(outside);
+    await writeFile(path.join(outside, 'keep.txt'), 'outside');
+    return { root, outside, ensemble: path.join(root, '.ensemble'), inbox: path.join(root, '.ensemble', 'inbox') };
+  };
+  const refused = (result: DeliveryResult) => { assert.equal(result.delivered, false, JSON.stringify(result)); assert.equal(!result.delivered && result.reason, 'permission_denied'); };
+
+  // (a) `.ensemble` becomes a junction after it was checked, just before its `inbox` level is looked at.
+  const a = await setup('a');
+  await rm(a.inbox, { recursive: true });
+  const viaEnsemble = await new LocalFolderWorkspace({ root: a.root, fs: racingFs(swapOnce((_m, p) => samePath(p, a.inbox), () => junctionSwap(a.ensemble, path.join(base, 'a-moved'), a.outside))) }).deliverRequest(request('req-a'));
+  refused(viaEnsemble);
+  assert.deepEqual(await readdir(a.outside), ['keep.txt'], 'the inbox made through the swapped link is removed again');
+
+  // (b) `inbox` becomes a junction after it was checked, just before the request file is created.
+  const b = await setup('b');
+  const viaInbox = await new LocalFolderWorkspace({ root: b.root, fs: racingFs(swapOnce((_m, p) => samePath(p, path.join(b.inbox, 'req-b.md')), () => junctionSwap(b.inbox, path.join(base, 'b-moved'), b.outside))) }).deliverRequest(request('req-b'));
+  refused(viaInbox);
+  assert.deepEqual(await readdir(b.outside), ['keep.txt'], 'no request or temporary file stays outside');
+
+  // (c) The written inbox itself is carried outside (and linked back) just before the rename.
+  const c = await setup('c');
+  const carried = path.join(c.outside, 'carried');
+  const viaRename = await new LocalFolderWorkspace({ root: c.root, fs: racingFs(swapOnce(m => m === 'rename', () => junctionSwap(c.inbox, carried, carried))) }).deliverRequest(request('req-c'));
+  refused(viaRename);
+  assert.deepEqual(await readdir(carried), [], 'the request that ended up outside is deleted, not reported delivered');
+
+  // Without interference the same adapter still delivers once and stays idempotent.
+  const d = await setup('d');
+  const plain = new LocalFolderWorkspace({ root: d.root });
+  assert.equal((await plain.deliverRequest(request('req-d'))).delivered, true);
+  assert.equal((await plain.deliverRequest(request('req-d'))).delivered, true);
+  assert.deepEqual(await readdir(d.inbox), ['req-d.md']);
+});
+
+test('N1: a granted folder swapped for an outside junction while it is being read yields no outside content', async t => {
+  const base = await realpath(await mkdtemp(path.join(tmpdir(), 'ensemble-read-race-')));
+  t.after(() => rm(base, { recursive: true, force: true }));
+  const root = path.join(base, 'root'), outside = path.join(base, 'outside'), src = path.join(root, 'src');
+  await mkdir(src, { recursive: true }); await mkdir(outside);
+  await writeFile(path.join(src, 'a.txt'), 'granted text');
+  await writeFile(path.join(outside, 'a.txt'), 'SYNTHETIC_OUTSIDE_SECRET');
+  const reads = new Set(['open', 'stat']);
+  const workspace = new LocalFolderWorkspace({ root, allowedPaths: ['src'], fs: racingFs(swapOnce((m, p) => reads.has(m) && samePath(p, path.join(src, 'a.txt')), () => junctionSwap(src, path.join(base, 'moved-src'), outside))) });
+  const result = await workspace.inspect(['src/a.txt']);
+  assert.ok(!JSON.stringify(result).includes('SYNTHETIC_OUTSIDE_SECRET'), JSON.stringify(result));
+  assert.deepEqual(result.files, []);
+  assert.deepEqual(result.rejected.map(r => r.path), ['src/a.txt']);
+});
+
+test('confirm accounting: concurrent wrong codes cannot exceed the failure budget before the right code is tried', async t => {
+  const store = new MemoryLedgerStore();
+  t.after(() => store.close());
+  const context = { projectId: 'project-a', targetProductId: 'product' };
+  await store.append([{ ...context, actor: { kind: 'human', id: 'owner' }, type: 'member_joined', payload: { memberId: 'owner', kind: 'human', displayName: '사용자' } }]);
+  const space = new SpaceParticipation({ ...context, store, composer: async () => null, defaultSpaceUrl: 'http://127.0.0.1:3000' });
+  const asked = await space.requestLink({ participantId: 'burst', displayName: 'b', tool: 'curl', workspaceRoot: tmpdir() }, 'owner');
+  const outcomes = await Promise.allSettled([...Array.from({ length: 6 }, () => space.confirmLink(asked.linkRequestId, 'AAAA-AAAA', 'owner')), space.confirmLink(asked.linkRequestId, asked.code, 'owner')]);
+  assert.equal(outcomes.at(-1)!.status, 'rejected', 'the right code after five wrong ones in the same burst is refused');
+  assert.equal(participation(await store.read({ projectId: context.projectId }) as AnyEvent[]).participants.size, 0);
+});
+
+async function webRuntimeFixture(t: TestContext) {
+  const { WebRuntime } = await import('../apps/web/lib/runtime.ts');
+  const dataDir = await mkdtemp(path.join(tmpdir(), 'ensemble-web-guard-'));
+  const root = await mkdtemp(path.join(tmpdir(), 'ensemble-web-guard-folder-'));
+  const codes: string[] = [];
+  const runtime = new WebRuntime({ dataDir, store: new MemoryLedgerStore(), timers: false, liaison: false, llm: { async complete() { throw new Error('no model in this test'); } },
+    composer: async () => null, announceLinkCode: notice => { codes.push(notice.code); } });
+  const global = globalThis as typeof globalThis & { ensembleRuntime?: unknown };
+  const previous = global.ensembleRuntime;
+  global.ensembleRuntime = runtime;
+  t.after(async () => { global.ensembleRuntime = previous; await runtime.stop(); await rm(dataDir, { recursive: true, force: true }); await rm(root, { recursive: true, force: true }); });
+  const route = await import('../apps/web/app/api/[...path]/route.ts');
+  const params = (p: string) => ({ params: Promise.resolve({ path: p.split('/') }) });
+  const LOCAL = 'http://127.0.0.1:3000';
+  const get = (p: string, headers: Record<string, string> = {}) => route.GET(new Request(`${LOCAL}/api/${p}`, { headers: { host: '127.0.0.1:3000', ...headers } }), params(p.split('?')[0]!));
+  const post = (p: string, body: unknown, headers: Record<string, string> = {}) => route.POST(new Request(`${LOCAL}/api/${p}`, { method: 'POST', headers: { host: '127.0.0.1:3000', 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) }), params(p));
+  return { runtime, root, codes, get, post, LOCAL };
+}
+
+test('N2: every API route answers only this machine; the dashboard state never leaks Space data to a foreign Host or Origin', async t => {
+  const { runtime, root, codes, get, post } = await webRuntimeFixture(t);
+  const pending = await runtime.requestParticipantLink({ participantId: 'my-codex', displayName: '내 Codex', tool: 'codex', workspaceRoot: root }, 'owner');
+  const { token } = await runtime.confirmParticipantLink(pending.linkRequestId, 'owner', codes[0]!);
+  await runtime.spacePost('my-codex', token, { kind: 'note', text: 'SYNTHETIC_PRIVATE_SPACE_POST', clientPostId: 'marker' });
+
+  const foreign: Record<string, string>[] = [{ host: 'rebinding.attacker.invalid:3000' }, { host: 'rebinding.attacker.invalid' }, { origin: 'http://evil.example' },
+    { origin: 'https://127.0.0.1:3000' }, { host: '127.0.0.1:4000' }, { 'x-forwarded-for': '203.0.113.5' }];
+  for (const headers of foreign) {
+    for (const p of ['state?me=owner', 'space', 'archives', 'archives/any', 'tasks/copy', 'events', 'attachments/any']) {
+      const response = await get(p, headers);
+      const text = await response.text();
+      assert.equal(response.status, 403, `${p} ${JSON.stringify(headers)}`);
+      assert.ok(!text.includes('SYNTHETIC_PRIVATE_SPACE_POST'));
+      assert.match(text, /local_only/);
+    }
+    for (const p of ['messages', 'availability', 'scenario/start', 'decisions/x', 'tasks/copy/comments']) assert.equal((await post(p, { me: 'owner' }, headers)).status, 403, `${p} ${JSON.stringify(headers)}`);
+  }
+  // This machine's own dashboard (loopback Host, its own Origin) still gets the state with the Space block.
+  for (const headers of <Record<string, string>[]>[{}, { origin: 'http://127.0.0.1:3000' }, { host: 'localhost:3000', origin: 'http://localhost:3000' }, { host: '[::1]:3000', 'x-forwarded-for': '::1' }]) {
+    const response = await get('state?me=owner', headers);
+    assert.equal(response.status, 200, JSON.stringify(headers));
+    assert.match(await response.text(), /SYNTHETIC_PRIVATE_SPACE_POST/);
+  }
+});
+
+test('N3: the agent is only ever told to send its token to this server, never to a URL from the link request', async t => {
+  const { runtime, root, codes, get, post, LOCAL } = await webRuntimeFixture(t);
+  const link = { me: 'owner', participantId: 'my-codex', displayName: '내 Codex', tool: 'codex', workspaceRoot: root };
+  for (const spaceUrl of ['https://attacker.invalid', 'http://127.0.0.1:3000.attacker.invalid', 'http://localhost:6666', 'https://127.0.0.1:3000']) {
+    const refused = await post('space/participants', { ...link, spaceUrl });
+    assert.equal(refused.status, 400, spaceUrl);
+  }
+  assert.equal((await runtime.spaceStatus()).pendingLinks.length, 0, 'a refused link request leaves nothing to confirm');
+  const asked = await post('space/participants', { ...link, spaceUrl: `${LOCAL}/` });
+  assert.equal(asked.status, 202);
+  const { linkRequestId } = await asked.json() as { linkRequestId: string };
+  const confirmed = await post(`space/links/${linkRequestId}/confirm`, { me: 'owner', code: codes.at(-1) });
+  assert.equal(confirmed.status, 201);
+  const { token, contextUrl, postUrl } = await confirmed.json() as { token: string; contextUrl: string; postUrl: string };
+  assert.equal(postUrl, `${LOCAL}/api/space/participants/my-codex/posts`);
+  assert.equal(contextUrl, `${LOCAL}/api/space/participants/my-codex/context?format=md`);
+  const context = await (await get('space/participants/my-codex/context?format=json', { authorization: `Bearer ${token}` })).json() as { howToPost: { url: string } };
+  assert.equal(context.howToPost.url, postUrl);
+  assert.equal((await post('space/participants/my-codex/requests', { me: 'owner', text: '확인 부탁드립니다' })).status, 201);
+  const [inboxFile] = await readdir(path.join(root, '.ensemble', 'inbox'));
+  const file = await readFile(path.join(root, '.ensemble', 'inbox', inboxFile!), 'utf8');
+  const urls = file.match(/https?:\/\/[^\s"']+/g) ?? [];
+  assert.ok(urls.length >= 3);
+  for (const url of urls) assert.ok(url.startsWith(`${LOCAL}/api/space/participants/my-codex/`), url);
+
+  // The library refuses a non-local Space URL too, and ignores one recorded before this check.
+  const store = new MemoryLedgerStore();
+  t.after(() => store.close());
+  const ctx = { projectId: 'project-a', targetProductId: 'product' };
+  await store.append([{ ...ctx, actor: { kind: 'human', id: 'owner' }, type: 'member_joined', payload: { memberId: 'owner', kind: 'human', displayName: '사용자' } }]);
+  const space = new SpaceParticipation({ ...ctx, store, composer: async () => null, defaultSpaceUrl: LOCAL });
+  await assert.rejects(space.requestLink({ participantId: 'x', displayName: 'x', tool: 'curl', workspaceRoot: root, spaceUrl: 'https://attacker.invalid' }, 'owner'), /Space 주소/);
+  const ok = await space.requestLink({ participantId: 'legacy', displayName: 'l', tool: 'curl', workspaceRoot: root }, 'owner');
+  const { link: linked, token: legacyToken } = await space.confirmLink(ok.linkRequestId, ok.code, 'owner');
+  await store.append([{ ...ctx, actor: { kind: 'human', id: 'owner' }, type: 'participant_linked', payload: { ...linked, spaceUrl: 'https://attacker.invalid' } }]);
+  assert.equal((await space.readContext('legacy', legacyToken, 'json')).howToPost.url, `${LOCAL}/api/space/participants/legacy/posts`);
 });
