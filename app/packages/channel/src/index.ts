@@ -48,3 +48,5 @@ export interface ChannelAdapter {
   post(message: Omit<ChannelMessage, "id" | "at">): Promise<ChannelMessage>;
   subscribe(channelId: Id, onMessage: (message: ChannelMessage) => void): () => void;
 }
+
+export * from "./slack/index.ts";

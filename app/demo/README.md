@@ -26,7 +26,7 @@ npm run dev
 
 - [Figma · 파일 댓글과 변경 맥락](https://github.com/jovinus302/Ensemble/issues/78)
 - [Slack App · 멘션과 스레드 답변](https://github.com/jovinus302/Ensemble/issues/79)
-- [Google Meet 후보 · 종료 후 회의 기록](https://github.com/jovinus302/Ensemble/issues/80)
+- [Google Meet · 미팅 참여와 주선](https://github.com/jovinus302/Ensemble/issues/80) — [실험 기록](../../docs/feasibility/meeting-google-meet.md), 외부 왕복 미검증
 
 각 이슈에서 먼저 대상 도구, PM Agent가 붙는 위치, 입력과 응답 경로를 검증한다. 미구현 도구의 가상 기록을 대시보드에 채우지 않는다. 제품 방향은 [intent.md](../../intent.md), 검사 방법은 [QA 안내](../../docs/qa/README.md)를 따른다.
 

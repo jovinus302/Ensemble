@@ -5,7 +5,7 @@ import path from 'node:path';
 import { SqliteLedgerStore, type LedgerStore } from '@ensemble/store';
 import { loadEnv, modelFor, pmRuntimeFromEnv, type LlmProvider } from '@ensemble/llm';
 import { ClaudeSessionConnector, CodexSessionConnector, CodexLlmProvider, codexSettingsFromEnv, type PersonalWorkspace, type SessionConnector } from '@ensemble/agents';
-import { DecisionRequestError, ParticipationError, ProjectManager, SpaceParticipation, TaskResolutionError, llmRequestComposer, ruleRequestComposer, spaceContextMarkdown, type FreeStartResult, type LinkInput, type LinkRequestIssued, type PostInput, type RequestComposer } from '@ensemble/orchestrator';
+import { DecisionRequestError, ParticipationError, ProjectManager, SlackCoordinator, SlackWebApi, slackBindingFromConfig, slackConfigFromEnv, SpaceParticipation, TaskResolutionError, llmRequestComposer, ruleRequestComposer, spaceContextMarkdown, type FreeStartResult, type LinkInput, type LinkRequestIssued, type PostInput, type ProactiveTrigger, type RequestComposer } from '@ensemble/orchestrator';
 import { DEFAULT_DIGEST_SETTINGS, DEFAULT_PM_MAY_APPLY, project, taskThreadId, type ParticipationPayloads, type AnyEvent, type DecisionAnswer, type EventPayloads, type LedgerEvent, type ProjectState } from '@ensemble/core';
 import { continuousScenario, advanceScript, createRevisionGenerator, sceneEvents, SCENE_NOW, type ScriptProgress, type Condition, type RevisionGenerator } from '@ensemble/scenarios';
 import { FakeConnector, FakePmLlm } from './fake-connector';
@@ -124,6 +124,7 @@ export class WebRuntime {
   private ticking = false;
   /** Q4: whether the daily digest posts (default on; ENSEMBLE_DIGEST=off or the `digest` option turns it off). */
   readonly digestEnabled: boolean;
+  private slackSetup?: Promise<SlackCoordinator | null>;
 
   /**
    * `timers: false` leaves the sweep/digest timer off (callers run `tick` themselves); `fakeAgentDelayMs` sets the fake agents' turn length in
@@ -153,6 +154,34 @@ export class WebRuntime {
       this.timer = setInterval(() => { void this.tick(); }, SWEEP_INTERVAL_MS);
       this.timer.unref?.();
     }
+    if (slackHttpConfig()) void this.slack().catch(() => console.error('[ensemble:slack] Slack 연결을 시작하지 못했습니다. SLACK_* 설정과 앱 설치를 확인하세요.'));
+  }
+  /**
+   * Slack <-> Space coordination over HTTP Events API (#79, EXPERIMENT), only when SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET and
+   * SLACK_CHANNEL_ID (or SLACK_TEST_CHANNEL_ID) are set; team and bot ids come from auth.test. The channel follows the current project; any ledger change triggers a Flow B check.
+   */
+  slack(): Promise<SlackCoordinator | null> {
+    return this.slackSetup ??= (async () => {
+      const config = slackHttpConfig();
+      if (!config) return null;
+      await this.ready;
+      const api = new SlackWebApi({ token: config.botToken });
+      const triggers = process.env.SLACK_PROACTIVE_TRIGGERS?.split(',').map(t => t.trim()).filter(Boolean) as ProactiveTrigger[] | undefined;
+      const coordinator = new SlackCoordinator({ store: this.store, model: this.pmModel, api, context: () => this.context(),
+        // The PM provider is replaced when a project starts over; always use the current one.
+        llm: { complete: request => this.pmLlm.complete(request) },
+        binding: await slackBindingFromConfig(config, api),
+        ...(triggers?.length ? { proactive: { triggers } } : {}) });
+      let running = false, again = false;
+      const sync = () => {
+        if (running) { again = true; return; }
+        running = true;
+        void coordinator.syncSpaceChanges().catch(() => console.error('[ensemble:slack] Space 변화를 Slack에 전달하지 못했습니다'))
+          .finally(() => { running = false; if (again) { again = false; sync(); } });
+      };
+      this.listeners.add(sync);
+      return coordinator;
+    })().catch(error => { this.slackSetup = undefined; throw error; });
   }
   /**
    * One timer tick: the stuck-work sweep (B8) and the daily digest (B9; a no-op before the hour or once posted today).
@@ -163,6 +192,7 @@ export class WebRuntime {
     this.ticking = true;
     try {
       await this.ready;
+      await this.slackSetup?.then(slack => slack?.expireOverdue(now)).catch(() => console.error('[ensemble:slack] 응답 기한 점검을 마치지 못했습니다'));
       if (this.replacing || this.meta.mode !== 'free') return;
       const pm = this.pm;
       await pm.sweep(now);
@@ -637,4 +667,9 @@ export class WebRuntime {
 }
 
 const globalRuntime = globalThis as typeof globalThis & { ensembleRuntime?: WebRuntime };
+/** The web app receives Slack over HTTP (Events API) only, so it needs the signing secret; Socket Mode is the live runner's path. */
+export function slackHttpConfig() {
+  const env = slackConfigFromEnv();
+  return env.ok && env.config.signingSecret ? { ...env.config, signingSecret: env.config.signingSecret } : null;
+}
 export function getRuntime() { return globalRuntime.ensembleRuntime ??= new WebRuntime(); }

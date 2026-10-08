@@ -11,6 +11,9 @@
 | PM Agent의 개입 기준과 결정 | [원칙](pm-principles.md), [결정 기록](pm-agent-decisions.md) |
 | CLI 연결 feasibility | [데모 안내](../app/demo/README.md) |
 | 개인 Agent의 Space 참여 실험(#81) | [실험 기록](experiments/issue-81-personal-agent-space.md) |
+| Slack 양방향 조율 실험(#79, 실제 왕복 미검증) | [Slack 조율 실험](slack-coordination-experiment.md) |
+| 미팅 참여·주선 feasibility (#80) | [Google Meet 기록](feasibility/meeting-google-meet.md) |
+| Figma 댓글 왕복 실험(#78) | [실험 기록](experiments/figma-78.md) |
 | 검사와 검증 한계 | [QA](qa/README.md), [회귀 검사](qa/essential-regressions.md) |
 | 화면·움직임의 기준 | [DESIGN](../DESIGN.md), [MOTION](../MOTION.md) |
 | 이번 변경의 의도와 증거 | [변경 제안](change-proposition.md) |
