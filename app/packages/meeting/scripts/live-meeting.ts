@@ -4,6 +4,8 @@
 //                               flow B: spaces.create + events.insert. Without --confirm-send nobody is emailed:
 //                               the attendee list is left empty and sendUpdates=none.
 //   observe --key K             reads attendee replies and Meet participants into the ledger
+// New spaces are OPEN by default (no knocking); pass --access-type TRUSTED|RESTRICTED to turn that off.
+// Both create and observe read the space back (spaces.get) and print the access type Google applied.
 // Credentials come from `.env.local` at the worktree root (never printed). The ledger lives in a git-ignored
 // SQLite file so a rerun in a new process finds what the previous one did.
 import { existsSync, mkdirSync } from 'node:fs';
@@ -14,7 +16,7 @@ import type { LedgerEvent, NewLedgerEvent } from '@ensemble/core';
 import { SqliteLedgerStore } from '@ensemble/store';
 import {
   GoogleMeetCalendarAdapter, MeetingCoordinator, MeetingRequestError, OAuthTokenError, RefreshTokenProvider, meetingEvents, meetingIdFor, meetingView,
-  type MeetingRequestedPayload, type MeetingView,
+  type MeetAccessType, type MeetingRequestedPayload, type MeetingView,
 } from '../src/index.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -35,13 +37,17 @@ const { values, positionals } = parseArgs({
     state: { type: 'string' },
     env: { type: 'string' },
     calendar: { type: 'string' },
+    'access-type': { type: 'string' },
   },
 });
 const command = positionals[0];
 if (!command || !['check', 'create', 'observe'].includes(command)) {
-  console.error('usage: npm run live:meeting -- <check|create|observe> [--key K] [--attendee EMAIL ...] [--confirm-send] [--start ISO] [--minutes N] [--purpose TEXT] [--space ID] [--state FILE] [--env FILE] [--calendar ID]');
+  console.error('usage: npm run live:meeting -- <check|create|observe> [--key K] [--attendee EMAIL ...] [--confirm-send] [--start ISO] [--minutes N] [--purpose TEXT] [--space ID] [--state FILE] [--env FILE] [--calendar ID] [--access-type OPEN|TRUSTED|RESTRICTED]');
   process.exit(2);
 }
+
+const accessType = values['access-type']?.toUpperCase();
+if (accessType && !['OPEN', 'TRUSTED', 'RESTRICTED'].includes(accessType)) { console.error('--access-type must be OPEN, TRUSTED or RESTRICTED'); process.exit(2); }
 
 // ---- credentials (names only are ever printed) ----
 const envFile = values.env ?? process.env.ENSEMBLE_MEETING_ENV_FILE ?? join(ROOT, '.env.local');
@@ -68,7 +74,7 @@ const loggedFetch: typeof fetch = async (input, init) => {
 const tokens = new RefreshTokenProvider({
   clientId: process.env.GOOGLE_OAUTH_CLIENT_ID!, clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET!, refreshToken: process.env.GOOGLE_OAUTH_REFRESH_TOKEN!, fetch: loggedFetch,
 });
-const adapter = new GoogleMeetCalendarAdapter({ accessToken: tokens.accessToken, fetch: loggedFetch, ...(values.calendar ? { calendarId: values.calendar } : {}) });
+const adapter = new GoogleMeetCalendarAdapter({ accessToken: tokens.accessToken, fetch: loggedFetch, ...(values.calendar ? { calendarId: values.calendar } : {}), ...(accessType ? { accessType: accessType as MeetAccessType } : {}) });
 const printCalls = () => { console.log(`api calls (${apiCalls.length}):`); for (const call of apiCalls) console.log(`  ${call}`); };
 
 if (command === 'check') {
@@ -114,6 +120,11 @@ function summary(view: MeetingView | undefined) {
   for (const p of view.participants) console.log(`participant seen: ${p.name ?? '(no name)'} [${p.evidence}]`);
   console.log(`pm participation: ${view.pm}`);
 }
+async function printSpaceAccess(view: MeetingView | undefined) {
+  if (!view?.spaceName) return;
+  const access = await adapter.readSpaceAccess(view.spaceName);
+  console.log(`space access (spaces.get): ${access.status === 'ok' ? access.value.accessType ?? '(not reported)' : access.status === 'failed' ? `ERROR ${access.code}` : 'unsupported'}`);
+}
 async function printNewRecords() {
   const added = (await store.read({ projectId: context.projectId, afterSeq: before })) as LedgerEvent[];
   console.log(`ledger records written this run: ${added.length}`);
@@ -151,6 +162,7 @@ try {
       confirmedBy: OPERATOR, notifyAttendees: confirm,
     });
     summary(view);
+    await printSpaceAccess(view);
     const invite = meetingEvents(await store.read({ projectId: context.projectId })).find(e => e.type === 'meeting_observed' && e.payload.meetingId === meetingId && e.payload.kind === 'invite_sent');
     if (invite?.type === 'meeting_observed') console.log(`htmlLink: ${invite.payload.event?.htmlLink ?? '-'} · replayed=${invite.payload.event?.replayed}`);
   } else {
@@ -161,6 +173,7 @@ try {
     if (view.spaceName) view = await coordinator.observeParticipants(meetingId);
     else console.log('skip participants: no Meet space recorded');
     summary(view);
+    await printSpaceAccess(view);
   }
   await printNewRecords();
   printCalls();

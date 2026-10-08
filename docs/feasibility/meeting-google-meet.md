@@ -9,7 +9,7 @@
 | 결정 | 선택 | 이유 |
 |---|---|---|
 | 첫 도구 | Google Meet + Google Calendar | 이슈의 1차 후보. 방 생성(Meet REST `spaces.create`)과 초대(Calendar `events.insert`)가 GA REST API로 열려 있다. 실제 팀 도구가 Zoom/Teams로 정해지면 같은 adapter 계약으로 교체한다. |
-| 방 생성 | Meet REST `spaces.create` 후 Calendar 일정에 링크 첨부 | 앱이 소유한 space 이름(`spaces/…`)을 얻어야 이후 `conferenceRecords`로 입장자를 조회할 수 있다. space 접근 유형(`TRUSTED` 기본)을 정할 수 있어 입장 거절 조건도 통제한다. |
+| 방 생성 | Meet REST `spaces.create` 후 Calendar 일정에 링크 첨부 | 앱이 소유한 space 이름(`spaces/…`)을 얻어야 이후 `conferenceRecords`로 입장자를 조회할 수 있다. space 접근 유형을 정할 수 있어 입장 조건도 통제한다. 기본은 `OPEN`이다([접근 유형 결정](#space-접근-유형-결정-2026-10-08)). |
 | 초대 | Calendar `events.insert`, `sendUpdates=all`, 결정적 이벤트 id | 이벤트 id를 Space·조율 키에서 결정적으로 만들면 Calendar가 두 번째 insert를 409로 거절한다. 재시도는 기존 이벤트를 읽어 쓰므로 두 번째 초대 메일이 나가지 않는다. |
 | Meet 링크 첨부 방식 | `location`과 `description`에 Meet URI | 확실히 동작하는 평문 첨부. `conferenceData`에 기존 Meet space를 붙이는 방식은 Calendar가 받아들이는지 미검증이라 첫 구현에서 쓰지 않는다. |
 | 대안(채택 안 함) | Calendar `conferenceData.createRequest`만으로 Meet 생성 | API 한 번에 방과 초대가 나오고 `requestId`로 멱등하다. 대신 space 설정을 정하지 못하고 space 이름은 회의 코드로 다시 찾아야 한다. 실계정 검증에서 `spaces.create` 경로가 막히면 1순위 대체로 시험한다. |
@@ -63,6 +63,14 @@
 - `joined`는 PM Agent의 입장이 관찰된 경우만이다. 참여자 입장은 `participants`에 근거(`api_poll`/`human_report`/`fake`)와 함께 따로 남는다.
 - 실패에는 `uncertain`(요청이 반영됐는지 알 수 없음)을 구분한다. 조회 실패(`pollFailure`)는 미팅 실패로 세지 않는다.
 - fake 근거가 섞이면 `fake: true`와 "테스트 기록"이 표시된다.
+
+### Space 접근 유형 결정 (2026-10-08)
+
+**결정(사용자, 2026-10-08)**: PM Agent가 `spaces.create`로 만드는 회의 space는 `config.accessType=OPEN`을 기본으로 한다. 링크를 가진 사람은 노크(참여 요청) 없이 바로 입장한다. 설정값(`GoogleMeetingAdapterOptions.accessType`, 실행기 `--access-type TRUSTED|RESTRICTED`)으로 끌 수 있다.
+
+- **이유**: B 흐름 실관찰(6절 #8~9)에서 외부(개인 Gmail) 참석자는 노크했고 호스트가 승인해야 들어올 수 있었다. Meet REST에는 노크 승인 API가 없어 PM Agent가 승인을 대행할 수 없다. 사람이 회의에 먼저 들어가 승인하는 수동 단계를 없애려고 승인 대행이 아니라 회의를 여는 쪽을 택했다.
+- **보안상 트레이드오프**: 초대 여부와 관계없이 링크를 아는 누구나 입장할 수 있다. 통제는 링크 공유 범위(Calendar 초대 대상, `guestsCanInviteOthers=false`, 링크를 다른 곳에 게시하지 않음)로만 한다. 링크가 새면 모르는 사람이 들어올 수 있고, 호스트가 없으면 내보낼 사람도 없다. 민감한 회의는 `TRUSTED`/`RESTRICTED`로 만들고 노크 승인을 사람이 맡는다.
+- **검증**: 단위 테스트가 기본 요청 본문 `{ config: { accessType: 'OPEN' } }`과 설정 override를 고정한다. 실계정에서는 6절 #10에서 새 space를 만들고 `spaces.get`으로 `OPEN` 적용을 확인했다.
 
 ### Space 연결
 
@@ -133,16 +141,19 @@ npm run live:meeting -- observe --key live-b-send-1
 | 8 | 참석자가 메일함에서 수락 후 `observe` | Calendar `GET` 200(`accepted`), `conferenceRecords` 200(1건), `participants` 200(1명) | `invite_accepted`(`api_poll`), `joined` 참여자 1건 | 초대 도착·수락을 API로 관찰. 참석자는 노크 대기였고, 이때 보인 1명은 노크를 승인하러 먼저 들어온 호스트(PM 계정, 사람이 브라우저로 조작) |
 | 9 | 호스트가 노크 승인 후 `observe`(30초 간격 재시도) | 같은 호출 4건 모두 200, `participants` 2명 | `joined` 참여자 1건 추가 | 초대받은 참석자 입장을 API로 관찰(사람 확인 매핑, 아래). PM 계정의 입장은 사람이 조작한 것이라 PM Agent 입장(`pm participation`)은 `not_joined`로 남는 것이 맞다 |
 
+| 10 | 기본값 `OPEN` 반영 후 `create --key live-open-1` (참석자 없음, `sendUpdates=none`) | `POST meet/v2/spaces` 200 → `spaces/go058Iv1_qwB`, `https://meet.google.com/dnq-zbtq-eio`. `POST calendar/v3/…/events` 200(무발송). `GET meet/v2/spaces/go058Iv1_qwB` 200 → `config.accessType=OPEN` | 원장 기록 4건, 상태 `created` | 새 space에 `OPEN`이 실제로 적용됨을 API로 확인. 아무에게도 메일이 가지 않음 |
+<!-- OPEN-EXTERNAL-ROW -->
+
 참여자 매핑(사람 확인): API의 표시 이름만으로는 계정을 알 수 없어 사용자에게 확인했다. #8에서 먼저 보인 참여자 = 호스트/PM 계정, #9에서 추가된 참여자 = 초대받은 참석자. 이 대응은 API 증거가 아니라 사람 보고다.
 
 정리: 드라이런 이벤트(`ens5d4cd…7491`, 참석자 없음)는 발송 전에 `events.delete?sendUpdates=none`(204)로 지웠다. Meet REST에는 space 삭제 API가 없어 미사용 space 2개(드라이런 1, 상태 파일 유실 재실행 1)는 남아 있다. 아무도 초대받지 않았으므로 참석자에게 보이지 않는다.
 
-**아직 관찰하지 않은 것**: A 흐름(초대받은 미팅에 PM Agent 입장 — Orca 내장 브라우저의 Google 로그인 차단으로 이번 범위에서 제외), 회의 중 맥락 수신·응답, Space 기록을 근거로 한 후속 요청 전달, 거절·무응답 상태의 실계정 관찰. 초대 메일 도착은 사람의 수락 보고와 `accepted` 응답으로 간접 확인했고 메일 원문은 보지 않았다. 참여자 표시 이름과 초대 이메일의 대응은 사람 확인에 의존한다. 외부 참석자 입장에는 호스트의 노크 승인이 필요했으므로, PM 계정이 회의에 없으면 외부 참석자는 들어오지 못한다.
+**아직 관찰하지 않은 것**: A 흐름(초대받은 미팅에 PM Agent 입장 — Orca 내장 브라우저의 Google 로그인 차단으로 이번 범위에서 제외), 회의 중 맥락 수신·응답, Space 기록을 근거로 한 후속 요청 전달, 거절·무응답 상태의 실계정 관찰. 초대 메일 도착은 사람의 수락 보고와 `accepted` 응답으로 간접 확인했고 메일 원문은 보지 않았다. 참여자 표시 이름과 초대 이메일의 대응은 사람 확인에 의존한다. #5~9 당시(`TRUSTED`) 외부 참석자 입장에는 호스트의 노크 승인이 필요했다. 이 때문에 기본 접근 유형을 `OPEN`으로 바꿨다([결정](#space-접근-유형-결정-2026-10-08)).
 
 ## 7. 수동 검증 절차 (자격 증명 확보 후)
 
 1. 위 실행기의 `check`로 토큰과 범위를 확인한다(B 경로는 5절 명령 그대로).
-2. **B**: `create`를 같은 키로 두 번 실행한다. Meet 링크 1개, 캘린더 이벤트 1개, 참여자별 메일 1통인지 각 계정에서 확인한다. 참여자가 응답하고 링크로 입장한 뒤 `observe`의 결과를 기록한다. 외부 참석자는 노크하므로 호스트(PM 계정)가 다른 브라우저/프로필로 같은 Meet에 들어가 승인한다(수동 단계). 참여자 목록은 입장이 승인된 뒤에야 나타난다.
+2. **B**: `create`를 같은 키로 두 번 실행한다. Meet 링크 1개, 캘린더 이벤트 1개, 참여자별 메일 1통인지 각 계정에서 확인한다. 참여자가 응답하고 링크로 입장한 뒤 `observe`의 결과를 기록한다. 기본 `OPEN` space에서는 외부 참석자도 노크 없이 입장한다. `--access-type TRUSTED|RESTRICTED`로 만든 경우에만 외부 참석자가 노크하므로 호스트(PM 계정)가 다른 브라우저/프로필로 같은 Meet에 들어가 승인한다(수동 단계). 참여자 목록은 입장이 승인된 뒤에야 나타난다.
 3. 실패 확인: 잘못된 token(`unauthenticated`), 범위 누락(`permission_denied`), 거절 응답(`declined`), 시작 후 무응답(`no_response`)이 각각 성공과 다른 상태로 남는지 본다.
 4. **A**: 사람이 만든 미팅 링크로 `registerInvitation`을 호출한다. PM 계정이 브라우저로 입장을 시도하고 결과(입장/거절/끊김)를 `report`로 남긴다. 회의 중 채팅을 사람이 옮겨 적는 경우 근거는 `human_report`로 구분한다.
 5. 결정/제안/미해결을 `recordNotes`로 원문 위치와 함께 남기고, 후속 요청 전달은 #79/#81 경로가 생긴 뒤 시험한다.
@@ -155,7 +166,7 @@ npm run live:meeting -- observe --key live-b-send-1
 - 회의 중 맥락 수신·응답의 실제 경로(브라우저 참여 또는 add-on)는 정해지지 않았다.
 - PM 계정 캘린더의 초대 수신 감지(`events.list`)는 미구현이다.
 - lease 만료나 상태 파일 유실 뒤 남는 빈 Meet space 정리는 미구현이다(2026-10-08 실제로 1개 발생). Meet REST v2에는 space 삭제가 없어 `endActiveConference` 외에는 남겨 둘 수밖에 없다.
-- 외부 참석자의 노크 승인을 PM Agent가 대신할 경로가 없다. space `accessType`을 `OPEN`으로 바꾸면 노크가 사라지지만 링크를 아는 누구나 들어올 수 있어 제품 결정이 필요하다(이번 실험에서는 접근 설정을 바꾸지 않음).
+- 외부 참석자의 노크 승인을 PM Agent가 대신할 경로는 여전히 없다. 2026-10-08 결정으로 기본 space를 `OPEN`으로 만들어 노크를 없앴다. `TRUSTED`/`RESTRICTED`를 고른 회의는 사람이 승인해야 한다. 링크 유출 시 대응(입장자 감지·알림)은 미구현이다.
 - 참여자 표시 이름을 Space 멤버에 대응시키는 근거(예: 사람 확인, Workspace 디렉터리 조회)는 미구현이다.
 - 빈 space가 생긴 경우 일정의 원래 링크로 입장자를 찾으려면 회의 코드(`space.meeting_code`) 기준 조회가 필요하다(미구현).
 - 미팅 주선 권한은 현재 "사람(`confirmedBy`)이 참여자·일정을 확인함"으로만 표현한다. 프로젝트 위임 설정(`pmMayApply`)에 미팅 생성 권한을 넣을지는 제품 결정이 필요하다.

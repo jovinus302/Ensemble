@@ -12,14 +12,21 @@ export const GOOGLE_MEETING_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
 ] as const;
 
+export type MeetAccessType = 'OPEN' | 'TRUSTED' | 'RESTRICTED';
+export const DEFAULT_MEET_ACCESS_TYPE: MeetAccessType = 'OPEN';
+
 export interface GoogleMeetingAdapterOptions {
   /** Returns a current OAuth access token. Refresh and storage stay with the host. */
   accessToken: () => Promise<string>;
   fetch?: typeof fetch;
   /** Calendar that owns the event (the PM Agent's account). Default `primary`. */
   calendarId?: string;
-  /** Meet space access type. `TRUSTED` lets the organisation and invited guests in without knocking. */
-  accessType?: 'OPEN' | 'TRUSTED' | 'RESTRICTED';
+  /**
+   * Meet space access type. Default `OPEN` (product decision 2026-10-08): anyone with the link joins without knocking,
+   * because nobody can admit an external guest's knock on the PM Agent's behalf. Link sharing is the access control.
+   * `TRUSTED` admits the organisation and calendar-invited guests only; `RESTRICTED` admits invited guests only.
+   */
+  accessType?: MeetAccessType;
   timeoutMs?: number;
 }
 
@@ -87,7 +94,7 @@ export class GoogleMeetCalendarAdapter implements MeetingAdapter {
   }
 
   async createSpace(_input: { meetingId: Id; attempt: number }): Promise<AdapterOutcome<MeetingSpace>> {
-    const result = await this.call<{ name?: string; meetingUri?: string; meetingCode?: string }>('POST', `${GOOGLE_MEET_API}/spaces`, { config: { accessType: this.options.accessType ?? 'TRUSTED' } });
+    const result = await this.call<{ name?: string; meetingUri?: string; meetingCode?: string }>('POST', `${GOOGLE_MEET_API}/spaces`, { config: { accessType: this.options.accessType ?? DEFAULT_MEET_ACCESS_TYPE } });
     if (result.status !== 'ok') return result;
     const { name, meetingUri, meetingCode } = result.body ?? {};
     if (!name || !meetingUri) return { status: 'failed', code: 'bad_response', message: 'spaces.create returned no name/meetingUri', retryable: true, uncertain: true };
@@ -146,6 +153,14 @@ export class GoogleMeetCalendarAdapter implements MeetingAdapter {
       }
     }
     return { status: 'ok', value: participants };
+  }
+
+  /** Reads a space's applied access type (`spaces.get`). Spaces this app created are readable with `meetings.space.created`. */
+  async readSpaceAccess(spaceName: string): Promise<AdapterOutcome<{ accessType?: string }>> {
+    const result = await this.call<{ config?: { accessType?: string } }>('GET', `${GOOGLE_MEET_API}/${spaceName}`);
+    if (result.status !== 'ok') return result;
+    const accessType = result.body?.config?.accessType;
+    return { status: 'ok', value: accessType ? { accessType } : {} };
   }
 
   /** Harmless reads to check access: one Calendar event list page and one Meet conference record page. */
