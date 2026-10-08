@@ -197,7 +197,7 @@ test('Flow B: an agent blocker in the Space is raised in Slack first, and the ow
   const f = await fixture(t, { llm });
   // Changes recorded before the coordinator existed are not raised (no history replay).
   await f.store.append([{ ...f.context, actor: { kind: 'system', id: 'session-runner' }, type: 'task_blocked', at: '2026-10-06T00:00:00.000Z', payload: { taskId: 'research', reason: '오래된 막힘' } }]);
-  await f.store.append([{ ...f.context, actor: { kind: 'system', id: 'session-runner' }, type: 'task_blocked', at: f.now().toISOString(), payload: { taskId: 'research', reason: '인터뷰 대상자 10명 중 5명만 응답했어요' } }]);
+  await f.store.append([{ ...f.context, actor: { kind: 'system', id: 'session-runner' }, type: 'task_blocked', at: f.now().toISOString(), payload: { taskId: 'research', reason: '인터뷰 대상자 10명 중 5명만 응답했어요.' } }]);
 
   const sent = await f.coordinator.syncSpaceChanges();
   assert.equal(sent.length, 1);
@@ -206,6 +206,7 @@ test('Flow B: an agent blocker in the Space is raised in Slack first, and the ow
   assert.equal(f.slack.posts[0]!.channel, CHANNEL);
   assert.equal(f.slack.posts[0]!.threadTs, undefined, 'a new thread in the designated channel');
   assert.match(f.slack.posts[0]!.text, new RegExp(`^<@${OWNER}> 조사 Agent가 "사용자 인터뷰 정리" 작업에서 막혔어요`));
+  assert.ok(f.slack.posts[0]!.text.includes('응답했어요. 어떻게'), 'a reason ending with a period gets no second one');
   assert.deepEqual(await f.coordinator.syncSpaceChanges(), [], 'the same Space change is raised once');
   assert.equal(f.slack.posts.length, 1);
 

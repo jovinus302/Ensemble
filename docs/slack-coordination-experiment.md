@@ -66,6 +66,7 @@ Space 대응: 한 Slack 워크스페이스의 한 채널(`SLACK_CHANNEL_ID`, 별
 - 재시작 뒤 재전송은 메시지 원장 키(`slack:<team>:<channel>:<ts>`)로 막는다. 멘션을 먼저 기록한 뒤 답하므로 답은 **최대 한 번**이다. 기록 후 게시 전에 프로세스가 죽으면 그 멘션에는 답하지 않는다(중복보다 누락을 택함).
 - 멘션은 `app_mention`과 `message` 두 이벤트로 오므로 `message` 쪽은 무시한다.
 - 자기 메시지(`user` = bot user id, `bot_id` = 자기 bot id, 자기 `bot_message`), 연결되지 않은 bot, 수정·삭제·입장 같은 subtype, PM이 참여하지 않은 스레드와 멘션 없는 루트 메시지는 처리하지 않는다.
+- **보정 조회(catch-up)**: 실험 실행기는 시작할 때와 1분마다 `SlackCoordinator.catchUp()`을 부른다. PM이 참여한 스레드(PM 메시지나 요청이 있는 스레드)를 `conversations.replies`로 다시 읽고, PM의 첫 메시지 이후 메시지를 실시간 이벤트와 같은 경로(`routeSlackEvent` → 원장 키 확인)로 넘긴다. 이미 기록된 메시지는 원장 키로 `duplicate`가 되고, 자기 메시지는 `self`로 걸러지므로 몇 번 돌아도 한 번만 기록된다. 이벤트 구독 누락, 연결 끊김, 실행기 재시작 동안 놓친 스레드 답을 회수하는 용도다. 놓친 멘션은 늦게 한 번 답한다. 결과는 `slack.catch_up`(`threads`, `recovered`)으로 남는다.
 
 ## 6. 실패와 응답 부재
 
@@ -82,7 +83,7 @@ Space 대응: 한 Slack 워크스페이스의 한 채널(`SLACK_CHANNEL_ID`, 별
 1. https://api.slack.com/apps 에서 테스트 워크스페이스에 앱을 만든다(이름 예: Ensemble).
 2. **Socket Mode** 켜기 → app-level 토큰 생성(scope `connections:write`) → `SLACK_APP_TOKEN`(`xapp-`).
 3. **OAuth & Permissions → Bot Token Scopes**: `app_mentions:read`, `channels:history`(비공개 채널이면 `groups:history`), `chat:write`. `--check`의 채널 확인(`conversations.info`)에는 `channels:read`(비공개면 `groups:read`)가 필요하며, 없으면 그 항목만 `missing_scope`로 표시된다.
-4. **Event Subscriptions** 켜기 → Subscribe to bot events: `app_mention`, `message.channels`(비공개면 `message.groups`). Socket Mode에서는 Request URL이 필요 없다.
+4. **Event Subscriptions** 켜기 → Subscribe to bot events: `app_mention`, `message.channels`(비공개면 `message.groups`). Socket Mode에서는 Request URL이 필요 없다. `message.channels`가 빠지면 멘션(`app_mention`)만 오고 스레드 답·자기 메시지 이벤트는 오지 않는다(2026-10-08 실측). `--check`는 구독 목록을 확인할 수 없으므로, 첫 실행에서 PM 답 직후 `slack.event_skipped`(`self`)가 보이는지로 확인한다. 이 경우에도 1분 주기 catch-up이 스레드 답을 회수하지만 최대 1분 늦다.
 5. 워크스페이스에 설치 → Bot User OAuth Token(`xoxb-`) → `SLACK_BOT_TOKEN`. 테스트 채널에서 `/invite @Ensemble`, 채널 id → `SLACK_TEST_CHANNEL_ID`.
 6. 값은 git 제외 대상인 `.env.local`(저장소 루트 또는 `app/`)에 둔다. 선택: `SLACK_USER_MAP`, `SLACK_OWNER_USER_ID`, 모델 사용 시 기존 PM 설정(`ENSEMBLE_PM_RUNTIME`, `ANTHROPIC_API_KEY` 등, `.env`). 모델 설정이 없으면 답은 고정 문장(`composedBy: template`)이다.
 
@@ -108,14 +109,34 @@ Socket Mode를 끄고 Event Subscriptions의 Request URL을 `https://<공개 주
 
 | 완료 기준 | 상태 | 근거 |
 |---|---|---|
-| 실제 Slack 초대/연결과 Space 대응 | **미검증** | 연결 설정(채널 → Space), Socket Mode 실행기와 `--check`, HTTP 엔드포인트 구현. 실제 설치·초대 후 실행 기록 없음 |
-| A 호출 → 맥락 확인 → 같은 스레드 답변 실제 왕복 | **구현만, 실제 미검증** | fake Slack 테스트로 스레드 읽기·Space 맥락 전달·같은 `thread_ts` 답변·답변 기록 확인 |
-| B Space 변화 → 선제 요청 → 담당자 응답 실제 왕복 | **구현만, 실제 미검증** | fake Slack 테스트로 막힘 → 선제 게시 → 담당자 답 → 작업 연결 확인 |
-| 원본 메시지/스레드·작성자·시각 보존, 결정/제안/미응답 구분 | **테스트로 확인(fake)** | 실제 Slack 페이로드 형식과의 일치는 미검증 |
-| 재수신·자기 메시지로 인한 중복 방지 | **테스트로 확인(fake)** | event_id, 재시작 후 원장 키, 이중 이벤트, 자기/bot 메시지 |
-| 읽기/발송 실패·응답 부재 표시, 경로·수동 단계·한계 기록 | **테스트로 확인(fake) + 이 문서** | 실제 Slack 오류 코드 발생은 미검증. 웹 화면 표시는 없음 |
+| 실제 Slack 초대/연결과 Space 대응 | **실제 검증** | 8.1: 실제 워크스페이스 테스트 채널에 bot 초대, `--check` 전 항목 통과, Socket Mode 연결, 채널 → Space(`slack-live`) 대응 |
+| A 호출 → 맥락 확인 → 같은 스레드 답변 실제 왕복 | **실제 검증(답 회수는 catch-up 경유)** | 사람 멘션 → 스레드 읽기 → Space 목표·결정·작업을 근거로 한 LLM 답이 같은 `thread_ts`에 게시 → 사람 답이 `decision`으로 원장에 기록. 사람 답은 `message.channels` 미구독으로 실시간 이벤트가 오지 않아 catch-up으로 회수했다 |
+| B Space 변화 → 선제 요청 → 담당자 응답 실제 왕복 | **부분 검증** | 개인 Agent 막힘(`task_blocked`) → PM이 채널에 선제 메시지 게시(`agent_blocker`, 작업 `research` 연결)까지 실제 확인. 담당자 답은 기록 시점까지 오지 않아 요청이 60분 뒤 `no_response`로 만료됨. 답 → 작업 연결은 fake 테스트로만 확인 |
+| 원본 메시지/스레드·작성자·시각 보존, 결정/제안/미응답 구분 | **실제 일부 검증** | 실제 페이로드로 원문·`thread_ts`·작성자·시각이 원장에 남고, 사람 답이 `decision`, 미응답이 `no_response`로 구분됨. `proposal` 분류는 fake로만 확인 |
+| 재수신·자기 메시지로 인한 중복 방지 | **실제 일부 검증** | catch-up 반복(1분 주기 수십 회)·실행기 재시작 3회 동안 같은 메시지 재기록·재답변 0건(`recovered: 0`). 실시간 `self`·`mention_via_app_mention` 무시와 Slack 재전송(`retry_num`)은 이벤트 미구독·재전송 미발생으로 실제 미관찰, fake로 확인 |
+| 읽기/발송 실패·응답 부재 표시, 경로·수동 단계·한계 기록 | **응답 부재 실제 검증 + 이 문서** | `slack.request_expired` → `stopped`에 `no_response`. 실제 Slack 오류 코드(읽기·발송 실패)는 발생하지 않아 미검증. 웹 화면 표시는 없음 |
 
-Socket Mode: fake 소켓 테스트로 envelope ack, `events_api` 전달, `disconnect` 교체, 종료 후 재연결, 잘못된 app 토큰 중단, 같은 event_id 재전송 시 답 한 번, 매핑 없는 사람의 대체 규칙을 확인했다. 실제 Slack WebSocket 연결은 미검증이다.
+Socket Mode: fake 소켓 테스트로 envelope ack, `events_api` 전달, `disconnect` 교체, 종료 후 재연결, 잘못된 app 토큰 중단, 같은 event_id 재전송 시 답 한 번, 매핑 없는 사람의 대체 규칙을 확인했다. 실제 연결에서는 `hello` → `events_api` 수신 → ack까지 확인했고, Slack 쪽 `disconnect`·재연결은 관찰하지 못했다.
+
+### 8.1 실제 실행 기록 (2026-10-08, 실제 워크스페이스의 테스트 채널 하나)
+
+설정: Socket Mode 앱, bot scopes `app_mentions:read`, `chat:write`, `channels:history`, `channels:read`, `groups:history`, `groups:read`, `users:read`. Bot event는 `app_mention`만 구독되어 있었다(`message.channels` 없음). PM 런타임 `ENSEMBLE_PM_RUNTIME=claude`. `SLACK_USER_MAP`·`SLACK_OWNER_USER_ID` 없음(대체 규칙: 채널의 사람 = 결정권자). 사람 역할은 사용자의 Slack 세션으로 작성했다.
+
+| 단계 | 결과 (실행기 로그) |
+|---|---|
+| `--check` | `check_auth`(빠진 scope 없음), `check_channel`(bot 멤버), `check_history`, `check_socket_mode` 모두 ok |
+| A: 사람이 스레드에서 멘션 | `socket.acked` → `slack.event_received`(`app_mention`) → `slack.thread_read`(2) → 11초 뒤 `slack.reply_posted`(`kind: answer`, `composedBy: llm`, 같은 `thread_ts`). 답은 확정 결정("첫 버전은 이메일 가입만 지원한다"), 작업 상태(인터뷰 정리 시작 가능, 화면 시안 대기), 대기 중인 결정 요청 없음을 Space에서 인용했다 |
+| A: 사람이 같은 스레드에 답 (멘션 없음) | 실시간 이벤트 없음(`message.channels` 미구독). 실행기 재시작 시 catch-up이 회수: `slack.reply_recorded`(`kind: decision`, `resolved: false` — PM 답이 질문이 아니라 걸린 요청이 없음) → `slack.catch_up`(`threads: 1`, `recovered: 1`), 다음 회차부터 `recovered: 0` |
+| B: 개인 Agent 막힘 기록 | `--trigger-blocker` → `space_change_recorded`(`task_blocked`, `research`) → `slack.request_sent`(`agent_blocker`, `target: *`, `taskIds: [research]`) — 채널 루트에 PM이 먼저 게시 |
+| B: 담당자 답 | 60분 안에 답 없음 → `slack.request_expired` → 종료 요약 `status: no_response`, `failures: []`, 원장 메시지 4건 |
+
+이번 실행에서 확인한 문제와 처리:
+
+- `message.channels` 미구독으로 스레드 답이 유실됨 → catch-up 추가(위 5절). 구독은 앱 관리 권한이 필요해 이번에 바꾸지 못했다.
+- 선제 메시지에 막힘 사유가 이미 마침표로 끝나면 `..`가 됨 → 문장부호가 있으면 더 붙이지 않도록 수정.
+- `SLACK_OWNER_USER_ID`가 없으면 선제 메시지가 "담당자님"으로만 시작하고 Slack 멘션이 없어 알림이 가지 않는다. 실제 운영 전 매핑이 필요하다.
+
+남은 실측: `message.channels` 구독 후 실시간 스레드 답 수신과 `self` 무시, 흐름 B의 담당자 답 → `resolved: true`·작업 연결, 실제 Slack 오류 코드 처리.
 
 로컬 확인: `next dev`에서 서명된 `url_verification` → 200(challenge), 잘못된 비밀·오래된 시각 → 401, 다른 채널 이벤트 → 200 후 `ignored: unbound_channel` 로그를 확인했다. 이때 실제 Slack API는 호출하지 않았다.
 
@@ -130,7 +151,8 @@ Socket Mode: fake 소켓 테스트로 envelope ack, `events_api` 전달, `discon
 
 - 한 워크스페이스·한 채널·Space 하나. 웹 앱에서는 프로젝트를 새로 시작하면 같은 채널이 새 프로젝트를 가리키고, 실험 실행기는 웹 앱과 별도 원장을 쓴다.
 - `SLACK_USER_MAP`이 없을 때의 대체 규칙(채널의 모든 사람 = 결정권자)은 테스트 전용이다. 권한 판단이나 실제 팀 운영에 쓰지 않는다.
-- Socket Mode 연결은 실행기 프로세스가 켜져 있는 동안만 유지된다. 꺼진 동안의 이벤트는 Slack 재시도 범위 밖이면 받지 못한다.
+- Socket Mode 연결은 실행기 프로세스가 켜져 있는 동안만 유지된다. 꺼진 동안의 이벤트 중 PM이 참여한 스레드의 답은 다음 시작 때 catch-up이 회수하지만, PM이 없는 스레드의 새 멘션은 받지 못한다.
+- catch-up은 PM이 참여한 스레드 수만큼 1분마다 `conversations.replies`를 부른다. 스레드가 많아지면 rate limit에 걸릴 수 있으며, 오래된 스레드를 빼는 기준은 아직 없다.
 - `message.channels` 구독으로 채널의 모든 메시지 이벤트가 서버에 도착한다. PM이 참여한 스레드 외에는 기록하지 않지만, 전송 자체는 Slack 설정의 범위다.
 - 흐름 B는 Coordinator 생성(서버 시작) 이후의 변화만 보낸다. 서버가 꺼진 동안의 변화는 보내지 않는다.
 - event_id 기억은 메모리 안에서만 유지된다(재시작 후에는 원장 키가 막는다).
