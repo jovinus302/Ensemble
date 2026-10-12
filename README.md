@@ -98,7 +98,8 @@ npm run start -w @ensemble/web
 | app/packages/meeting | 미팅 참여·주선 feasibility(#80) adapter와 Space 기록. 외부 왕복 미검증, [실험 기록](docs/feasibility/meeting-google-meet.md) |
 | app/test | 외부 provider 없는 회귀 검사 |
 | docs | 방향·구현·QA 안내 |
-| motion-remotion, docs/presentations | 과거 영상·발표 자료. 현재 제품 정의는 intent.md |
+| motion-remotion | 영상. v5 초안(현재 메시지) 진행 중, v2–v4는 과거 자료 |
+| docs/presentations | 과거 발표 자료. 현재 제품 정의는 intent.md |
 
 ## 문서
 

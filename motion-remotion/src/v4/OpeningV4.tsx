@@ -7,7 +7,7 @@
 import React, {useEffect, useLayoutEffect, useMemo, useState} from 'react';
 import {AbsoluteFill, continueRender, delayRender, interpolate, Easing, useCurrentFrame} from 'remotion';
 import {ensurePretendardLoaded, ensurePretendardVariableLoaded, FONT_FAMILY} from '../tokens/fonts';
-import {RevealUnit} from '../primitives/Headline';
+import {RevealUnit} from '../type/RevealUnit';
 import {type as typeScale, inkColor, accentColor} from '../v3/tokens/video';
 import {KineticHeadline} from '../v3/type/KineticHeadline';
 import {StageV4, TypeLayer} from './stage/StageV4';
