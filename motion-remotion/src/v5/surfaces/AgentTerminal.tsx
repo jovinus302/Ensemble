@@ -1,13 +1,14 @@
 // 지은의 Agent: terminal-style window. Top zone "비공개 작업" is locked and
 // blurred (the thread never enters it); bottom slot "공유 요청함" is the only
-// place a shared brief can land. The one dark surface in the world: it uses the
-// on-surface ink from the style bible as its body, so the five tools are not
-// five white cards.
+// place a shared brief can land (B3: "출시일 변경 브리프" capsule arrived).
+// The one dark surface in the world.
 import React from 'react';
 import {colors} from '../../v3/tokens/video';
 import {LockIcon} from '../../ui/icons';
-import {AGENT} from '../content';
+import {AGENT, B3COPY} from '../content';
+import {FONT_FAMILY} from '../../tokens/fonts';
 import {useFs} from './SurfaceFrame';
+import {useTheme} from './theme';
 
 const INK = colors.onSurface; // #18201C
 const TEXT = '#E3E9E5';
@@ -15,9 +16,21 @@ const MUTED = '#A8B4AD';
 
 export const AgentTerminal: React.FC = () => {
   const fs = useFs();
+  const {agentBody, mono, state} = useTheme();
+  const b3 = state === 'B3';
   return (
-    <div style={{position: 'absolute', inset: 0, background: INK, color: TEXT, display: 'flex', flexDirection: 'column'}}>
-      <div style={{height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 20px', background: '#222B26', borderBottom: '1px solid rgba(255,255,255,.08)'}}>
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: agentBody ?? INK,
+        color: TEXT,
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: mono ? `Consolas, "D2Coding", ${FONT_FAMILY}` : undefined,
+      }}
+    >
+      <div style={{height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 20px', background: agentBody ? 'rgba(0,0,0,.22)' : '#222B26', borderBottom: '1px solid rgba(255,255,255,.08)'}}>
         {[0, 1, 2].map((i) => (
           <div key={i} style={{width: 14, height: 14, borderRadius: 7, background: '#4A5650'}} />
         ))}
@@ -40,10 +53,11 @@ export const AgentTerminal: React.FC = () => {
       <div style={{flexShrink: 0, padding: '14px 22px 18px'}}>
         <div style={{fontSize: fs(22), fontWeight: 600, color: TEXT, marginBottom: 10}}>{AGENT.inboxLabel}</div>
         <div
+          data-anchor="slot-brief"
           style={{
             height: 64,
             borderRadius: 14,
-            border: '2.5px dashed #5C6A63',
+            border: b3 ? '2.5px solid rgba(143,213,179,.7)' : '2.5px dashed #5C6A63',
             display: 'flex',
             alignItems: 'center',
             padding: '0 18px',
@@ -52,9 +66,15 @@ export const AgentTerminal: React.FC = () => {
             fontWeight: 500,
           }}
         >
-          <span style={{fontWeight: 700, color: TEXT, marginRight: 10}}>{'>'}</span>
-          {AGENT.inboxEmpty}
-          <span style={{marginLeft: 8, width: 12, height: 26, background: TEXT, opacity: 0.8}} />
+          {b3 ? (
+            <div style={{padding: '6px 18px', borderRadius: 999, background: '#1F513F', color: '#C0EBD5', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>{B3COPY.brief}</div>
+          ) : (
+            <>
+              <span style={{fontWeight: 700, color: TEXT, marginRight: 10}}>{'>'}</span>
+              {AGENT.inboxEmpty}
+              <span style={{marginLeft: 8, width: 12, height: 26, background: TEXT, opacity: 0.8}} />
+            </>
+          )}
         </div>
       </div>
     </div>

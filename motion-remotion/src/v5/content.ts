@@ -55,3 +55,14 @@ export const AGENT = {
   inboxEmpty: '요청 없음',
   promptLine: '일정 정리하는 중',
 } as const;
+
+// ---- v6 theme frames: B3 copy (storyboard-v5.md §3 B3). PM Agent only reaches "전달됨"; humans decide.
+export const B3COPY = {
+  pmInitial: 'PM',
+  pinText: 'PM Agent · 출시일 11/6로 변경 — 배너 날짜 확인 부탁해요',
+  delivered: '전달됨',
+  pmName: 'PM Agent',
+  reply: '11/6로 바뀌었어요 · 10/14 회의',
+  brief: '출시일 변경 브리프',
+  headlineB1: '일은 각자의 도구에서 한다',
+} as const;

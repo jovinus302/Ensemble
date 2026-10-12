@@ -3,12 +3,13 @@
 // thread reaches in SF-B). Neutral palette; geometry only.
 import React from 'react';
 import {colors} from '../../v3/tokens/video';
-import {DESIGN} from '../content';
+import {DESIGN, B3COPY} from '../content';
 import {useFs} from './SurfaceFrame';
+import {useTheme} from './theme';
 
-const ink = colors.onSurface;
-
-const ToolIcon: React.FC<{kind: 'cursor' | 'rect' | 'circle' | 'text' | 'comment'; active?: boolean}> = ({kind, active}) => (
+const ToolIcon: React.FC<{kind: 'cursor' | 'rect' | 'circle' | 'text' | 'comment'; active?: boolean}> = ({kind, active}) => {
+  const {pal: c} = useTheme();
+  return (
   <div
     style={{
       width: 44,
@@ -17,8 +18,8 @@ const ToolIcon: React.FC<{kind: 'cursor' | 'rect' | 'circle' | 'text' | 'comment
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: active ? ink : 'transparent',
-      color: active ? '#fff' : colors.onSurfaceVariant,
+      background: active ? c.onSurface : 'transparent',
+      color: active ? c.onInk : c.onSurfaceVariant,
     }}
   >
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -29,13 +30,18 @@ const ToolIcon: React.FC<{kind: 'cursor' | 'rect' | 'circle' | 'text' | 'comment
       {kind === 'comment' && <path d="M5 6.5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3.5v-3.5H7a2 2 0 0 1-2-2z" />}
     </svg>
   </div>
-);
+  );
+};
 
 export const Canvas: React.FC = () => {
   const fs = useFs();
-  const ART = {x: 126, y: 118, w: 528, h: 276};
+  const {pal: c, state} = useTheme();
+  const ink = c.onSurface;
+  const themed = state !== undefined; // v6 frames use a compact artboard so the comment card fits under it
+  const b3 = state === 'B3';
+  const ART = {x: 126, y: themed ? 66 : 118, w: 528, h: 276};
   return (
-    <div style={{position: 'absolute', inset: 0, background: colors.surfaceContainer}}>
+    <div style={{position: 'absolute', inset: 0, background: c.surfaceContainer}}>
       {/* top bar */}
       <div
         style={{
@@ -48,12 +54,12 @@ export const Canvas: React.FC = () => {
           alignItems: 'center',
           gap: 16,
           padding: '0 22px',
-          background: colors.surface,
-          borderBottom: `1px solid ${colors.outlineVariant}`,
+          background: c.surface,
+          borderBottom: `1px solid ${c.outlineVariant}`,
         }}
       >
         <span style={{fontSize: fs(26), fontWeight: 700}}>{DESIGN.file}</span>
-        <span style={{marginLeft: 'auto', fontSize: fs(20), fontWeight: 600, color: colors.onSurfaceVariant}}>100%</span>
+        <span style={{marginLeft: 'auto', fontSize: fs(20), fontWeight: 600, color: c.onSurfaceVariant}}>100%</span>
       </div>
       {/* tool strip */}
       <div
@@ -63,8 +69,8 @@ export const Canvas: React.FC = () => {
           top: 64,
           bottom: 0,
           width: 72,
-          background: colors.surface,
-          borderRight: `1px solid ${colors.outlineVariant}`,
+          background: c.surface,
+          borderRight: `1px solid ${c.outlineVariant}`,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -86,12 +92,12 @@ export const Canvas: React.FC = () => {
           right: 0,
           top: 64,
           bottom: 0,
-          backgroundColor: colors.surfaceContainer,
+          backgroundColor: c.surfaceContainer,
           backgroundImage: 'radial-gradient(rgba(74,86,80,.28) 1.6px, transparent 1.7px)',
           backgroundSize: '26px 26px',
         }}
       >
-        <div style={{position: 'absolute', left: ART.x - 24, top: ART.y - 46, fontSize: fs(20), fontWeight: 600, color: colors.onSurfaceVariant}}>{DESIGN.frameLabel}</div>
+        <div style={{position: 'absolute', left: ART.x - 24, top: ART.y - 46, fontSize: fs(20), fontWeight: 600, color: c.onSurfaceVariant}}>{DESIGN.frameLabel}</div>
         {/* artboard */}
         <div
           style={{
@@ -110,6 +116,7 @@ export const Canvas: React.FC = () => {
           <div style={{position: 'absolute', right: -60, top: -80, width: 300, height: 300, borderRadius: '50%', background: colors.surface, opacity: 0.8}} />
           <div style={{position: 'absolute', right: 40, bottom: 28, width: 120, height: 120, borderRadius: 26, background: colors.brandInk, opacity: 0.9, transform: 'rotate(12deg)'}} />
           <div style={{position: 'absolute', right: 150, bottom: 56, width: 62, height: 62, borderRadius: '50%', background: colors.outlineVariant}} />
+          {b3 && <div style={{position: 'absolute', left: 22, top: 36, width: 186, height: 78, borderRadius: 14, border: `4px solid ${colors.warning}`, background: colors.warningContainer, boxSizing: 'border-box'}} />}
           <div style={{position: 'absolute', left: 34, top: 44, fontSize: 62, fontWeight: 800, letterSpacing: '-0.02em', color: colors.brandInk, lineHeight: 1.05}}>{DESIGN.banner}</div>
           <div style={{position: 'absolute', left: 36, top: 126, fontSize: fs(30), fontWeight: 600, color: colors.onSurfaceVariant}}>{DESIGN.sub}</div>
           <div style={{position: 'absolute', left: 36, bottom: 34, width: 150, height: 14, borderRadius: 7, background: colors.brandInk, opacity: 0.55}} />
@@ -136,8 +143,48 @@ export const Canvas: React.FC = () => {
             <div key={i} style={{position: 'absolute', left: x, top: y, width: 12, height: 12, background: '#fff', border: `2px solid ${ink}`, borderRadius: 3}} />
           ))}
         </div>
-        {/* comment pin (anchor for the thread) */}
-        <div
+        {/* B3: PM Agent comment card under the artboard; the pin is the thread anchor */}
+        {b3 && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 24,
+              top: ART.y + ART.h + 16,
+              width: 600,
+              height: 88,
+              borderRadius: 16,
+              background: c.surface,
+              boxShadow: `inset 0 0 0 1.5px ${c.outlineVariant}, 0 6px 14px -8px rgba(0,0,0,.35)`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '0 14px',
+            }}
+          >
+            <div
+              data-anchor="comment-pin"
+              style={{
+                flexShrink: 0,
+                width: 62,
+                height: 62,
+                borderRadius: '50% 50% 50% 8%',
+                background: c.primary,
+                color: c.onPrimary,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: fs(20),
+                fontWeight: 800,
+              }}
+            >
+              {B3COPY.pmInitial}
+            </div>
+            <div style={{flex: 1, fontSize: fs(22), fontWeight: 600, lineHeight: 1.22, color: c.onSurface}}>{B3COPY.pinText}</div>
+            <div style={{flexShrink: 0, padding: '4px 14px', borderRadius: 999, background: c.primaryContainer, color: c.onPrimaryContainer, fontSize: fs(20), fontWeight: 700}}>{B3COPY.delivered}</div>
+          </div>
+        )}
+        {/* comment pin */}
+        {!b3 && <div
           data-anchor="comment-pin"
           style={{
             position: 'absolute',
@@ -147,7 +194,7 @@ export const Canvas: React.FC = () => {
             height: 52,
             borderRadius: '50% 50% 50% 8%',
             background: ink,
-            color: '#fff',
+            color: c.onInk,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -157,7 +204,7 @@ export const Canvas: React.FC = () => {
           }}
         >
           {DESIGN.pin}
-        </div>
+        </div>}
       </div>
     </div>
   );

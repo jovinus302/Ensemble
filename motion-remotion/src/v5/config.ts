@@ -48,8 +48,11 @@ export const SURFACES: Record<SurfaceId, SurfaceSpec> = {
 // ---------------------------------------------------------------- world looks
 export type StillId = 'A1' | 'A2' | 'A3';
 
+export type ThemeId = 'TA' | 'TB' | 'R';
+export type FrameId = 'B1f140' | 'B3f600';
+
 export interface WorldLook {
-  id: StillId;
+  id: StillId | ThemeId;
   name: string;
   camera: WorldCamera;
   depthMul: number; // z spacing multiplier (x/y re-compensated so the screen layout holds)
@@ -67,11 +70,32 @@ export interface WorldLook {
   contact: string; // tight in-plane shadow around the face (contact edge)
   edgeAngle: number; // css angle (deg) of the lit -> dark gradient across each extrusion layer
   // key light as the direction shadows travel on the wall (per px of height above the wall)
-  shadow: {dx: number; dy: number; blurBase: number; blurPerH: number; opacity: number};
+  shadow: {dx: number; dy: number; blurBase: number; blurPerH: number; opacity: number; color?: string; long?: {mult: number; opacity: number}};
   nudge?: Partial<Record<SurfaceId, {x?: number; y?: number}>>; // per-look layout nudges (screen-layout fixes)
   bgOverlay?: string; // tone wash over the shared paper Background
   bg: 'paper' | {top: string; mid: string; bottom: string; glowA: string; glowB: string; vignette: number};
-  aerial: {color: string; strength: number}; // far surfaces lighten toward this tone
+  aerial: {color: string; strength: number; mode?: 'lighten' | 'darken'}; // far surfaces lighten (default) or darken toward this tone
+  // ---- v6 theme fields (all optional; A1-A3 leave them unset)
+  bgLayers?: string[]; // css background layers, first = top; replaces paper Background + wash
+  stageColor?: string; // container background / loading color
+  pools?: {rgb: string; scale: number; blur: number; base: number; lit: number}; // wall light pools behind each surface
+  dof?: Partial<Record<SurfaceId, number>>; // px blur per surface (face + side layers individually)
+  headline?: {color: string; accent: string; fontSize: number};
+  zOverride?: Partial<Record<SurfaceId, number>>;
+  yawSet?: Partial<Record<SurfaceId, number>>; // absolute surface yaw (overrides base*yawMul)
+  darkRim?: string; // rim color of the dark terminal
+  wallGap?: number;
+  litEdge?: number; // max harmony bleed on thread-touched surfaces
+  agentBody?: string;
+  pal?: 'light' | 'dark';
+  mono?: boolean;
+  cursor?: string; // cursor color (theme R)
+  grain?: number; // static grain opacity
+  dim?: {color: string; strength: number; blur: number}; // unconnected surfaces
+  halo?: number; // thread halo opacity
+  threadShadow?: string;
+  drop?: {dy: number; blur: number; inset: number; alpha: number}; // ambient drop shadow as a blurred plane behind the slab (large box-shadows on 3D faces tear in Chrome)
+  compWall?: boolean; // wall planes (shadows/pools) compensated so they project right behind the slab
 }
 
 export const LOOKS: Record<StillId, WorldLook> = {
@@ -150,17 +174,189 @@ export const placementsFor = (look: WorldLook): Record<SurfaceId, SurfacePlaceme
   const out = {} as Record<SurfaceId, SurfacePlacement>;
   for (const id of Object.keys(SURFACES) as SurfaceId[]) {
     const b = SURFACES[id].base;
-    const z = b.z * look.depthMul;
+    const z = look.zOverride?.[id] ?? b.z * look.depthMul;
     const k = refFactor(b.z) / refFactor(z);
     const n = look.nudge?.[id];
-    out[id] = {x: b.x * k + (n?.x ?? 0), y: b.y * k + (n?.y ?? 0), z, yaw: b.yaw * look.yawMul, w: b.w, h: b.h};
+    out[id] = {x: b.x * k + (n?.x ?? 0), y: b.y * k + (n?.y ?? 0), z, yaw: look.yawSet?.[id] ?? b.yaw * look.yawMul, w: b.w, h: b.h};
   }
   return out;
 };
 
-export const wallZFor = (look: WorldLook) => Math.min(...Object.values(placementsFor(look)).map((p) => p.z)) - 260;
+export const wallZFor = (look: WorldLook) => Math.min(...Object.values(placementsFor(look)).map((p) => p.z)) - (look.wallGap ?? 260);
 
 // ---------------------------------------------------------------- headline (SF-A)
 // T1, left column in the empty upper-left; width keeps it to two lines.
 export const HEADLINE_BOX = {left: 112, top: 84, width: 820};
 export const MIN_SCREEN_TEXT_PX = 20;
+
+// ---------------------------------------------------------------- v6 themes (review/log-v6-theme.md)
+export interface FrameSpec {
+  state: 'B1' | 'B3';
+  camera?: Partial<WorldCamera>;
+  yawMul?: number;
+  yawSet?: Partial<Record<SurfaceId, number>>;
+  nudge?: Partial<Record<SurfaceId, {x?: number; y?: number}>>;
+  lit: SurfaceId[]; // thread-touched surfaces
+  dimmed: SurfaceId[]; // unconnected surfaces pushed back
+  glow: number; // thread glow 0..1
+  thread: boolean;
+  litEdge: boolean;
+  dof?: Partial<Record<SurfaceId, number>>; // per-frame DOF override (rack-focus endpoint)
+  headlineCursor?: boolean;
+  messengerCursor?: 'first' | 'reply';
+}
+
+const DARK_FACE_GRAD = 'linear-gradient(135deg, rgba(255,255,255,.035) 0%, rgba(255,255,255,0) 50%)';
+
+export const THEMES: Record<ThemeId, WorldLook> = {
+  TA: {
+    id: 'TA',
+    name: '합주 무대 — 빛은 PM Agent의 실에서 온다',
+    camera: {tx: 167, ty: 50, tz: 0, yaw: -10, pitch: 6, s: 0.86},
+    depthMul: 1,
+    yawMul: 1,
+    thickness: 40,
+    radius: 24,
+    edgeLit: '#E3E9E5',
+    edgeDark: '#3B4640',
+    edgeDepthDarken: 0.3,
+    faceTone: '#FFFFFF',
+    faceGradient: 'linear-gradient(135deg, rgba(255,255,255,0) 55%, rgba(14,36,28,.10) 100%)',
+    bevel: 'inset 0 1.5px 0 #FFFFFF',
+    rimLine: 'rgba(255,255,255,.35)',
+    contact: '0 2px 4px rgba(0,0,0,.35)',
+    drop: {dy: 24, blur: 24, inset: 16, alpha: 0.5},
+    edgeAngle: 135,
+    shadow: {color: 'rgb(2,6,4)', opacity: 0.65, blurBase: 18, blurPerH: 0.03, dx: 0.05, dy: 0.12},
+    bg: 'paper',
+    bgLayers: ['radial-gradient(ellipse 110% 95% at 60% 45%, transparent 45%, rgba(4,8,6,.6) 100%)', 'linear-gradient(180deg, #173B30 0%, #0E1311 70%)'],
+    stageColor: '#0E1311',
+    pools: {rgb: '246,246,243', scale: 1.5, blur: 120, base: 0.06, lit: 0.2},
+    aerial: {color: '#0E1311', strength: 0.18, mode: 'darken'},
+    dof: {A: 3, P: 2.5},
+    headline: {color: '#E3E9E5', accent: '#8FD5B3', fontSize: 136},
+    zOverride: {S: 40, A: -800, P: -650},
+    darkRim: 'rgba(255,255,255,.34)',
+    wallGap: 160,
+    litEdge: 0.35,
+    agentBody: '#27302C',
+    dim: {color: '#0E1311', strength: 0.35, blur: 3},
+    halo: 0.22,
+    threadShadow: 'rgba(0,0,0,.45)',
+    compWall: true,
+  },
+  TB: {
+    id: 'TB',
+    name: '북극성 정렬장 — 흩어진 면이 실을 따라 정렬된다',
+    camera: {tx: 167, ty: 50, tz: 0, yaw: -6, pitch: 5, s: 0.86},
+    depthMul: 1,
+    yawMul: 1.6,
+    thickness: 36,
+    radius: 24,
+    edgeLit: '#E5E8E3',
+    edgeDark: '#7A867F',
+    edgeDepthDarken: 0.2,
+    faceTone: '#FFFFFF',
+    faceGradient: 'linear-gradient(135deg, rgba(255,255,255,0) 60%, rgba(24,32,28,.05) 100%)',
+    bevel: 'inset 0 1.5px 0 #FFFFFF',
+    rimLine: 'rgba(24,32,28,.14)',
+    contact: '0 1px 2px rgba(24,32,28,.25)',
+    edgeAngle: 135,
+    shadow: {color: 'rgb(24,32,28)', opacity: 0.45, blurBase: 4, blurPerH: 0.015, dx: 0.06, dy: 0.06, long: {mult: 1.8, opacity: 0.14}},
+    bg: 'paper',
+    bgLayers: [
+      'radial-gradient(ellipse 120% 110% at 55% 45%, transparent 50%, rgba(24,32,28,.22) 100%)',
+      'radial-gradient(ellipse 50% 55% at 62% 42%, #FFFFFF, transparent 70%)',
+      'linear-gradient(180deg, #FFFFFF 0%, #F6F6F3 45%, #DCDFDA 100%)',
+    ],
+    stageColor: '#F6F6F3',
+    wallGap: 120,
+    aerial: {color: '#FFFFFF', strength: 0},
+    dof: {A: 3, P: 2.5},
+    headline: {color: '#18201C', accent: '#2B6A52', fontSize: 144},
+    agentBody: '#18201C',
+    threadShadow: 'rgba(24,32,28,.22)',
+    compWall: true,
+  },
+  R: {
+    id: 'R',
+    name: '커서에서 시작하는 원샷 — 쓰는 손',
+    camera: {tx: 167, ty: 50, tz: 0, yaw: -10, pitch: 6, s: 0.86},
+    depthMul: 1,
+    yawMul: 1,
+    thickness: 12,
+    radius: 20,
+    edgeLit: '#2F3A34',
+    edgeDark: '#0E1311',
+    edgeDepthDarken: 0.25,
+    faceTone: '#151B18',
+    faceGradient: DARK_FACE_GRAD,
+    bevel: 'inset 0 1px 0 rgba(255,255,255,.06)',
+    rimLine: '#3B4640',
+    contact: '0 1px 2px rgba(0,0,0,.5)',
+    drop: {dy: 30, blur: 40, inset: 20, alpha: 0.7},
+    edgeAngle: 135,
+    shadow: {color: 'rgb(0,0,0)', opacity: 0.55, blurBase: 22, blurPerH: 0.03, dx: 0.05, dy: 0.12},
+    bg: 'paper',
+    bgLayers: [
+      'radial-gradient(rgba(227,233,229,.07) 1.2px, transparent 1.4px) 0 0/28px 28px',
+      'radial-gradient(ellipse 38% 45% at 18% 12%, rgba(31,81,63,.55), transparent 70%)',
+      'radial-gradient(ellipse 34% 40% at 86% 88%, rgba(74,58,30,.45), transparent 70%)',
+      '#151612',
+    ],
+    stageColor: '#151612',
+    grain: 0.05,
+    aerial: {color: '#0E1311', strength: 0.12, mode: 'darken'},
+    dof: {A: 3, P: 2.5},
+    headline: {color: '#E3E9E5', accent: '#8FD5B3', fontSize: 136},
+    zOverride: {S: 40, A: -800, P: -650},
+    wallGap: 160,
+    litEdge: 0.3,
+    agentBody: '#0E1311',
+    darkRim: '#566660',
+    pal: 'dark',
+    mono: true,
+    cursor: '#8FD5B3',
+    dim: {color: '#0E1311', strength: 0.22, blur: 3},
+    halo: 0.18,
+    threadShadow: 'rgba(0,0,0,.5)',
+    compWall: true,
+  },
+};
+
+export const THEME_FRAMES: Record<ThemeId, Record<FrameId, FrameSpec>> = {
+  TA: {
+    B1f140: {state: 'B1', lit: [], dimmed: [], glow: 0, thread: false, litEdge: false},
+    B3f600: {state: 'B3', lit: ['M', 'D', 'S', 'A'], dimmed: ['P'], glow: 1, thread: true, litEdge: true, dof: {A: 1.5}},
+  },
+  TB: {
+    B1f140: {state: 'B1', lit: [], dimmed: [], glow: 0, thread: false, litEdge: false},
+    B3f600: {state: 'B3', yawSet: {M: -6, D: -6, S: -6, A: -6}, lit: ['M', 'D', 'S', 'A'], dimmed: [], glow: 0, thread: true, litEdge: false},
+  },
+  R: {
+    B1f140: {state: 'B1', lit: [], dimmed: [], glow: 0, thread: false, litEdge: false, headlineCursor: true, messengerCursor: 'first'},
+    B3f600: {state: 'B3', lit: ['M', 'D', 'S', 'A'], dimmed: ['P'], glow: 1, thread: true, litEdge: true, dof: {A: 1.5}, headlineCursor: true, messengerCursor: 'reply'},
+  },
+};
+
+export const themeLook = (theme: ThemeId, frame: FrameId): {look: WorldLook; spec: FrameSpec} => {
+  const base = THEMES[theme];
+  const spec = THEME_FRAMES[theme][frame];
+  const look: WorldLook = {
+    ...base,
+    camera: {...base.camera, ...spec.camera},
+    dof: {...base.dof, ...spec.dof},
+    yawMul: spec.yawMul ?? base.yawMul,
+    yawSet: spec.yawSet ?? base.yawSet,
+    nudge: {...base.nudge, ...spec.nudge},
+  };
+  return {look, spec};
+};
+
+export const HEADLINE_BOX_V6 = {left: 112, top: 84, width: 880};
+// thread branches: control-point offsets from the start / end anchor (screen px), tuned per render
+export const THREAD_ROUTES: Record<'D' | 'S' | 'A', {c1: [number, number]; c2: [number, number]}> = {
+  D: {c1: [40, -170], c2: [-120, 150]},
+  S: {c1: [120, -150], c2: [-170, -150]},
+  A: {c1: [260, -250], c2: [-420, 24]},
+};

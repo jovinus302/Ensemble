@@ -1,23 +1,24 @@
 // 문서: a press-release draft with a campaign schedule table. The "광고 집행
-// 11/1" row is the stale-date target of later beats.
+// 11/1" row is the stale-date target (amber in B3).
 import React from 'react';
-import {colors} from '../../v3/tokens/video';
 import {DocCheckIcon} from '../../ui/icons';
 import {DOC} from '../content';
 import {useFs} from './SurfaceFrame';
-
-const Line: React.FC<{w: string; strong?: boolean}> = ({w, strong}) => (
-  <div style={{height: 12, width: w, borderRadius: 6, background: strong ? colors.outlineVariant : colors.surfaceContainerHigh}} />
-);
+import {useTheme} from './theme';
 
 export const Doc: React.FC = () => {
   const fs = useFs();
+  const {pal: c, state} = useTheme();
+  const b3 = state === 'B3';
+  const Line: React.FC<{w: string; strong?: boolean}> = ({w, strong}) => (
+    <div style={{height: 12, width: w, borderRadius: 6, background: strong ? c.outlineVariant : c.surfaceContainerHigh}} />
+  );
   return (
-    <div style={{position: 'absolute', inset: 0, background: colors.surfaceContainer, display: 'flex', flexDirection: 'column'}}>
-      <div style={{height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 22px', background: colors.surface, borderBottom: `1px solid ${colors.outlineVariant}`}}>
-        <DocCheckIcon size={30} color={colors.onSurfaceVariant} />
+    <div style={{position: 'absolute', inset: 0, background: c.surfaceContainer, display: 'flex', flexDirection: 'column'}}>
+      <div style={{height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 22px', background: c.surface, borderBottom: `1px solid ${c.outlineVariant}`}}>
+        <DocCheckIcon size={30} color={c.onSurfaceVariant} />
         <span style={{fontSize: fs(26), fontWeight: 700}}>{DOC.title}</span>
-        <span style={{marginLeft: 'auto', fontSize: fs(20), fontWeight: 600, padding: '2px 12px', borderRadius: 10, background: colors.surfaceContainerHigh, color: colors.onSurfaceVariant}}>{DOC.badge}</span>
+        <span style={{marginLeft: 'auto', fontSize: fs(20), fontWeight: 600, padding: '2px 12px', borderRadius: 10, background: c.surfaceContainerHigh, color: c.onSurfaceVariant}}>{DOC.badge}</span>
       </div>
       <div style={{flex: 1, padding: '22px 26px 0'}}>
         {/* the page */}
@@ -25,8 +26,8 @@ export const Doc: React.FC = () => {
           style={{
             height: '100%',
             borderRadius: '10px 10px 0 0',
-            background: colors.surface,
-            boxShadow: '0 -1px 0 rgba(201,209,203,.8), 0 2px 10px -2px rgba(23,59,48,.18)',
+            background: c.surface,
+            boxShadow: c.dark ? `0 -1px 0 ${c.outlineVariant}` : '0 -1px 0 rgba(201,209,203,.8), 0 2px 10px -2px rgba(23,59,48,.18)',
             padding: '28px 30px 0',
             display: 'flex',
             flexDirection: 'column',
@@ -39,24 +40,28 @@ export const Doc: React.FC = () => {
           <Line w="97%" />
           <Line w="64%" />
           <div style={{fontSize: fs(24), fontWeight: 700, marginTop: 22, marginBottom: 2}}>{DOC.scheduleTitle}</div>
-          <div style={{borderRadius: 12, boxShadow: `inset 0 0 0 1.5px ${colors.outlineVariant}`, overflow: 'hidden'}}>
-            {DOC.rows.map((r, i) => (
-              <div
-                key={r.item}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '8px 18px',
-                  fontSize: fs(22),
-                  fontWeight: 500,
-                  background: i % 2 ? colors.surfaceContainerLow : colors.surface,
-                  borderTop: i ? `1px solid ${colors.outlineVariant}` : undefined,
-                }}
-              >
-                <span style={{flex: 1}}>{r.item}</span>
-                <span style={{fontWeight: 700, fontVariantNumeric: 'tabular-nums'}}>{r.date}</span>
-              </div>
-            ))}
+          <div style={{borderRadius: 12, boxShadow: `inset 0 0 0 1.5px ${c.outlineVariant}`, overflow: 'hidden'}}>
+            {DOC.rows.map((r, i) => {
+              const amber = b3 && r.item === '광고 집행';
+              return (
+                <div
+                  key={r.item}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '8px 18px',
+                    fontSize: fs(22),
+                    fontWeight: 500,
+                    background: amber ? c.warningContainer : i % 2 ? c.surfaceContainerLow : c.surface,
+                    boxShadow: amber ? `inset 0 0 0 2.5px ${c.warning}` : undefined,
+                    borderTop: i ? `1px solid ${c.outlineVariant}` : undefined,
+                  }}
+                >
+                  <span style={{flex: 1}}>{r.item}</span>
+                  <span style={{fontWeight: 700, fontVariantNumeric: 'tabular-nums'}}>{r.date}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

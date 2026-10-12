@@ -10,7 +10,8 @@ import type {SurfacePlacement} from '../stage/worldProject';
 import {surfaceTransform} from '../stage/worldProject';
 import type {WorldLook} from '../config';
 import {FONT_FAMILY} from '../../tokens/fonts';
-import {colors} from '../../v3/tokens/video';
+import {HARMONY_RING, ThemeProvider, DARK, LIGHT} from './theme';
+import type {SurfaceTheme} from './theme';
 
 // on-screen text floor (>= 20px): per-surface minimum logical font size
 const FontFloor = createContext(20);
@@ -33,8 +34,17 @@ export const SurfaceFrame: React.FC<{
   aerial: number; // 0..1 how far back (wash strength multiplier)
   label: string;
   dark?: boolean; // dark body: no gloss streak over it
+  blur?: number; // px, applied to each side layer and the face individually (never the preserve-3d root)
+  litEdge?: number; // 0..1 harmony bleed along the contact edge (thread-touched)
+  dim?: boolean; // unconnected surface: darkened + pushed back
+  theme?: Partial<SurfaceTheme>;
   children: React.ReactNode;
-}> = ({place, look, fontFloor, aerial, label, dark, children}) => {
+}> = ({place, look, fontFloor, aerial, label, dark, blur = 0, litEdge = 0, dim, theme, children}) => {
+  const blurCss = blur > 0 ? `blur(${blur}px)` : undefined;
+  const termFace = dark && look.agentBody;
+  const faceBg = termFace ? look.agentBody! : look.faceTone;
+  const rim = dark && look.darkRim ? look.darkRim : undefined;
+  const pal = look.pal === 'dark' ? DARK : LIGHT;
   const T = look.thickness;
   const N = Math.max(3, Math.min(14, Math.round(T / 5)));
   const layers = Array.from({length: N}, (_, i) => {
@@ -50,6 +60,7 @@ export const SurfaceFrame: React.FC<{
           borderRadius: look.radius,
           background: `linear-gradient(${look.edgeAngle}deg, ${lit} 0%, ${dark} 100%)`,
           transform: `translateZ(${-T * t}px)`,
+          filter: blurCss,
         }}
       />
     );
@@ -67,23 +78,57 @@ export const SurfaceFrame: React.FC<{
         transform: surfaceTransform(place),
       }}
     >
+      {look.drop && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: look.drop.inset,
+            borderRadius: look.radius,
+            background: `rgba(0,0,0,${look.drop.alpha})`,
+            filter: `blur(${look.drop.blur}px)`,
+            transform: `translate3d(0, ${look.drop.dy}px, ${-T - 2}px)`,
+          }}
+        />
+      )}
       {layers}
       <div
         style={{
           position: 'absolute',
           inset: 0,
           borderRadius: look.radius,
-          background: look.faceTone,
-          boxShadow: `${look.contact}, ${look.bevel}`,
-          outline: `1px solid ${look.rimLine}`,
-          outlineOffset: -1,
+          background: faceBg,
+          boxShadow: rim ? `${look.contact}, inset 0 1.5px 0 ${rim}` : `${look.contact}, ${look.bevel}`,
+          outline: rim ? `1.5px solid ${rim}` : `1px solid ${look.rimLine}`,
+          outlineOffset: rim ? -1.5 : -1,
+          filter: blurCss,
           overflow: 'hidden',
           fontFamily: FONT_FAMILY,
-          color: colors.onSurface,
+          color: pal.onSurface,
         }}
       >
-        <FontFloor.Provider value={fontFloor}>{children}</FontFloor.Provider>
+        <ThemeProvider value={{pal, agentBody: look.agentBody, mono: look.mono, cursor: look.cursor, ...theme}}>
+          <FontFloor.Provider value={fontFloor}>{children}</FontFloor.Provider>
+        </ThemeProvider>
         <div style={{position: 'absolute', inset: 0, background: look.faceGradient, opacity: dark ? 0.25 : 1, pointerEvents: 'none'}} />
+        {litEdge > 0 && (
+          <>
+            <div style={{position: 'absolute', inset: 0, borderRadius: look.radius, boxShadow: `inset 0 0 36px 0 rgba(61,190,139,${litEdge * 0.55})`, pointerEvents: 'none'}} />
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                borderRadius: look.radius,
+                padding: 3,
+                background: HARMONY_RING,
+                opacity: litEdge,
+                WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+                WebkitMaskComposite: 'xor',
+                pointerEvents: 'none',
+              }}
+            />
+          </>
+        )}
+        {dim && look.dim && <div style={{position: 'absolute', inset: 0, background: look.dim.color, opacity: look.dim.strength, pointerEvents: 'none'}} />}
         {aerial > 0 && (
           <div style={{position: 'absolute', inset: 0, background: look.aerial.color, opacity: look.aerial.strength * aerial, pointerEvents: 'none'}} />
         )}
