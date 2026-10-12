@@ -5,6 +5,7 @@ import {OpeningV4} from './v4/OpeningV4';
 import {OPENING} from './v4/opening';
 import {PitchV4} from './v4/PitchV4';
 import {PITCH_TOTAL} from './v4/pitch/pitchTimeline';
+import {StyleFrameV5} from './v5/StyleFrameV5';
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -31,6 +32,16 @@ export const RemotionRoot: React.FC = () => {
       />
       {/* v4 full pitch video (storyboard-v4.md, 1834f = 61.1s). */}
       <Composition id="PitchV4" component={PitchV4} durationInFrames={PITCH_TOTAL} fps={30} width={1920} height={1080} />
+      {/* v5 style frame SF-A (storyboard-v5.md §5): world options A1/A2/A3. */}
+      <Composition
+        id="StyleFrameV5"
+        component={StyleFrameV5}
+        durationInFrames={1}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{still: 'A1' as const, measure: false}}
+      />
     </>
   );
 };
