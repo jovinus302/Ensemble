@@ -40,42 +40,142 @@ svg{display:block;font-family:inherit} .box{fill:#fff;stroke:var(--teal);stroke-
 <marker id="a-now" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#162d36"/></marker>
 <marker id="a-next" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7151a3"/></marker>
 </defs></svg>
-<section class="slide" aria-labelledby="architecture-title">
-<p class="eyebrow">01 / ARCHITECTURE</p>
-<h1 id="architecture-title">실행은 각 Agent가, 맥락과 결정의 이유는 PM Agent에 쌓인다</h1>
-<div class="legend"><span><i class="sample"></i>현재 구현</span><span><i class="sample next"></i>Next / 계획</span><span>논리 역할도</span></div>
-<svg width="1172" height="448" viewBox="0 0 1172 448" role="img" aria-label="요청과 대화 입력이 PM Agent, 실행 Agent, 대시보드로 이어진다. 작업 상태 기록은 선택 사항이다. Next 단계에서 PM Agent가 공용 메모리와 개인 메모리를 기억하고 회상한다.">
-<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#086e68"/></marker><marker id="purple" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#7151a3"/></marker></defs>
-<!-- Grid: top row y57-207 (center 132); bottom row y295-438. -->
-<rect class="box" x="0" y="57" width="192" height="66" rx="8"/>
-<text x="22" y="84" class="svg-title">요청 입력</text><text x="22" y="109" class="svg-body">할 일을 요청</text>
-<rect class="box" x="0" y="141" width="192" height="66" rx="8"/>
-<text x="22" y="168" class="svg-title">대화 입력</text><text x="22" y="193" class="svg-body">회의에서 할 일 추출</text>
-<path class="flow" d="M192 90 H226 V112 H260"/><path class="flow" d="M192 174 H226 V152 H260"/>
-<rect class="box" x="260" y="57" width="290" height="150" rx="8" style="fill:#e9f4ee"/>
-<text x="285" y="94" class="svg-title">PM Agent</text>
-<text x="285" y="128" class="svg-body">할 일을 작업으로 정리</text>
-<text x="285" y="158" class="svg-body">담당과 순서를 결정</text>
-<path class="flow" d="M550 132 H622"/><text x="586" y="120" text-anchor="middle" class="svg-label">배정</text>
-<rect class="box" x="622" y="57" width="230" height="150" rx="8"/>
-<text x="644" y="94" class="svg-title">실행 Agent</text><text x="644" y="128" class="svg-body">맡은 일을 수행</text><text x="644" y="158" class="svg-body">결과안을 제안</text>
-<path class="flow" d="M852 132 H924"/><text x="888" y="120" text-anchor="middle" class="svg-label">제안</text>
-<rect class="box" x="924" y="57" width="248" height="150" rx="8"/>
-<text x="946" y="94" class="svg-title">대시보드</text><text x="946" y="128" class="svg-body">진행 상황과 검토</text>
-<path class="flow" d="M1048 207 V295"/><text x="1060" y="256" class="svg-label">저장</text>
-<rect class="box" x="924" y="295" width="248" height="143" rx="8"/>
-<text x="946" y="333" class="svg-title">작업 상태 기록</text><text x="946" y="366" class="svg-body">선택 저장</text>
-<path class="memory-flow" d="M360 207 V294"/><text x="350" y="256" text-anchor="end" font-size="16" fill="#7151a3">기억(retain)</text>
-<path class="memory-flow" d="M450 294 V208"/><text x="460" y="256" font-size="16" fill="#7151a3">회상(recall)</text>
-<rect class="planned" x="260" y="295" width="592" height="143" rx="8"/>
-<path class="memory-flow" d="M924 367 H854"/><text x="888" y="355" text-anchor="middle" font-size="16" fill="#7151a3">기억</text>
+<section class="slide" style="padding:0" aria-labelledby="architecture-title">
+<svg width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="architecture-title" aria-describedby="architecture-desc">
+<desc id="architecture-desc">사람과 개인 Agent, 업무 공간에서 생긴 맥락이 PM Agent Core로 모이고, PM Agent는 공용·개인 메모리와 함께 상태를 정리해 대시보드·대화·행동으로 내보내며, 결과는 피드백 루프로 다시 입력과 기억에 반영되는 순환 구조.</desc>
+<defs>
+<marker id="a1-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#086E68"/></marker>
+<marker id="a1-grey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7F9298"/></marker>
+<style>
+.a1-zf{fill:none;stroke:#C8D3D6;stroke-width:1}
+.a1-now{fill:#FFFFFF;stroke:#086E68;stroke-width:1.6}
+.a1-next{fill:#F7F9F9;stroke:#9AA8AD;stroke-width:1.5;stroke-dasharray:5 4}
+.a1-zone{font-size:12px;font-weight:700;letter-spacing:1.6px;fill:#086E68}
+.a1-zt{font-size:15px;font-weight:700;fill:#162D36;letter-spacing:0}
+.a1-sub{font-size:12.5px;font-weight:700;fill:#566B73}
+.a1-n{font-size:14.5px;font-weight:700;fill:#162D36}
+.a1-nx{font-size:14.5px;font-weight:700;fill:#6B7E84}
+.a1-d{font-size:12.5px;fill:#566B73}
+.a1-dx{font-size:12.5px;fill:#7F9298}
+.a1-flow{stroke:#086E68;stroke-width:2;fill:none;marker-end:url(#a1-teal)}
+.a1-fut{stroke:#7F9298;stroke-width:1.8;stroke-dasharray:6 4;fill:none;marker-end:url(#a1-grey)}
+</style>
+</defs>
+<rect width="1280" height="720" fill="#FAFBF8"/>
 
-<text x="280" y="325" class="svg-title" style="fill:#7151a3">메모리 <tspan font-size="17" font-weight="400">Next / 계획</tspan></text>
-<rect class="planned" x="280" y="346" width="266" height="70" rx="5"/><text x="297" y="374" font-size="18" font-weight="700" fill="#7151a3">공용 메모리 <tspan font-size="15" font-weight="400">(Space)</tspan></text><text x="297" y="399" class="svg-body">팀의 결정과 이유</text>
-<rect class="planned" x="566" y="346" width="266" height="70" rx="5"/><text x="583" y="374" font-size="18" font-weight="700" fill="#7151a3">개인 메모리 <tspan font-size="15" font-weight="400">(My Workspace)</tspan></text><text x="583" y="399" class="svg-body">나의 작업 맥락</text>
+<!-- Header -->
+<text x="54" y="55" fill="#086E68" font-size="15" font-weight="700" letter-spacing="1.8">01 / ARCHITECTURE</text>
+<text id="architecture-title" x="54" y="99" fill="#162D36" font-size="34" font-weight="700" letter-spacing="-0.8">Ensemble Architecture — <tspan fill="#086E68">업무 맥락을 연결하는 PM Agent</tspan></text>
+<text x="54" y="129" fill="#566B73" font-size="17">다양한 업무 환경의 대화·결정·작업을 조직의 기억과 연결하고, 다음 행동으로 이어가는 시스템</text>
+
+<!-- Legend (top right) -->
+<g font-size="13" fill="#566B73">
+<rect x="850" y="41" width="20" height="13" rx="2" class="a1-now"/><text x="877" y="52">현재 구현</text>
+<rect x="948" y="41" width="20" height="13" rx="2" class="a1-next"/><text x="975" y="52">Next Step</text>
+<path d="M1050 47.5 H1078" class="a1-flow" style="stroke-width:1.8"/><text x="1086" y="52">현재 연결</text>
+<path d="M1150 47.5 H1178" class="a1-fut"/><text x="1186" y="52">향후 확장</text>
+</g>
+
+<!-- Zone frames -->
+<rect class="a1-zf" x="54" y="146" width="360" height="450" rx="10"/>
+<rect class="a1-zf" x="462" y="146" width="400" height="450" rx="10"/>
+<rect class="a1-zf" x="910" y="146" width="316" height="450" rx="10"/>
+<text x="68" y="169"><tspan class="a1-zone">INPUT</tspan><tspan class="a1-zt" dx="10">업무 맥락 수집</tspan></text>
+<text x="476" y="169"><tspan class="a1-zone">PROCESS</tspan><tspan class="a1-zt" dx="10">PM Agent Core</tspan></text>
+<text x="924" y="169"><tspan class="a1-zone">OUTPUT</tspan><tspan class="a1-zt" dx="10">가시화 · 행동 · 피드백</tspan></text>
+
+<!-- INPUT: Work Participants -->
+<rect x="68" y="180" width="332" height="200" rx="8" fill="#EEF3F2"/>
+<text x="82" y="201"><tspan font-size="14" font-weight="700" fill="#162D36">Work Participants</tspan><tspan font-size="13" fill="#566B73"> · 업무 참여 주체</tspan></text>
+<text x="82" y="228" class="a1-sub">사람</text>
+<rect class="a1-now" x="82" y="236" width="150" height="50" rx="6"/>
+<text x="96" y="257" class="a1-n">PM 직접 대화</text><text x="96" y="276" class="a1-d">CLI 요청</text>
+<rect class="a1-next" x="242" y="236" width="144" height="50" rx="6"/>
+<text x="314" y="266" text-anchor="middle" class="a1-nx" style="font-size:14px">사람 간 대화·회의</text>
+<text x="82" y="310" class="a1-sub">개인 Agent</text>
+<rect class="a1-now" x="82" y="318" width="190" height="50" rx="6"/>
+<text x="96" y="339" class="a1-n">Claude Code · Codex</text><text x="96" y="358" class="a1-d">작업 결과·맥락</text>
+
+<!-- INPUT: Workspaces -->
+<text x="68" y="430" class="a1-sub">업무 공간</text>
+<rect class="a1-now" x="68" y="438" width="84" height="46" rx="6"/>
+<text x="110" y="466" text-anchor="middle" class="a1-n">Slack</text>
+<rect class="a1-next" x="160" y="438" width="216" height="46" rx="6"/>
+<text x="268" y="466" text-anchor="middle" class="a1-nx" style="font-size:14px">Meeting · Notion · Telegram</text>
+<path class="a1-fut" d="M110 484 V521.5"/>
+<path class="a1-fut" d="M268 484 V521.5"/>
+
+<!-- INPUT: Connectors / Events -->
+<rect class="a1-next" x="68" y="524" width="332" height="56" rx="6"/>
+<text x="234" y="547" text-anchor="middle" class="a1-nx">Connectors / Events</text>
+<text x="234" y="567" text-anchor="middle" class="a1-dx">수집 · 정규화 · 권한</text>
+
+<!-- PROCESS: PM Agent Core -->
+<rect x="476" y="180" width="372" height="244" rx="10" fill="#E9F4EE" stroke="#086E68" stroke-width="2.5"/>
+<text x="492" y="209" font-size="20" font-weight="700" fill="#086E68">PM Agent</text>
+<rect class="a1-now" x="490" y="222" width="344" height="42" rx="6"/>
+<circle cx="511" cy="243" r="10" fill="#086E68"/><text x="511" y="247.5" text-anchor="middle" font-size="12" font-weight="700" fill="#FFFFFF">1</text>
+<text x="530" y="248" class="a1-n" style="font-size:15px">Context Aggregation</text><text x="822" y="248" text-anchor="end" class="a1-d" style="font-size:13px">맥락·출처 통합</text>
+<rect class="a1-now" x="490" y="270" width="344" height="42" rx="6"/>
+<circle cx="511" cy="291" r="10" fill="#086E68"/><text x="511" y="295.5" text-anchor="middle" font-size="12" font-weight="700" fill="#FFFFFF">2</text>
+<text x="530" y="296" class="a1-n" style="font-size:15px">State &amp; Goal</text><text x="822" y="296" text-anchor="end" class="a1-d" style="font-size:13px">목표·진행·의존 관계</text>
+<rect class="a1-next" x="490" y="318" width="344" height="42" rx="6"/>
+<circle cx="511" cy="339" r="10" fill="#9AA8AD"/><text x="511" y="343.5" text-anchor="middle" font-size="12" font-weight="700" fill="#FFFFFF">3</text>
+<text x="530" y="344" class="a1-nx" style="font-size:15px">Reason &amp; Plan</text><text x="822" y="344" text-anchor="end" class="a1-dx" style="font-size:13px">충돌 감지·다음 행동</text>
+<rect class="a1-next" x="490" y="366" width="344" height="42" rx="6"/>
+<circle cx="511" cy="387" r="10" fill="#9AA8AD"/><text x="511" y="391.5" text-anchor="middle" font-size="12" font-weight="700" fill="#FFFFFF">4</text>
+<text x="530" y="392" class="a1-nx" style="font-size:15px">Coordinate &amp; Act</text><text x="822" y="392" text-anchor="end" class="a1-dx" style="font-size:13px">협의·위임·후속 확인</text>
+
+<!-- PROCESS: Memory (shared service, Next) -->
+<path class="a1-fut" d="M632 426 V455.5"/>
+<path class="a1-fut" d="M692 456 V426.5"/>
+<rect class="a1-next" x="476" y="458" width="372" height="122" rx="10" style="stroke-width:1.8"/>
+<text x="492" y="484" font-size="17" font-weight="700" fill="#566B73">Memory</text>
+<rect x="700" y="468" width="134" height="22" rx="11" fill="#FFFFFF" stroke="#9AA8AD" stroke-width="1"/>
+<text x="767" y="483.5" text-anchor="middle" font-size="12" fill="#566B73">Hindsight 기반 · Next</text>
+<rect class="a1-next" x="490" y="498" width="168" height="42" rx="6" style="fill:#FFFFFF"/>
+<text x="574" y="524" text-anchor="middle"><tspan class="a1-nx" style="font-size:14px">공용 메모리</tspan><tspan class="a1-dx" style="font-size:12px"> (Space)</tspan></text>
+<rect class="a1-next" x="666" y="498" width="168" height="42" rx="6" style="fill:#FFFFFF"/>
+<text x="750" y="524" text-anchor="middle"><tspan class="a1-nx" style="font-size:14px">개인 메모리</tspan><tspan class="a1-dx" style="font-size:12px"> (Personal)</tspan></text>
+<text x="662" y="564" text-anchor="middle" font-size="13" font-weight="700" fill="#6B7E84" letter-spacing="0.3">Retain · Recall · Reflect</text>
+
+<!-- OUTPUT -->
+<rect class="a1-now" x="924" y="180" width="288" height="68" rx="8"/>
+<text x="942" y="208" class="a1-n" style="font-size:16px">Dashboard</text><text x="942" y="230" class="a1-d" style="font-size:13px">진행·결정·미해결</text>
+<rect class="a1-next" x="924" y="268" width="288" height="68" rx="8"/>
+<text x="942" y="296" class="a1-nx" style="font-size:16px">대화·알림</text><text x="942" y="318" class="a1-dx" style="font-size:13px">질문·제안·결정 요청</text>
+<rect x="1124" y="279" width="76" height="20" rx="10" fill="#FFFFFF" stroke="#086E68" stroke-width="1.2"/>
+<text x="1162" y="293.5" text-anchor="middle" font-size="12" font-weight="700" fill="#086E68">Slack 일부</text>
+<rect class="a1-next" x="924" y="356" width="288" height="68" rx="8"/>
+<text x="942" y="384" class="a1-nx" style="font-size:16px">Action</text><text x="942" y="406" class="a1-dx" style="font-size:13px">전달·태스크·후속 조율</text>
+<path class="a1-fut" d="M1068 424 V455.5"/>
+<rect class="a1-next" x="924" y="458" width="288" height="122" rx="10" style="stroke-width:1.8"/>
+<path d="M1080.5 482.5 A12.5 12.5 0 1 0 1080 497" fill="none" stroke="#7F9298" stroke-width="1.8" stroke-linecap="round"/><path d="M1076 477 L1081.5 482.8 L1074.5 486" fill="none" stroke="#7F9298" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1068" y="528" text-anchor="middle" class="a1-nx" style="font-size:16px">Feedback Loop</text>
+<text x="1068" y="552" text-anchor="middle" class="a1-dx" style="font-size:13px">결과 확인 → 상태·기억 갱신</text>
+
+<!-- Main flow -->
+<path class="a1-flow" d="M400 302 H474.5"/>
+<path class="a1-flow" d="M848 214 H922.5"/>
+<path class="a1-fut" d="M848 302 H922.5"/>
+<path class="a1-fut" d="M848 390 H922.5"/>
+
+<!-- 개인 Agent -> (Connectors) -> Memory : future direct access; Connectors -> Core -->
+<path class="a1-fut" d="M272 343 H388 V521.5"/>
+<text x="282" y="335" font-size="12" fill="#566B73">권한 기반 직접 조회</text>
+<path class="a1-fut" d="M400 536 H430 V400 H474.5"/>
+<path class="a1-fut" d="M400 566 H474.5"/>
+
+<!-- Feedback cycle: OUTPUT -> Memory + INPUT -->
+<path class="a1-fut" d="M1068 580 V620 H234 V581.5" style="stroke-width:2"/>
+<path class="a1-fut" d="M662 620 V581.5" style="stroke-width:2"/>
+
+<!-- Footnote + footer -->
+<text x="54" y="653" font-size="12" fill="#7F9298">개념 아키텍처. PM Agent는 중앙의 조율·기억 계층이며, 모든 업무 실행이 PM Agent를 반드시 통과한다는 의미는 아님.</text>
+<line x1="54" y1="669" x2="1226" y2="669" stroke="#C8D3D6" stroke-width="1"/>
+<text x="54" y="696.375" fill="#566B73" font-size="13" font-weight="700" letter-spacing="2">ENSEMBLE</text>
+<text x="1226" y="696.375" fill="#566B73" font-size="12.5" text-anchor="end">01 / 03</text>
 </svg>
-
-<div class="footer"><span class="brand">ENSEMBLE</span><span>01 / 03</span></div>
 </section>
 <section class="slide" aria-labelledby="roles-title">
 <p class="eyebrow">02 / PM AGENT의 역할</p>
