@@ -47,6 +47,17 @@ export const LIGHT: Pal = {
   onInk: '#FFFFFF',
 };
 
+// v6 TA: clean white surfaces. Same roles as LIGHT but the grey Material containers are
+// near-white tints and dividers are hairlines, so a surface reads white (not grey-white).
+export const CLEAN: Pal = {
+  ...LIGHT,
+  surfaceContainerLow: '#FBFCFA',
+  surfaceContainer: '#F7F9F6',
+  surfaceContainerHigh: '#EFF3EF',
+  secondaryContainer: '#E8EFEA',
+  outlineVariant: '#DEE4DF',
+};
+
 // DESIGN.md dark-* tokens; amber keeps its role (dark-voice-4 amber on a tinted container)
 export const DARK: Pal = {
   dark: true,
@@ -71,7 +82,7 @@ export const DARK: Pal = {
 
 export interface SurfaceTheme {
   pal: Pal;
-  state?: 'B1' | 'B3';
+  state?: 'B1' | 'B3' | 'B7';
   agentBody?: string;
   mono?: boolean;
   cursor?: string;

@@ -79,3 +79,26 @@ export const surfaceScreenBounds = (cam: WorldCamera, p: SurfacePlacement) => {
   const ys = pts.map((q) => q.y);
   return {x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys)};
 };
+
+/** world (x, y) on the wall plane z = wallZ that projects to screen (sx, sy): the camera pitch/yaw shift a far plane against a near slab, so wall pools are placed by inverting the projection (Newton, 2x2) */
+export const wallPointForScreen = (cam: WorldCamera, sx: number, sy: number, wallZ: number) => {
+  const cm = cameraMatrix(cam);
+  const proj = (x: number, y: number) => perspectiveDivide(cm.transformPoint(new DOMPoint(x, y, wallZ)));
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < 12; i++) {
+    const a = proj(x, y);
+    const bx = proj(x + 1, y);
+    const by = proj(x, y + 1);
+    const j00 = bx.x - a.x;
+    const j01 = by.x - a.x;
+    const j10 = bx.y - a.y;
+    const j11 = by.y - a.y;
+    const det = j00 * j11 - j01 * j10 || 1;
+    const ex = sx - a.x;
+    const ey = sy - a.y;
+    x += (j11 * ex - j01 * ey) / det;
+    y += (-j10 * ex + j00 * ey) / det;
+  }
+  return {x, y};
+};

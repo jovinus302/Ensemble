@@ -4,7 +4,7 @@
 // avatar, "전달됨") sits under it; the first message is scrolled out to make room.
 import React from 'react';
 import {AddIcon, SendIcon} from '../../ui/icons';
-import {MESSENGER, B3COPY} from '../content';
+import {MESSENGER, B3COPY, B7COPY} from '../content';
 import {useFs} from './SurfaceFrame';
 import {Cursor, HARMONY_RING, useTheme} from './theme';
 
@@ -35,6 +35,7 @@ const Avatar: React.FC<{name: string; size: number; fs: number}> = ({name, size,
 export const Messenger: React.FC = () => {
   const fs = useFs();
   const {pal: c, state, cursor, messengerCursor} = useTheme();
+  const b7 = state === 'B7';
   const b3 = state === 'B3';
   const base = fs(24);
   const small = fs(20);
@@ -121,7 +122,33 @@ export const Messenger: React.FC = () => {
         <span style={{fontSize: fs(28), fontWeight: 700}}>{MESSENGER.channel}</span>
         <span style={{marginLeft: 'auto', fontSize: small, fontWeight: 500, color: c.onSurfaceVariant}}>{MESSENGER.members}</span>
       </div>
-      <div style={{flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14, padding: '10px 26px'}}>{msgs.map(row)}</div>
+      <div style={{flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14, padding: '10px 26px'}}>
+        {b7 ? (
+          <>
+            <div style={{display: 'flex', gap: 12, alignItems: 'flex-end'}}>
+              <Avatar name="민호" size={Math.round(base * 1.7)} fs={fs(22)} />
+              <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>
+                <span style={{fontSize: small, fontWeight: 600, color: c.onSurfaceVariant, lineHeight: 1.1}}>민호</span>
+                <div style={{background: c.surfaceContainerLow, borderRadius: 18, borderTopLeftRadius: 6, padding: '9px 16px', fontSize: base, fontWeight: 500, lineHeight: 1.25, whiteSpace: 'nowrap', boxShadow: bubbleBorder}}>{B7COPY.minhoQ}</div>
+              </div>
+            </div>
+            <div data-anchor="pm-reply" style={{display: 'flex', gap: 12, alignItems: 'flex-end'}}>
+              <div style={{borderRadius: 14, padding: 2.5, background: HARMONY_RING, flexShrink: 0}}>
+                <div style={{width: Math.round(base * 1.95) - 5, height: Math.round(base * 1.95) - 5, borderRadius: 12, background: c.primary, color: c.onPrimary, fontSize: fs(20), fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                  {B3COPY.pmInitial}
+                </div>
+              </div>
+              <div style={{display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0}}>
+                <span style={{fontSize: small, fontWeight: 700, color: c.primary, lineHeight: 1.1}}>{B3COPY.pmName}</span>
+                <div style={{background: c.primaryContainer, color: c.onPrimaryContainer, borderRadius: 18, borderTopLeftRadius: 6, padding: '9px 16px', fontSize: base, fontWeight: 600, lineHeight: 1.25}}>{B7COPY.pmAnswer}</div>
+                <div style={{alignSelf: 'flex-start', padding: '3px 12px', borderRadius: 999, boxShadow: `inset 0 0 0 1.5px ${c.outlineVariant}`, color: c.onSurfaceVariant, fontSize: small, fontWeight: 700, whiteSpace: 'nowrap'}}>{B7COPY.source}</div>
+              </div>
+            </div>
+          </>
+        ) : (
+          msgs.map(row)
+        )}
+      </div>
       <div style={{height: 76, flexShrink: 0, padding: '0 22px 16px', display: 'flex', alignItems: 'center'}}>
         <div
           style={{

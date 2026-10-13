@@ -9,7 +9,7 @@ import {AbsoluteFill, continueRender, delayRender} from 'remotion';
 import {ensurePretendardLoaded, ensurePretendardVariableLoaded} from '../tokens/fonts';
 import {KineticHeadline} from '../v3/type/KineticHeadline';
 import {TypeLayer} from '../v4/stage/StageV4';
-import {COPY, HEADLINE_BOX, HEADLINE_BOX_V6, LOOKS, MIN_SCREEN_TEXT_PX, SURFACES, THREAD_ROUTES, placementsFor, themeLook} from './config';
+import {AFTERGLOW_ROUTES, COPY, HEADLINE_BOX, HEADLINE_BOX_V6, LOOKS, MIN_SCREEN_TEXT_PX, SOURCE_ROUTES, THREAD_ROUTES, placementsFor, themeLook} from './config';
 import type {FrameId, FrameSpec, StillId, SurfaceId, ThemeId, WorldLook} from './config';
 import {beatStart} from './timing';
 import {WorldStage} from './stage/WorldStage';
@@ -21,7 +21,8 @@ import {Meeting} from './surfaces/Meeting';
 import {Doc} from './surfaces/Doc';
 import {AgentTerminal} from './surfaces/AgentTerminal';
 import {HeadlineV5} from './type/HeadlineV5';
-import {Thread} from './fx/Thread';
+import {SourceLine, Thread} from './fx/Thread';
+import {ContextView} from './surfaces/ContextView';
 
 export interface StyleFrameV5Props {
   still?: StillId; // SF-A world options (A1-A3)
@@ -35,13 +36,14 @@ export interface StyleFrameV5Props {
 const SF_A_FRAME = beatStart('B1') + 140;
 const HEADLINE_LOCAL_FRAME = 400; // KineticHeadline local frame: all words settled
 
-const BODY: Record<SurfaceId, React.FC> = {M: Meeting, D: Canvas, S: Messenger, P: Doc, A: AgentTerminal};
+const BODY: Record<SurfaceId, React.FC> = {M: Meeting, D: Canvas, S: Messenger, P: Doc, A: AgentTerminal, V: ContextView};
 // paint hint only; real order comes from 3D depth sorting
 const wordsOf = (copy: string) => copy.split(' ').map((text) => ({text}));
 
+type Side = 'left' | 'right' | 'top' | 'bottom';
 type Anchor = {surface: SurfaceId; u: number; v: number; w: number; h: number};
 const THREAD_LIFT = 20;
-const ANCHOR_SIDE: Record<string, 'right' | 'left'> = {'pm-tile': 'right', 'comment-pin': 'left', 'pm-reply': 'left', 'slot-brief': 'left'};
+const ANCHOR_SIDE: Record<string, Side> = {'pm-tile': 'right', 'comment-pin': 'left', 'pm-reply': 'left', 'slot-brief': 'left', 'doc-row': 'right'};
 const BRANCH_ANCHOR = {D: 'comment-pin', S: 'pm-reply', A: 'slot-brief'} as const;
 
 const inQuad = (pt: {x: number; y: number}, q: {x: number; y: number}[]) => {
@@ -57,7 +59,7 @@ const Inner: React.FC<{look: WorldLook; label: string; spec?: FrameSpec; frame?:
   const headRef = useRef<HTMLDivElement>(null);
   const [anchors, setAnchors] = useState<Record<string, Anchor>>({});
 
-  const geo = (Object.keys(SURFACES) as SurfaceId[]).map((id) => {
+  const geo = (Object.keys(places) as SurfaceId[]).map((id) => {
     const scale = surfaceScreenScale(look.camera, places[id]);
     return {id, scale, floor: Math.ceil((MIN_SCREEN_TEXT_PX + 0.6) / scale), bounds: surfaceScreenBounds(look.camera, places[id])};
   });
@@ -65,7 +67,7 @@ const Inner: React.FC<{look: WorldLook; label: string; spec?: FrameSpec; frame?:
 
   // anchors: layout-space offsets of [data-anchor] elements inside their surface, projected with projectSurfacePoint
   useLayoutEffect(() => {
-    if (!spec?.thread) return;
+    if (!spec?.thread && !spec?.afterglow) return;
     const out: Record<string, Anchor> = {};
     document.querySelectorAll<HTMLElement>('[data-anchor]').forEach((el) => {
       let u = 0;
@@ -87,27 +89,55 @@ const Inner: React.FC<{look: WorldLook; label: string; spec?: FrameSpec; frame?:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [label]);
 
-  const pt = (id: string) => {
+  const pt = (id: string, side?: Side, fy = 0.5) => {
     const a = anchors[id];
     if (!a) return undefined;
-    const x = ANCHOR_SIDE[id] === 'right' ? a.u + a.w : a.u - 10; // end caps stop just short of the target
-    return projectSurfacePoint(look.camera, places[a.surface], x, a.v + a.h / 2, THREAD_LIFT);
+    const sd = side ?? ANCHOR_SIDE[id] ?? 'left';
+    // end caps stop just short of the target
+    const x = sd === 'right' ? a.u + a.w + 6 : sd === 'left' ? a.u - 10 : a.u + a.w / 2;
+    const y = sd === 'bottom' ? a.v + a.h + 10 : sd === 'top' ? a.v - 10 : a.v + a.h * fy;
+    return projectSurfacePoint(look.camera, places[a.surface], x, y, THREAD_LIFT);
   };
-  const start = pt('pm-tile');
-  const branches =
-    spec?.thread && start
+  // faces in front of a hidden-behind line: every surface except the ones the line starts / ends on
+  const occ = (...except: (SurfaceId | undefined)[]) =>
+    (Object.keys(places) as SurfaceId[])
+      .filter((id) => !except.includes(id))
+      .map((id) => {
+        const pl = places[id];
+        return [projectSurfacePoint(look.camera, pl, 0, 0), projectSurfacePoint(look.camera, pl, pl.w, 0), projectSurfacePoint(look.camera, pl, pl.w, pl.h), projectSurfacePoint(look.camera, pl, 0, pl.h)].map((q) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(' ');
+      });
+  const surfOf = (id: string) => anchors[id]?.surface;
+  type Curve = {k: string; occ?: string[]; from: {x: number; y: number}; to: {x: number; y: number}; c1: [number, number]; c2: [number, number]; w?: [number, number]};
+  const branches: Curve[] =
+    spec?.thread
       ? (['D', 'S', 'A'] as const).flatMap((k) => {
-          const e = pt(BRANCH_ANCHOR[k]);
-          if (!e) return [];
           const r = THREAD_ROUTES[k];
-          const d = `M ${start.x} ${start.y} C ${start.x + r.c1[0]} ${start.y + r.c1[1]}, ${e.x + r.c2[0]} ${e.y + r.c2[1]}, ${e.x} ${e.y}`;
-          return [{k, d, from: start, to: e, c1: r.c1, c2: r.c2}];
+          const st = pt('pm-tile', 'right', r.fy);
+          const start = st && {x: st.x + r.dx, y: st.y};
+          const e = pt(BRANCH_ANCHOR[k]);
+          if (!start || !e) return [];
+          return [{k, from: start, to: e, c1: r.c1, c2: r.c2, w: r.w}];
         })
       : [];
+  const afterglow: Curve[] = spec?.afterglow
+    ? AFTERGLOW_ROUTES.flatMap((r) => {
+        const from = pt(r.from, r.fromSide, r.fy);
+        const to = pt(r.to, r.toSide);
+        return from && to ? [{k: `${r.from}>${r.to}`, from, to, c1: r.c1, c2: r.c2, w: r.w, occ: occ(surfOf(r.from), surfOf(r.to))}] : [];
+      })
+    : [];
+  const sources: Curve[] = spec?.sources
+    ? SOURCE_ROUTES.flatMap((r) => {
+        const from = pt(r.from, r.fromSide ?? 'left');
+        const to = pt(r.to, r.toSide);
+        return from && to ? [{k: `${r.from}>${r.to}`, from, to, c1: r.c1, c2: r.c2, occ: occ(surfOf(r.from), surfOf(r.to))}] : [];
+      })
+    : [];
+  const cp = (c: Curve) => ({p0: c.from, p1: {x: c.from.x + c.c1[0], y: c.from.y + c.c1[1]}, p2: {x: c.to.x + c.c2[0], y: c.to.y + c.c2[1]}, p3: c.to});
 
   const threadFaceHits = () => {
     const hits: string[] = [];
-    for (const b of branches) {
+    for (const b of [...branches, ...afterglow, ...sources]) {
       const p1 = {x: b.from.x + b.c1[0], y: b.from.y + b.c1[1]};
       const p2 = {x: b.to.x + b.c2[0], y: b.to.y + b.c2[1]};
       for (let i = 1; i < 100; i++) {
@@ -154,7 +184,7 @@ const Inner: React.FC<{look: WorldLook; label: string; spec?: FrameSpec; frame?:
           anchors: Object.fromEntries(Object.entries(anchors).map(([k, a]) => [k, {...a, scr: pt(k) && {x: Math.round(pt(k)!.x), y: Math.round(pt(k)!.y)}}])),
           threadOnFaces: threadFaceHits(),
           headline: hb && {x0: Math.round(hb.left), x1: Math.round(hb.right), y0: Math.round(hb.top), y1: Math.round(hb.bottom)},
-          surfaces: geo.map((g) => ({id: g.id, scale: +g.scale.toFixed(3), floor: g.floor, b: Object.fromEntries(Object.entries(g.bounds).map(([k, v]) => [k, Math.round(v)]))})),
+          surfaces: geo.map((g) => ({id: g.id, quad: (() => { const pl = places[g.id]; return [[0, 0], [pl.w, 0], [pl.w, pl.h], [0, pl.h]].map(([u, v]) => { const q = projectSurfacePoint(look.camera, pl, u, v); return [Math.round(q.x), Math.round(q.y)]; }); })(), scale: +g.scale.toFixed(3), floor: g.floor, b: Object.fromEntries(Object.entries(g.bounds).map(([k, v]) => [k, Math.round(v)]))})),
           smallText: small,
         }),
     );
@@ -165,6 +195,7 @@ const Inner: React.FC<{look: WorldLook; label: string; spec?: FrameSpec; frame?:
       frame={SF_A_FRAME}
       look={look}
       lit={spec?.lit}
+      even={spec?.evenLight}
       surfaces={geo.map((g) => {
         const Body = BODY[g.id];
         const p = places[g.id];
@@ -190,17 +221,23 @@ const Inner: React.FC<{look: WorldLook; label: string; spec?: FrameSpec; frame?:
       overlay={
         spec ? (
           <>
+            {afterglow.map((b, i) => (
+              <Thread key={b.k} {...cp(b)} gradientId={`ag${i}`} w0={b.w?.[0] ?? 9} w1={b.w?.[1] ?? 7} alpha={look.afterglow ?? 0.2} halo={0} shadowColor="rgba(0,0,0,.3)" caps={false} occluders={b.occ} />
+            ))}
             {branches.map((b, i) => (
-              <Thread key={b.k} d={b.d} from={b.from} to={b.to} gradientId={`th${i}`} glow={spec.glow} halo={look.halo ?? 0} shadowColor={look.threadShadow} />
+              <Thread key={b.k} {...cp(b)} gradientId={`th${i}`} w0={b.w?.[0]} w1={b.w?.[1]} glow={spec.glow} halo={look.halo ?? 0} shadowColor={look.threadShadow} />
+            ))}
+            {sources.map((b) => (
+              <SourceLine key={b.k} id={`src-${b.k}`} occluders={b.occ} from={b.from} to={b.to} c1={cp(b).p1} c2={cp(b).p2} />
             ))}
             {showHeadline && look.headline && (
               <div ref={headRef} style={{position: 'absolute', left: HEADLINE_BOX_V6.left, top: HEADLINE_BOX_V6.top, width: HEADLINE_BOX_V6.width}}>
                 <HeadlineV5
-                  copy={frame === 'B3f600' ? COPY.B3 : COPY.B1}
+                  copy={frame === 'B7f1440' ? COPY.B7 : frame === 'B3f600' ? COPY.B3 : COPY.B1}
                   accentWords={frame === 'B3f600' ? 2 : 0}
                   color={look.headline.color}
                   accent={look.headline.accent}
-                  fontSize={look.headline.fontSize}
+                  fontSize={spec.headlineSize ?? look.headline.fontSize}
                   width={HEADLINE_BOX_V6.width}
                   cursor={spec.headlineCursor ? look.cursor : undefined}
                 />
@@ -243,7 +280,7 @@ export const StyleFrameV5: React.FC<StyleFrameV5Props> = ({still = 'A1', theme, 
       label={themed ? `${theme}-${frame}` : still}
       spec={themed?.spec}
       frame={themed ? frame : undefined}
-      showHeadline={themed ? (headline ?? frame === 'B1f140') : true}
+      showHeadline={themed ? (headline ?? frame !== 'B3f600') : true}
       measure={measure}
     />
   );

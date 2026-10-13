@@ -10,7 +10,7 @@ import type {SurfacePlacement} from '../stage/worldProject';
 import {surfaceTransform} from '../stage/worldProject';
 import type {WorldLook} from '../config';
 import {FONT_FAMILY} from '../../tokens/fonts';
-import {HARMONY_RING, ThemeProvider, DARK, LIGHT} from './theme';
+import {HARMONY_RING, ThemeProvider, DARK, LIGHT, CLEAN} from './theme';
 import type {SurfaceTheme} from './theme';
 
 // on-screen text floor (>= 20px): per-surface minimum logical font size
@@ -44,7 +44,7 @@ export const SurfaceFrame: React.FC<{
   const termFace = dark && look.agentBody;
   const faceBg = termFace ? look.agentBody! : look.faceTone;
   const rim = dark && look.darkRim ? look.darkRim : undefined;
-  const pal = look.pal === 'dark' ? DARK : LIGHT;
+  const pal = look.pal === 'dark' ? DARK : look.pal === 'clean' ? CLEAN : LIGHT;
   const T = look.thickness;
   const N = Math.max(3, Math.min(14, Math.round(T / 5)));
   const layers = Array.from({length: N}, (_, i) => {

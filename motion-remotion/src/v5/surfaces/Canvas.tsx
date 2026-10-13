@@ -38,7 +38,8 @@ export const Canvas: React.FC = () => {
   const {pal: c, state} = useTheme();
   const ink = c.onSurface;
   const themed = state !== undefined; // v6 frames use a compact artboard so the comment card fits under it
-  const b3 = state === 'B3';
+  const b7 = state === 'B7';
+  const b3 = state === 'B3' || b7; // PM Agent comment card present
   const ART = {x: 126, y: themed ? 66 : 118, w: 528, h: 276};
   return (
     <div style={{position: 'absolute', inset: 0, background: c.surfaceContainer}}>
@@ -116,8 +117,8 @@ export const Canvas: React.FC = () => {
           <div style={{position: 'absolute', right: -60, top: -80, width: 300, height: 300, borderRadius: '50%', background: colors.surface, opacity: 0.8}} />
           <div style={{position: 'absolute', right: 40, bottom: 28, width: 120, height: 120, borderRadius: 26, background: colors.brandInk, opacity: 0.9, transform: 'rotate(12deg)'}} />
           <div style={{position: 'absolute', right: 150, bottom: 56, width: 62, height: 62, borderRadius: '50%', background: colors.outlineVariant}} />
-          {b3 && <div style={{position: 'absolute', left: 22, top: 36, width: 186, height: 78, borderRadius: 14, border: `4px solid ${colors.warning}`, background: colors.warningContainer, boxSizing: 'border-box'}} />}
-          <div style={{position: 'absolute', left: 34, top: 44, fontSize: 62, fontWeight: 800, letterSpacing: '-0.02em', color: colors.brandInk, lineHeight: 1.05}}>{DESIGN.banner}</div>
+          {state === 'B3' && <div style={{position: 'absolute', left: 22, top: 36, width: 186, height: 78, borderRadius: 14, border: `4px solid ${colors.warning}`, background: colors.warningContainer, boxSizing: 'border-box'}} />}
+          <div style={{position: 'absolute', left: 34, top: 44, fontSize: 62, fontWeight: 800, letterSpacing: '-0.02em', color: colors.brandInk, lineHeight: 1.05}}>{b7 ? DESIGN.bannerNew : DESIGN.banner}</div>
           <div style={{position: 'absolute', left: 36, top: 126, fontSize: fs(30), fontWeight: 600, color: colors.onSurfaceVariant}}>{DESIGN.sub}</div>
           <div style={{position: 'absolute', left: 36, bottom: 34, width: 150, height: 14, borderRadius: 7, background: colors.brandInk, opacity: 0.55}} />
         </div>
@@ -146,6 +147,7 @@ export const Canvas: React.FC = () => {
         {/* B3: PM Agent comment card under the artboard; the pin is the thread anchor */}
         {b3 && (
           <div
+            data-anchor="d-card"
             style={{
               position: 'absolute',
               left: 24,
@@ -179,8 +181,8 @@ export const Canvas: React.FC = () => {
             >
               {B3COPY.pmInitial}
             </div>
-            <div style={{flex: 1, fontSize: fs(22), fontWeight: 600, lineHeight: 1.22, color: c.onSurface}}>{B3COPY.pinText}</div>
-            <div style={{flexShrink: 0, padding: '4px 14px', borderRadius: 999, background: c.primaryContainer, color: c.onPrimaryContainer, fontSize: fs(20), fontWeight: 700}}>{B3COPY.delivered}</div>
+            <div style={{flex: 1, fontSize: fs(22), fontWeight: 600, lineHeight: 1.22, color: c.onSurface}}>{b7 ? B3COPY.pinTextB7 : B3COPY.pinText}</div>
+            <div style={{flexShrink: 0, padding: '4px 14px', borderRadius: 999, background: c.primaryContainer, color: c.onPrimaryContainer, fontSize: fs(20), fontWeight: 700}}>{b7 ? B3COPY.reflected : B3COPY.delivered}</div>
           </div>
         )}
         {/* comment pin */}

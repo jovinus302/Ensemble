@@ -5,7 +5,7 @@
 import React from 'react';
 import {colors} from '../../v3/tokens/video';
 import {LockIcon} from '../../ui/icons';
-import {AGENT, B3COPY} from '../content';
+import {AGENT, B3COPY, B7COPY} from '../content';
 import {FONT_FAMILY} from '../../tokens/fonts';
 import {useFs} from './SurfaceFrame';
 import {useTheme} from './theme';
@@ -17,7 +17,8 @@ const MUTED = '#A8B4AD';
 export const AgentTerminal: React.FC = () => {
   const fs = useFs();
   const {agentBody, mono, state} = useTheme();
-  const b3 = state === 'B3';
+  const b3 = state === 'B3' || state === 'B7';
+  const b7 = state === 'B7';
   return (
     <div
       style={{
@@ -55,19 +56,23 @@ export const AgentTerminal: React.FC = () => {
         <div
           data-anchor="slot-brief"
           style={{
-            height: 64,
+            ...(b7 ? {minHeight: 64, flexWrap: 'wrap' as const, gap: 8, padding: '10px 16px'} : {height: 64}),
+            ...(b7 ? {boxSizing: 'border-box' as const} : {}),
             borderRadius: 14,
             border: b3 ? '2.5px solid rgba(143,213,179,.7)' : '2.5px dashed #5C6A63',
             display: 'flex',
             alignItems: 'center',
-            padding: '0 18px',
+            ...(b7 ? {} : {padding: '0 18px'}),
             fontSize: fs(20),
             color: MUTED,
             fontWeight: 500,
           }}
         >
           {b3 ? (
-            <div style={{padding: '6px 18px', borderRadius: 999, background: '#1F513F', color: '#C0EBD5', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>{B3COPY.brief}</div>
+            <>
+              <div style={{padding: '6px 18px', borderRadius: 999, background: '#1F513F', color: '#C0EBD5', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>{b7 ? B7COPY.agentLine : B3COPY.brief}</div>
+              {b7 && <div style={{padding: '4px 14px', borderRadius: 999, background: '#8FD5B3', color: '#00382A', fontSize: fs(20), fontWeight: 800, whiteSpace: 'nowrap'}}>{B7COPY.reflected}</div>}
+            </>
           ) : (
             <>
               <span style={{fontWeight: 700, color: TEXT, marginRight: 10}}>{'>'}</span>

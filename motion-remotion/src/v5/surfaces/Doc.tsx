@@ -2,7 +2,7 @@
 // 11/1" row is the stale-date target (amber in B3).
 import React from 'react';
 import {DocCheckIcon} from '../../ui/icons';
-import {DOC} from '../content';
+import {DOC, B7COPY} from '../content';
 import {useFs} from './SurfaceFrame';
 import {useTheme} from './theme';
 
@@ -10,6 +10,7 @@ export const Doc: React.FC = () => {
   const fs = useFs();
   const {pal: c, state} = useTheme();
   const b3 = state === 'B3';
+  const b7 = state === 'B7';
   const Line: React.FC<{w: string; strong?: boolean}> = ({w, strong}) => (
     <div style={{height: 12, width: w, borderRadius: 6, background: strong ? c.outlineVariant : c.surfaceContainerHigh}} />
   );
@@ -42,7 +43,8 @@ export const Doc: React.FC = () => {
           <div style={{fontSize: fs(24), fontWeight: 700, marginTop: 22, marginBottom: 2}}>{DOC.scheduleTitle}</div>
           <div style={{borderRadius: 12, boxShadow: `inset 0 0 0 1.5px ${c.outlineVariant}`, overflow: 'hidden'}}>
             {DOC.rows.map((r, i) => {
-              const amber = b3 && r.item === '광고 집행';
+              const amber = (b3 && r.item === '광고 집행') || (b7 && r.item === '보도자료 배포');
+              const date = b7 && r.item === '광고 집행' ? '11/6' : r.date;
               return (
                 <div
                   key={r.item}
@@ -57,8 +59,12 @@ export const Doc: React.FC = () => {
                     borderTop: i ? `1px solid ${c.outlineVariant}` : undefined,
                   }}
                 >
-                  <span style={{flex: 1}}>{r.item}</span>
-                  <span style={{fontWeight: 700, fontVariantNumeric: 'tabular-nums'}}>{r.date}</span>
+                  <span style={{flex: 1, whiteSpace: 'nowrap'}}>{r.item}</span>
+                  {b7 && amber ? (
+                    <span data-anchor="doc-row" style={{padding: '1px 12px', borderRadius: 999, background: c.warning, color: '#FFFFFF', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>{B7COPY.waiting}</span>
+                  ) : (
+                    <span style={{fontWeight: 700, fontVariantNumeric: 'tabular-nums'}}>{date}</span>
+                  )}
                 </div>
               );
             })}

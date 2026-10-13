@@ -23,6 +23,7 @@ export const DESIGN = {
   file: '출시 배너',
   frameLabel: '배너 1200 × 630',
   banner: '10.30 출시',
+  bannerNew: '11.06 출시',
   sub: '새로운 시작',
   pin: '1',
 } as const;
@@ -60,9 +61,38 @@ export const AGENT = {
 export const B3COPY = {
   pmInitial: 'PM',
   pinText: 'PM Agent · 출시일 11/6로 변경 — 배너 날짜 확인 부탁해요',
+  pinTextB7: 'PM Agent · 배너 날짜가 11/6로 바뀌었어요',
+  reflected: '반영됨',
   delivered: '전달됨',
   pmName: 'PM Agent',
   reply: '11/6로 바뀌었어요 · 10/14 회의',
   brief: '출시일 변경 브리프',
   headlineB1: '일은 각자의 도구에서 한다',
+} as const;
+
+// ---- v6 theme frame B7 (storyboard-v5.md §3 B7): story state after B3-B6.
+export const B7COPY = {
+  decisionCard: '광고가 출시 전이에요. 11/6로 옮길까요?',
+  decisionChip: '확정 · 지은',
+  minhoQ: '출시일 왜 11/6이에요?',
+  pmAnswer: '10/14 회의 결정이에요. 인증 심사가 늦어졌어요.',
+  source: '출처 · 10/14 회의',
+  agentLine: '광고 일정 11/6로 변경',
+  waiting: '반영 대기',
+  reflected: '반영됨',
+} as const;
+
+export const CONTEXT_VIEW = {
+  title: '프로젝트 맥락',
+  rows: [
+    {key: '목표', value: '11/6 출시'},
+    {key: '결정', value: '출시일 변경 (인증 지연)'},
+    {key: '반영', value: ''}, // rendered as ✓ chips
+    {key: '다음', value: '보도자료 확인 · 내일 10시'},
+  ],
+  reflect: [
+    {item: '배너', done: true},
+    {item: '광고', done: true},
+    {item: '보도자료', done: false},
+  ],
 } as const;
