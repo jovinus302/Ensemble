@@ -25,7 +25,9 @@ const BgTone: React.FC<{bg: Exclude<WorldLook['bg'], 'paper'>}> = ({bg}) => (
 // v6: light pools on the wall behind each surface (lit = thread-touched). The wall is far
 // behind the slabs, so wall coordinates are scaled by k = ref(z_slab) / ref(z_wall): the pool
 // then projects right behind its slab instead of drifting with parallax.
-const WallPools: React.FC<{look: WorldLook; places: Record<SurfaceId, SurfacePlacement>; lit: SurfaceId[]; even?: boolean}> = ({look, places, lit, even}) => {
+export type PoolAmt = Partial<Record<SurfaceId, {lit: number; vis: number}>>; // film: continuous lit amount + visibility per surface
+
+const WallPools: React.FC<{look: WorldLook; places: Record<SurfaceId, SurfacePlacement>; lit: SurfaceId[]; even?: boolean; amt?: PoolAmt}> = ({look, places, lit, even, amt}) => {
   const wallZ = wallZFor(look);
   const P = look.pools!;
   const ids = Object.keys(places) as SurfaceId[];
@@ -70,25 +72,31 @@ const WallPools: React.FC<{look: WorldLook; places: Record<SurfaceId, SurfacePla
   for (const id of ids) {
     const p = places[id];
     const k = refFactor(p.z) / refFactor(wallZ);
-    const isLit = even || lit.includes(id);
+    const la = amt ? amt[id]?.lit ?? 0 : undefined; // film: continuous lit amount
+    const vis = amt ? amt[id]?.vis ?? 1 : 1;
+    const isLit = even || (la !== undefined ? la > 0 : lit.includes(id));
     const boost = P.boost?.[id];
     const a = even && P.even !== undefined ? (boost ? boost.lit * 0.85 : P.even) : isLit ? boost?.lit ?? P.lit : P.base;
     const sc = isLit && boost ? boost.scale : P.scale;
-    const dy = (boost?.dy ?? P.dy ?? 0) * (isLit ? 1 : 0);
-    out.push(pool(id, p, k, P.rgb, boost ? boost.scale : sc, boost ? boost.scale : sc, 0, dy, !isLit && boost ? boost.base ?? P.base : a));
+    const dy = (boost?.dy ?? P.dy ?? 0) * (isLit ? 1 : 0) * (la ?? 1);
+    const baseA = !isLit && boost ? boost.base ?? P.base : a;
+    // continuous lit amount: opacity eases between the unlit base and the lit value; tint fades in with it
+    const aa = la !== undefined && !even ? (boost?.base ?? P.base) + (a - (boost?.base ?? P.base)) * la : baseA;
+    out.push(pool(id, p, k, P.rgb, boost ? boost.scale : sc, boost ? boost.scale : sc, 0, dy, aa * vis));
     const t = P.tint?.[id];
-    if (isLit && t) out.push(pool(id + 't', p, k, t.rgb, sc * 0.62, sc * 0.62, t.dx, t.dy + dy, t.a * (even ? 0.55 : 1)));
+    if (isLit && t) out.push(pool(id + 't', p, k, t.rgb, sc * 0.62, sc * 0.62, t.dx, t.dy + dy, t.a * (even ? 0.55 : 1) * (la ?? 1) * vis));
   }
   return <>{out}</>;
 };
 
-const WallShadows: React.FC<{look: WorldLook; places: Record<SurfaceId, SurfacePlacement>}> = ({look, places}) => {
+const WallShadows: React.FC<{look: WorldLook; places: Record<SurfaceId, SurfacePlacement>; amt?: PoolAmt}> = ({look, places, amt}) => {
   const wallZ = wallZFor(look);
   const S = look.shadow;
   return (
     <>
       {(Object.keys(places) as SurfaceId[]).flatMap((id) => {
         const p = places[id];
+        const vis = amt ? amt[id]?.vis ?? 1 : 1;
         const h = p.z - wallZ;
         const k = look.compWall ? refFactor(p.z) / refFactor(wallZ) : 1;
         const sx = p.x * k + S.dx * h;
@@ -108,7 +116,7 @@ const WallShadows: React.FC<{look: WorldLook; places: Record<SurfaceId, SurfaceP
                 height: hh,
                 borderRadius: look.radius * k,
                 background: S.color,
-                opacity: op,
+                opacity: op * vis,
                 filter: `blur(${bl}px)`,
                 transform: `translate3d(${p.x * k + S.dx * h * mult}px, ${p.y * k + S.dy * h * mult}px, ${wallZ}px)`,
               }}
@@ -149,8 +157,10 @@ export const WorldStage: React.FC<{
   overlay?: React.ReactNode;
   lit?: SurfaceId[];
   even?: boolean;
-}> = ({frame, look, surfaces, overlay, lit = [], even}) => {
-  const places = placementsFor(look);
+  places?: Record<SurfaceId, SurfacePlacement>; // film: animated placements (entrance / spread)
+  poolAmt?: PoolAmt;
+}> = ({frame, look, surfaces, overlay, lit = [], even, places: placesIn, poolAmt}) => {
+  const places = placesIn ?? placementsFor(look);
   return (
     <div style={{position: 'absolute', width: STAGE_W, height: STAGE_H, perspective: PERSPECTIVE, perspectiveOrigin: `${STAGE_W / 2}px ${STAGE_H / 2}px`, overflow: 'hidden', background: look.stageColor ?? '#F4F1EA'}}>
       {look.bgLayers ? (
@@ -173,8 +183,8 @@ export const WorldStage: React.FC<{
           transform: cameraTransform(look.camera),
         }}
       >
-        {look.pools && <WallPools look={look} places={places} lit={lit} even={even} />}
-        <WallShadows look={look} places={places} />
+        {look.pools && <WallPools look={look} places={places} lit={lit} even={even} amt={poolAmt} />}
+        <WallShadows look={look} places={places} amt={poolAmt} />
         {surfaces}
       </div>
       {overlay}

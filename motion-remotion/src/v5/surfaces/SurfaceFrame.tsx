@@ -37,9 +37,10 @@ export const SurfaceFrame: React.FC<{
   blur?: number; // px, applied to each side layer and the face individually (never the preserve-3d root)
   litEdge?: number; // 0..1 harmony bleed along the contact edge (thread-touched)
   dim?: boolean; // unconnected surface: darkened + pushed back
+  dimAmt?: number; // film: 0..1 multiplier of the dim strength
   theme?: Partial<SurfaceTheme>;
   children: React.ReactNode;
-}> = ({place, look, fontFloor, aerial, label, dark, blur = 0, litEdge = 0, dim, theme, children}) => {
+}> = ({place, look, fontFloor, aerial, label, dark, blur = 0, litEdge = 0, dim, dimAmt = 1, theme, children}) => {
   const blurCss = blur > 0 ? `blur(${blur}px)` : undefined;
   const termFace = dark && look.agentBody;
   const faceBg = termFace ? look.agentBody! : look.faceTone;
@@ -128,7 +129,7 @@ export const SurfaceFrame: React.FC<{
             />
           </>
         )}
-        {dim && look.dim && <div style={{position: 'absolute', inset: 0, background: look.dim.color, opacity: look.dim.strength, pointerEvents: 'none'}} />}
+        {dim && look.dim && <div style={{position: 'absolute', inset: 0, background: look.dim.color, opacity: look.dim.strength * dimAmt, pointerEvents: 'none'}} />}
         {aerial > 0 && (
           <div style={{position: 'absolute', inset: 0, background: look.aerial.color, opacity: look.aerial.strength * aerial, pointerEvents: 'none'}} />
         )}

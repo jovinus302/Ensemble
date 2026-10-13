@@ -9,6 +9,7 @@ import {AGENT, B3COPY, B7COPY} from '../content';
 import {FONT_FAMILY} from '../../tokens/fonts';
 import {useFs} from './SurfaceFrame';
 import {useTheme} from './theme';
+import {useFilm} from './film';
 
 const INK = colors.onSurface; // #18201C
 const TEXT = '#E3E9E5';
@@ -17,6 +18,8 @@ const MUTED = '#A8B4AD';
 export const AgentTerminal: React.FC = () => {
   const fs = useFs();
   const {agentBody, mono, state} = useTheme();
+  const film = useFilm();
+  const A = film?.A;
   const b3 = state === 'B3' || state === 'B7';
   const b7 = state === 'B7';
   return (
@@ -45,7 +48,7 @@ export const AgentTerminal: React.FC = () => {
         </div>
         <div style={{marginTop: 12, display: 'flex', flexDirection: 'column', gap: 11, filter: 'blur(4.5px)', opacity: 0.85}}>
           {['78%', '92%', '60%'].map((w, i) => (
-            <div key={i} style={{height: 13, width: w, borderRadius: 7, background: i === 1 ? '#9AA8A0' : '#6B7871'}} />
+            <div key={i} style={{height: 13, width: w, borderRadius: 7, background: i === 1 ? '#9AA8A0' : '#6B7871', ...(A ? {transformOrigin: '0 50%', transform: `scaleX(${A.lines[i] ?? 1})`} : {})}} />
           ))}
         </div>
       </div>
@@ -53,6 +56,32 @@ export const AgentTerminal: React.FC = () => {
       {/* shared inbox slot */}
       <div style={{flexShrink: 0, padding: '14px 22px 18px'}}>
         <div style={{fontSize: fs(22), fontWeight: 600, color: TEXT, marginBottom: 10}}>{AGENT.inboxLabel}</div>
+        {A ? (
+          <div
+            data-anchor="slot-brief"
+            style={{
+              position: 'relative',
+              height: 64,
+              borderRadius: 14,
+              border: A.slotBorder > 0.5 ? '2.5px solid rgba(143,213,179,.7)' : '2.5px dashed #5C6A63',
+              boxSizing: 'border-box',
+              fontSize: fs(20),
+              color: MUTED,
+              fontWeight: 500,
+            }}
+          >
+            <div style={{position: 'absolute', left: 18, top: '50%', display: 'flex', alignItems: 'center', opacity: 1 - A.emptyOut, transform: `translateY(-50%) scale(${1 - 0.04 * A.emptyOut})`, transformOrigin: '0 50%', whiteSpace: 'nowrap'}}>
+              <span style={{fontWeight: 700, color: TEXT, marginRight: 10}}>{'>'}</span>
+              {AGENT.inboxEmpty.slice(0, A.typed)}
+              <span style={{marginLeft: 8, width: 12, height: 26, background: TEXT, opacity: 0.8 * A.caret}} />
+            </div>
+            {A.briefIn > 0 && (
+              <div style={{position: 'absolute', left: 18, top: '50%', transform: `translateY(-50%) scale(${0.9 + 0.1 * A.briefIn})`, transformOrigin: '0 50%', opacity: Math.min(1, A.briefIn * 2)}}>
+                <div style={{padding: '6px 18px', borderRadius: 999, background: '#1F513F', color: '#C0EBD5', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>{B3COPY.brief}</div>
+              </div>
+            )}
+          </div>
+        ) : (
         <div
           data-anchor="slot-brief"
           style={{
@@ -81,6 +110,7 @@ export const AgentTerminal: React.FC = () => {
             </>
           )}
         </div>
+        )}
       </div>
     </div>
   );

@@ -7,6 +7,8 @@ import {AddIcon, SendIcon} from '../../ui/icons';
 import {MESSENGER, B3COPY, B7COPY} from '../content';
 import {useFs} from './SurfaceFrame';
 import {Cursor, HARMONY_RING, useTheme} from './theme';
+import {useFilm} from './film';
+import {MessengerFilm} from './MessengerFilm';
 
 const Avatar: React.FC<{name: string; size: number; fs: number}> = ({name, size, fs}) => {
   const {pal: c} = useTheme();
@@ -35,6 +37,8 @@ const Avatar: React.FC<{name: string; size: number; fs: number}> = ({name, size,
 export const Messenger: React.FC = () => {
   const fs = useFs();
   const {pal: c, state, cursor, messengerCursor} = useTheme();
+  const film = useFilm();
+  if (film) return <MessengerFilm />;
   const b7 = state === 'B7';
   const b3 = state === 'B3';
   const base = fs(24);

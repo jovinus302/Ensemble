@@ -6,6 +6,7 @@ import {colors} from '../../v3/tokens/video';
 import {DESIGN, B3COPY} from '../content';
 import {useFs} from './SurfaceFrame';
 import {useTheme} from './theme';
+import {useFilm} from './film';
 
 const ToolIcon: React.FC<{kind: 'cursor' | 'rect' | 'circle' | 'text' | 'comment'; active?: boolean}> = ({kind, active}) => {
   const {pal: c} = useTheme();
@@ -36,10 +37,13 @@ const ToolIcon: React.FC<{kind: 'cursor' | 'rect' | 'circle' | 'text' | 'comment
 export const Canvas: React.FC = () => {
   const fs = useFs();
   const {pal: c, state} = useTheme();
+  const film = useFilm();
+  const D = film?.D;
   const ink = c.onSurface;
   const themed = state !== undefined; // v6 frames use a compact artboard so the comment card fits under it
   const b7 = state === 'B7';
   const b3 = state === 'B3' || b7; // PM Agent comment card present
+  const showCard = b3 || !!film; // film: the card is always laid out (anchors stay put) and revealed by D.card
   const ART = {x: 126, y: themed ? 66 : 118, w: 528, h: 276};
   return (
     <div style={{position: 'absolute', inset: 0, background: c.surfaceContainer}}>
@@ -111,17 +115,41 @@ export const Canvas: React.FC = () => {
             background: colors.secondaryContainer,
             overflow: 'hidden',
             boxShadow: '0 1px 2px rgba(23,59,48,.2), 0 10px 22px -8px rgba(23,59,48,.28)',
+            ...(D ? {transformOrigin: '50% 0', transform: `scaleY(${0.04 + 0.96 * D.unfold})`, opacity: Math.min(1, D.unfold * 4)} : {}),
           }}
         >
           {/* abstract poster geometry */}
           <div style={{position: 'absolute', right: -60, top: -80, width: 300, height: 300, borderRadius: '50%', background: colors.surface, opacity: 0.8}} />
           <div style={{position: 'absolute', right: 40, bottom: 28, width: 120, height: 120, borderRadius: 26, background: colors.brandInk, opacity: 0.9, transform: 'rotate(12deg)'}} />
           <div style={{position: 'absolute', right: 150, bottom: 56, width: 62, height: 62, borderRadius: '50%', background: colors.outlineVariant}} />
-          {state === 'B3' && <div style={{position: 'absolute', left: 22, top: 36, width: 186, height: 78, borderRadius: 14, border: `4px solid ${colors.warning}`, background: colors.warningContainer, boxSizing: 'border-box'}} />}
+          {(state === 'B3' || D) && (
+            <div
+              data-anchor="d-ring"
+              style={{
+                position: 'absolute',
+                left: 22,
+                top: 36,
+                width: 186,
+                height: 78,
+                borderRadius: 14,
+                border: `4px solid ${colors.warning}`,
+                background: colors.warningContainer,
+                boxSizing: 'border-box',
+                ...(D ? {opacity: Math.min(1, D.ring * 1.6), transform: `scale(${0.8 + 0.2 * D.ring + 0.04 * D.ringBreath})`, boxShadow: `0 0 ${12 * D.ringBreath}px rgba(154,91,0,${0.45 * D.ringBreath})`} : {}),
+              }}
+            />
+          )}
           <div style={{position: 'absolute', left: 34, top: 44, fontSize: 62, fontWeight: 800, letterSpacing: '-0.02em', color: colors.brandInk, lineHeight: 1.05}}>{b7 ? DESIGN.bannerNew : DESIGN.banner}</div>
           <div style={{position: 'absolute', left: 36, top: 126, fontSize: fs(30), fontWeight: 600, color: colors.onSurfaceVariant}}>{DESIGN.sub}</div>
           <div style={{position: 'absolute', left: 36, bottom: 34, width: 150, height: 14, borderRadius: 7, background: colors.brandInk, opacity: 0.55}} />
         </div>
+        {/* a collaborator's cursor drifting over the artboard (film micro motion) */}
+        {D && D.cursor.a > 0 && (
+          <div style={{position: 'absolute', left: ART.x + 190 + D.cursor.x, top: ART.y + ART.h - 112 + D.cursor.y, opacity: D.cursor.a, pointerEvents: 'none'}}>
+            <svg width="34" height="34" viewBox="0 0 24 24"><path d="M5 3l13 7-6 1.8L9.6 18z" fill="#2B6A52" stroke="#FFFFFF" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+            <div style={{position: 'absolute', left: 24, top: 26, padding: '2px 12px', borderRadius: 10, background: '#2B6A52', color: '#FFFFFF', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>서연</div>
+          </div>
+        )}
         {/* selection frame + handles */}
         <div
           style={{
@@ -133,6 +161,7 @@ export const Canvas: React.FC = () => {
             border: `2px solid ${ink}`,
             borderRadius: 4,
             pointerEvents: 'none',
+            ...(D ? {opacity: D.sel} : {}),
           }}
         >
           {[
@@ -145,10 +174,11 @@ export const Canvas: React.FC = () => {
           ))}
         </div>
         {/* B3: PM Agent comment card under the artboard; the pin is the thread anchor */}
-        {b3 && (
+        {showCard && (
           <div
             data-anchor="d-card"
             style={{
+              ...(D ? {clipPath: `inset(0 ${(1 - D.card) * 100}% 0 0 round 16px)`, opacity: D.card > 0 ? 1 : 0} : {}),
               position: 'absolute',
               left: 24,
               top: ART.y + ART.h + 16,
@@ -177,17 +207,18 @@ export const Canvas: React.FC = () => {
                 justifyContent: 'center',
                 fontSize: fs(20),
                 fontWeight: 800,
+                ...(D ? {transform: `scale(${0.4 + 0.6 * D.cardPin})`, opacity: Math.min(1, D.cardPin * 2)} : {}),
               }}
             >
               {B3COPY.pmInitial}
             </div>
             <div style={{flex: 1, fontSize: fs(22), fontWeight: 600, lineHeight: 1.22, color: c.onSurface}}>{b7 ? B3COPY.pinTextB7 : B3COPY.pinText}</div>
-            <div style={{flexShrink: 0, padding: '4px 14px', borderRadius: 999, background: c.primaryContainer, color: c.onPrimaryContainer, fontSize: fs(20), fontWeight: 700}}>{b7 ? B3COPY.reflected : B3COPY.delivered}</div>
+            <div style={{flexShrink: 0, padding: '4px 14px', borderRadius: 999, background: c.primaryContainer, color: c.onPrimaryContainer, fontSize: fs(20), fontWeight: 700, ...(D ? {opacity: Math.min(1, D.cardChip * 2), transform: `scale(${0.8 + 0.2 * D.cardChip})`} : {})}}>{b7 ? B3COPY.reflected : B3COPY.delivered}</div>
           </div>
         )}
         {/* comment pin */}
-        {!b3 && <div
-          data-anchor="comment-pin"
+        {!b3 && (!D || D.pin1 > 0) && <div
+          data-anchor={D ? 'comment-pin1' : 'comment-pin'}
           style={{
             position: 'absolute',
             left: ART.x + ART.w - 56,
@@ -203,6 +234,7 @@ export const Canvas: React.FC = () => {
             fontSize: fs(30),
             fontWeight: 700,
             boxShadow: '0 4px 8px -2px rgba(23,59,48,.45)',
+            ...(D ? {opacity: D.pin1, transform: `scale(${0.7 + 0.3 * D.pin1})`} : {}),
           }}
         >
           {DESIGN.pin}

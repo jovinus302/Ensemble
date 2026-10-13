@@ -5,6 +5,8 @@ import React from 'react';
 import {MEETING, B3COPY} from '../content';
 import {useFs} from './SurfaceFrame';
 import {HARMONY_RING, useTheme} from './theme';
+import {useFilm} from './film';
+import {CaptionBand, FilmTile} from './MeetingFilm';
 
 const Ctl: React.FC<{children: React.ReactNode; wide?: boolean}> = ({children, wide}) => {
   const {pal: c} = useTheme();
@@ -31,6 +33,7 @@ const sv = {width: 28, height: 28, viewBox: '0 0 24 24', fill: 'none', stroke: '
 export const Meeting: React.FC = () => {
   const fs = useFs();
   const {pal: c, state} = useTheme();
+  const film = useFilm();
   const lit = state === 'B3' || state === 'B7';
   const tileTones = [c.surfaceContainerHigh, c.secondaryContainer, c.surfaceContainer];
   const labelBg = c.dark ? 'rgba(14,19,17,.82)' : 'rgba(255,255,255,.92)';
@@ -43,6 +46,7 @@ export const Meeting: React.FC = () => {
       </div>
       <div style={{flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 14, padding: '16px 18px 8px'}}>
         {(state ? [MEETING.tiles[0], MEETING.tiles[3], MEETING.tiles[1], MEETING.tiles[2]] : MEETING.tiles).map((t, i) => {
+          if (film) return <FilmTile key={t.name} t={t} i={i} />;
           const isLit = t.empty && lit;
           const tile = (
             <div
@@ -112,6 +116,7 @@ export const Meeting: React.FC = () => {
           );
         })}
       </div>
+      {film && <CaptionBand />}
       <div data-anchor="m-bar" style={{height: 82, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16}}>
         <Ctl>
           <svg {...sv}>

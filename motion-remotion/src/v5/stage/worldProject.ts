@@ -25,12 +25,13 @@ export interface SurfacePlacement {
   yaw: number; // deg, about the surface's own vertical axis through its center
   w: number;
   h: number;
+  sc?: number; // film entrance: uniform scale about the surface center (not used by projection; anchors are only read once settled)
 }
 
 export const cameraTransform = (c: WorldCamera) =>
   `rotateX(${c.pitch}deg) rotateY(${c.yaw}deg) scale3d(${c.s}, ${c.s}, ${c.s}) translate3d(${-c.tx}px, ${-c.ty}px, ${-c.tz}px)`;
 
-export const surfaceTransform = (p: SurfacePlacement) => `translate3d(${p.x}px, ${p.y}px, ${p.z}px) rotateY(${p.yaw}deg)`;
+export const surfaceTransform = (p: SurfacePlacement) => `translate3d(${p.x}px, ${p.y}px, ${p.z}px) rotateY(${p.yaw}deg)${p.sc !== undefined && p.sc !== 1 ? ` scale3d(${p.sc}, ${p.sc}, ${p.sc})` : ''}`;
 
 export const cameraMatrix = (c: WorldCamera): DOMMatrix => {
   const m = new DOMMatrix();

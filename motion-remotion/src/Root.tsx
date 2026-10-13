@@ -6,6 +6,8 @@ import {OPENING} from './v4/opening';
 import {PitchV4} from './v4/PitchV4';
 import {PITCH_TOTAL} from './v4/pitch/pitchTimeline';
 import {StyleFrameV5} from './v5/StyleFrameV5';
+import {PitchV5} from './v5/PitchV5';
+import {TOTAL_FRAMES} from './v5/timing';
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -42,6 +44,8 @@ export const RemotionRoot: React.FC = () => {
         height={1080}
         defaultProps={{still: 'A1' as const, measure: false}}
       />
+      {/* v5 pitch film (storyboard-v5.md, 1680f = 56.0s). Stage 1: B1-B3 animated, later beats hold. */}
+      <Composition id="PitchV5" component={PitchV5} durationInFrames={TOTAL_FRAMES} fps={30} width={1920} height={1080} />
     </>
   );
 };

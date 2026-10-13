@@ -5,10 +5,13 @@ import {DocCheckIcon} from '../../ui/icons';
 import {DOC, B7COPY} from '../content';
 import {useFs} from './SurfaceFrame';
 import {useTheme} from './theme';
+import {useFilm} from './film';
 
 export const Doc: React.FC = () => {
   const fs = useFs();
   const {pal: c, state} = useTheme();
+  const film = useFilm();
+  const P = film?.P;
   const b3 = state === 'B3';
   const b7 = state === 'B7';
   const Line: React.FC<{w: string; strong?: boolean}> = ({w, strong}) => (
@@ -33,6 +36,7 @@ export const Doc: React.FC = () => {
             display: 'flex',
             flexDirection: 'column',
             gap: 12,
+            ...(P ? {transform: `translate(${(1 - P.page) * 90}px, ${(1 - P.page) * 40}px)`, opacity: Math.min(1, P.page * 3)} : {}),
           }}
         >
           <div style={{fontSize: fs(34), fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.15, marginBottom: 6}}>{DOC.title}</div>
@@ -45,9 +49,11 @@ export const Doc: React.FC = () => {
             {DOC.rows.map((r, i) => {
               const amber = (b3 && r.item === '광고 집행') || (b7 && r.item === '보도자료 배포');
               const date = b7 && r.item === '광고 집행' ? '11/6' : r.date;
+              const ad = r.item === '광고 집행';
               return (
                 <div
                   key={r.item}
+                  data-anchor={P && ad ? 'doc-ad' : undefined}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -57,8 +63,12 @@ export const Doc: React.FC = () => {
                     background: amber ? c.warningContainer : i % 2 ? c.surfaceContainerLow : c.surface,
                     boxShadow: amber ? `inset 0 0 0 2.5px ${c.warning}` : undefined,
                     borderTop: i ? `1px solid ${c.outlineVariant}` : undefined,
+                    ...(P ? {position: 'relative' as const, isolation: 'isolate' as const, transform: `translateX(${(1 - (P.rows[i] ?? 1)) * 46}px)`, opacity: Math.min(1, (P.rows[i] ?? 1) * 3)} : {}),
                   }}
                 >
+                  {P && ad && P.ring > 0 && (
+                    <div style={{position: 'absolute', inset: 0, zIndex: -1, background: c.warningContainer, boxShadow: `inset 0 0 0 2.5px ${c.warning}, 0 0 ${12 * P.ringBreath}px rgba(154,91,0,${0.45 * P.ringBreath})`, opacity: Math.min(1, P.ring * 1.6), transform: `scale(${0.94 + 0.06 * P.ring})`}} />
+                  )}
                   <span style={{flex: 1, whiteSpace: 'nowrap'}}>{r.item}</span>
                   {b7 && amber ? (
                     <span data-anchor="doc-row" style={{padding: '1px 12px', borderRadius: 999, background: c.warning, color: '#FFFFFF', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>{B7COPY.waiting}</span>
