@@ -219,6 +219,6 @@ B1 진입 장면은 티저에서 생략한다(B2 와이드에 다섯 화면이 �
 - **캡슐·실 끝 스프링**: 선두 가장자리는 spring-snappy, 후미는 spring-smooth(늘어났다가 안착). 목표값이 여러 번 바뀌면 변화마다 스프링 하나씩 더한 합으로 계산한다(frame의 순수 함수).
 - **모션 블러**: T-cam 구간에서만 `@remotion/motion-blur`(CameraMotionBlur). 성능 예산 ≤1.5s/frame에서 별도로 계상한다.
 - **Chrome 발견(TA)**: 3D 면에 큰 box-shadow를 쓰면 면이 세로 띠로 찢긴다 → 면 뒤 blur 평면(drop)을 쓴다. 측면 층은 ≤14장. 벽 웅덩이는 카메라 pitch/yaw 시차 때문에 투영 역산(`wallPointForScreen`)으로 배치한다.
-- **DOF**: 먼 화면(A·P)의 흐림은 rack focus 끝점으로만 취급한다. 상시 DOF는 영상 전용 예외 결정이 필요하다(미결, 사용자 판단).
+- **DOF**: 먼 화면(A·P)의 상시 피사계 심도 흐림(≤4px, 면·측면층 각각)은 **영상 전용 예외로 승인됨(2026-10-13, 사용자)**. 근거와 범위는 [MOTION.md](../MOTION.md) Elevation & Depth. rack focus는 그대로 허용.
 - **2.5D**: DOM/CSS 2.5D + SVG 실을 유지한다. SF-A가 평평해 보일 때만 WebGL 하이브리드를 검토하며, 그 경우 유리/플레이트와 DOM이 프레임마다 **하나의 카메라 행렬**을 공유한다(`projectSurfacePoint`). 핀·칩은 화면 좌표가 아니라 Surface에 고정한다. 카메라가 스케일하는 요소에 `will-change`를 쓰지 않는다.
 - **QA 루프**: (a) 모든 비트 경계와 핵심 프레임에서 `npx remotion still`로 컨택트 시트 생성. (b) 무음 읽기 테스트: 새 서브에이전트가 2fps 컨택트 시트만 보고 "사람은 각자의 도구에서 일하고 PM Agent가 그 사이를 잇는다"를 다시 말할 수 있어야 한다. (c) 프레임 간 차이가 이웃 프레임의 3배를 넘는 스파이크를 표시. (d) 모든 이벤트가 timing.json과 1프레임 이내로 일치하는지 동기 검사. (e) 냉정한 감독 비평 후 상위 3개 수정.
