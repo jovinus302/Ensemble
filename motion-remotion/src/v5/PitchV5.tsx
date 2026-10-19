@@ -3,7 +3,7 @@
 // reads public/audio/timing.json through ./timing). The scene is the approved TA
 // style-frame world: same config, WorldStage, SurfaceFrame and surface bodies, with
 // the film animation context (surfaces/film.tsx) feeding the bodies.
-import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
+import React, {createContext, useContext, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {AbsoluteFill, Audio, Sequence, continueRender, delayRender, staticFile, useCurrentFrame} from 'remotion';
 import {ensurePretendardLoaded, ensurePretendardVariableLoaded, FONT_FAMILY} from '../tokens/fonts';
 import {AFTERGLOW_ROUTES, COPY, HEADLINE_BOX_V6, MIN_SCREEN_TEXT_PX, SOURCE_ROUTES, THREAD_ROUTES, placementsFor, themeLook} from './config';
@@ -115,9 +115,9 @@ const HB = {
 const WM = {cx: 960, cy: 470, size: 200, lineY: 610, x0: 510, x1: 1410};
 
 const stage = {
-  placements(frame: number): Record<SurfaceId, SurfacePlacement & {e: number}> {
+  placements(frame: number, noForward = false): Record<SurfaceId, SurfacePlacement & {e: number}> {
     const spr = EASE.inout(prog(frame, B2.spread.start, B2.spread.end - B2.spread.start)) * (1 - EASE.out(prog(frame, B3.spreadBack.start, B3.spreadBack.end - B3.spreadBack.start)));
-    const fwd = EASE.inout(prog(frame, B6.forward.start, B6.forward.end - B6.forward.start)) * (1 - EASE.inout(prog(frame, B6.back.start, B6.back.end - B6.back.start)));
+    const fwd = noForward ? 0 : EASE.inout(prog(frame, B6.forward.start, B6.forward.end - B6.forward.start)) * (1 - EASE.inout(prog(frame, B6.back.start, B6.back.end - B6.back.start)));
     const b7a = EASE.inout(prog(frame, B7.camMove.start, B7.camMove.end - B7.camMove.start));
     const rec = recedeAt(frame);
     const out = {} as Record<SurfaceId, SurfacePlacement & {e: number}>;
@@ -153,11 +153,25 @@ const stage = {
   },
 };
 
-// ------------------------------------------------------------------ the film
-const Scene: React.FC = () => {
-  const f = useCurrentFrame();
-  const rootRef = useRef<HTMLDivElement>(null);
+/** QA: on-screen px of the smallest UI text (20 logical px, or the surface's floor if larger) per surface at film frame f */
+export const qaTextPx = (f: number) => {
+  const pl = stage.placements(f);
   const cam = cameraAt(f);
+  const b7a = EASE.inout(prog(f, B7.camMove.start, B7.camMove.end - B7.camMove.start));
+  return (Object.keys(pl) as SurfaceId[]).map((id) => ({id, px: Math.max(20, lerp(FONT_FLOOR0[id], FONT_FLOOR7[id], b7a)) * surfaceScreenScale(cam, pl[id]), e: pl[id].e}));
+};
+
+// ------------------------------------------------------------------ the film
+/** teaser: the scene reads source frames through `map` (teaser.ts) and drops the headlines that do not belong to the teaser */
+export const FrameMapCtx = createContext<{map: (tf: number) => number; teaser: boolean; cam?: (tf: number) => WorldCamera | undefined} | null>(null);
+
+export const Scene: React.FC = () => {
+  const tfRaw = useCurrentFrame();
+  const fm = useContext(FrameMapCtx);
+  const f = fm ? fm.map(tfRaw) : tfRaw;
+  const teaser = !!fm?.teaser;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const cam = fm?.cam?.(tfRaw) ?? cameraAt(f); // teaser bridges: one smooth camera move instead of the source path
   const [anchors, setAnchors] = useState<Record<string, Anchor>>({});
   const [rects, setRects] = useState<{b2?: {x: number; y: number}[]; b3?: {x: number; y: number}[]}>({});
   const camRatio = cam.s / C0.s;
@@ -184,7 +198,7 @@ const Scene: React.FC = () => {
     setAnchors((prev) => (JSON.stringify(prev) === JSON.stringify(out) ? prev : out));
   });
 
-  const places = stage.placements(f);
+  const places = stage.placements(f, teaser);
   const look = {...LOOK0, camera: cam};
   const present = ALL.filter((id) => places[id] && (id === 'S' || id === 'V' || f >= B1.enter[id as Exclude<Id, 'S'>]));
 
@@ -193,13 +207,13 @@ const Scene: React.FC = () => {
   const litAmt: Record<Id, number> = litAt(f);
   const evenA = evenAt(f);
   const fade = poolFadeAt(f);
-  const breath = poolBreath(f);
+  const breath = teaser ? 1 : poolBreath(f);
   const vG = places.V ? places.V.e : 0;
   const poolAmt: PoolAmt = Object.fromEntries(
     (Object.keys(places) as SurfaceId[]).map((id) => [id, {lit: id === 'V' ? vG : litAmt[id as Id] * (litAmt[id as Id] > 0.9 ? breath : 1), vis: (id === 'S' ? 1 : present.includes(id) ? clamp01((places[id].e - 0.45) / 0.55) : 0) * fade}]),
   ) as PoolAmt;
   const dimP = dimPAt(f);
-  const rack = rackAt(f);
+  const rack = teaser ? 0 : rackAt(f); // the teaser skips B6: no rack focus
   const rec = recedeAt(f);
   const b7a = EASE.inout(prog(f, B7.camMove.start, B7.camMove.end - B7.camMove.start));
   const blurOf = (id: SurfaceId) => {
@@ -235,7 +249,7 @@ const Scene: React.FC = () => {
   const revStart = pt('s-source', 'left');
   const revEnd = pt('pm-tile', 'right', 0.5);
   const reverse =
-    revStart && revEnd && f >= B6.reverse.start
+    revStart && revEnd && f >= B6.reverse.start && !teaser
       ? (() => {
           const th = threadAt(B6.reverse, f);
           const p0 = revStart;
@@ -254,7 +268,7 @@ const Scene: React.FC = () => {
   const tileW = anchorWorld('pm-tile', 40);
   const vRowW = surfaceWorld(PV, PV.w * 0.5, V_HEADER + V_ROW * 1.5, 24);
   const capAt = (ff: number) => {
-    const camF = cameraAt(ff);
+    const camF = ff === f ? cam : cameraAt(ff);
     const sPlace = places.S;
     const sPark = surfaceWorld(sPlace, sPlace.w * 0.55, -30, 60);
     const srcW = anchorWorld('s-source', 30);
@@ -275,7 +289,7 @@ const Scene: React.FC = () => {
         absorb = EASE.in(ap);
         travel = Math.sin(Math.PI * ap) * 0.9;
       } else if (ff >= B2.capsuleMoveStart && ff < B2.capsuleMoveEnd) travel = Math.sin(Math.PI * prog(ff, B2.capsuleMoveStart, B2.capsuleMoveEnd - B2.capsuleMoveStart));
-    } else if (ff >= B6.capsuleOut.start && ff < B7.vGrow.start + 8) {
+    } else if (ff >= (teaser ? B6.capsuleBack.end - 20 : B6.capsuleOut.start) && ff < B7.vGrow.start + 8) {
       visible = true;
       const eo = EASE.out(prog(ff, B6.capsuleOut.start, B6.capsuleOut.end - B6.capsuleOut.start));
       if (ff < B6.capsuleToS.start) {
@@ -323,9 +337,9 @@ const Scene: React.FC = () => {
   const capAngle = (Math.atan2(cNow.y - cPrev.y, cNow.x - cPrev.x) * 180) / Math.PI;
   const resting = (f >= B2.capsuleMoveEnd && f < B3.absorb.start) || (f >= B6.capsuleToS.end && f < B6.reverse.start - 15) || (f >= B6.capsuleBack.end && f < B7.capsuleToV.start);
   const bob = resting ? Math.sin((2 * Math.PI * f) / (2 * BEAT)) * 4 : 0;
-  const capAppear = f >= B6.capsuleOut.start ? 1 : capsuleAppearAt(f);
+  const capAppear = teaser ? (f >= B6.capsuleBack.end - 20 ? eased(f, B6.capsuleBack.end - 20, 14) : capsuleAppearAt(f)) : f >= B6.capsuleOut.start ? 1 : capsuleAppearAt(f);
   const capShimmer = resting ? (((f - B2.capsuleMoveEnd) % 60) / 60) / 0.5 : 0;
-  const capDate = f >= B6.capsuleOut.start ? capsuleDateAt(f) : undefined;
+  const capDate = f >= (teaser ? B6.capsuleBack.end - 20 : B6.capsuleOut.start) ? capsuleDateAt(f) : undefined;
   const capOpacity = 1 - cNow.outA;
   const capGlowNow = cNow.visible ? (f < B3.absorb.end ? capGlow : 0.55) * (1 - cNow.outA) * (1 - cNow.absorb) : 0;
 
@@ -335,10 +349,11 @@ const Scene: React.FC = () => {
     {id: 's-ask', side: 'left'},
     {id: 'doc-ad', side: 'left'},
   ];
+  const fd = teaser ? f + 16 : f; // teaser: the lines start breaking sooner so the very first frames already show the break
   const dashes = B2.dashed.map((start, i) => {
     const tgt = pt(dashTargets[i].id, dashTargets[i].side);
-    const grow = eased(f, start, B2.dashGrow, EASE.out);
-    const fall = EASE.in(prog(f, start + B2.dashGrow + B2.dashHang, B2.dashFall));
+    const grow = eased(fd, start, B2.dashGrow, EASE.out);
+    const fall = EASE.in(prog(fd, start + B2.dashGrow + B2.dashHang, B2.dashFall));
     if (!tgt || grow <= 0 || fall >= 1 || f > B3.absorb.start) return null;
     const from = {x: cNow.x, y: cNow.y + bob};
     const dx = tgt.x - from.x;
@@ -356,7 +371,7 @@ const Scene: React.FC = () => {
     {k: 'scan', from: 'pm-tile', fromSide: 'right', fy: 0.82, dx: 6, to: 'doc-ad', t: B4.scan, c1: [90, 150], c2: [-120, -70], w: [11, 8]},
     {k: 'B5A', from: 's-card', fromSide: 'right', fy: 0.5, dx: 4, to: 'slot-brief', t: B5.threadA, c1: [160, -90], c2: [-220, 40], w: [12, 8]},
   ];
-  const glow = glowAt(f);
+  const glow = teaser ? 0 : glowAt(f);
   const tFade = threadFadeAt(f);
   const threads = branches.flatMap((b, i) => {
     if (f < b.t.start || tFade <= 0.003) return [];
@@ -408,7 +423,7 @@ const Scene: React.FC = () => {
   const b3Exit = H.b3.exit;
   const handoff = f >= B3.headline.settle;
   const B3w = WORDS.b3.map((text, i) => ({text, accent: i < 2, enter: H.b3.enter[i], exit: b3Exit, hidden: i === 2 && !handoff}));
-  const simple = (ws: string[], h: {enter: number[]; exit: number}) => ws.map((text, i) => ({text, enter: h.enter[i], exit: h.exit}));
+  const simple = (ws: string[], h: {enter: number[]; exit: number}, hide = false) => ws.map((text, i) => ({text, enter: hide ? 0 : h.enter[i], exit: hide ? 0 : h.exit}));
   // the travelling word: "맥락은" glides from the B2 line to its slot in the B3 line, then 은 -> 을
   const gl = EASE.inout(prog(f, B3.swap.start, B3.wordGlide));
   const showTraveler = swapped && !handoff && rects.b2 && rects.b3;
@@ -425,7 +440,8 @@ const Scene: React.FC = () => {
   const ulE = EASE.out(prog(f, C.underline.start, C.underline.end - C.underline.start));
   const lockE = EASE.out(prog(f, C.lockup.start, C.lockup.end - C.lockup.start));
   const capE = eased(f, C.caption, 12);
-  const veil = eased(f, C.headline.reveal - 14, 22) * 0.8;
+  const veilF = teaser ? tfRaw - 318 + (C.headline.reveal - 14 - 0) : f; // teaser: the vignette follows the teaser clock, not the fast-forwarded source
+  const veil = eased(veilF, C.headline.reveal - 14, 22) * 0.8;
   const wmPulse = f >= C.headline.land ? Math.max(0, 1 - (f - C.headline.land) / 18) : 0;
 
   return (
@@ -472,7 +488,7 @@ const Scene: React.FC = () => {
                 <Thread key={c.k} p0={c.p0} p1={c.p1} p2={c.p2} p3={c.p3} gradientId={`ag${i}`} w0={c.w[0]} w1={c.w[1]} alpha={Math.min(1, agAlpha)} halo={0} shadowColor="rgba(0,0,0,.3)" caps={false} occluders={c.occ} />
               ))}
               {lineA > 0 && f < C.underline.start + 1 && <Underline x0={WM.x0} x1={WM.x1} y={WM.lineY} th={8} alpha={1} glow={0} />}
-              {f >= C.underline.start && <Underline x0={WM.x0} x1={WM.x1} y={WM.lineY} th={lerp(8, 12, ulE)} alpha={1} glow={Math.max(wmPulse, ulE * (0.3 + 0.12 * Math.sin((2 * Math.PI * (f - C.headline.land)) / (4 * BEAT))))} sh={f >= C.lockup.start ? (((f - C.lockup.start) % (4 * BEAT)) / (4 * BEAT)) * 1.6 : 2} />}
+              {f >= C.underline.start && <Underline x0={WM.x0} x1={WM.x1} y={WM.lineY} th={lerp(8, 12, ulE)} alpha={1} glow={Math.max(wmPulse, ulE * (0.32 + 0.18 * Math.sin((2 * Math.PI * (f - C.headline.land)) / (4 * BEAT))))} sh={f >= C.lockup.start ? (((f - C.lockup.start) % (4 * BEAT)) / (4 * BEAT)) * 1.6 : 2} />}
               {dashes.map((d) => d && <DashBreak key={d.key} from={d.from} to={d.to} c1={d.c1} c2={d.c2} grow={d.grow} fall={d.fall} scale={camRatio} phase={f} />)}
               {threads.map((t) => (
                 <ThreadDraw key={t.k} id={`th${t.i}`} p0={t.p0} p1={t.p1} p2={t.p2} p3={t.p3} head={t.head} body={t.body} w0={t.w[0]} w1={t.w[1]} glow={t.k === 'D' || t.k === 'S' || t.k === 'A' ? glow : 0} halo={LOOK0.halo! * Math.min(1, t.head * 3)} dock={t.dock} shadowColor={LOOK0.threadShadow} scale={camRatio} alpha={tFade} />
@@ -512,7 +528,7 @@ const Scene: React.FC = () => {
               )}
               {([['b4', H.b4, HB.b4], ['b5', H.b5, HB.b5], ['b6', H.b6, HB.b6], ['b7', H.b7, HB.b7]] as const).map(([key, h, box]) => (
                 <div key={key} style={{position: 'absolute', left: box.left, top: box.top, width: box.width}}>
-                  <RevealWords words={simple(WORDS[key], h)} color={HEAD.color} accent={HEAD.accent} fontSize={box.size} width={box.width} justify={box.justify} />
+                  <RevealWords words={simple(WORDS[key], h, teaser)} color={HEAD.color} accent={HEAD.accent} fontSize={box.size} width={box.width} justify={box.justify} />
                 </div>
               ))}
               <div style={{position: 'absolute', left: HB.c.left, top: HB.c.top, width: HB.c.width}}>

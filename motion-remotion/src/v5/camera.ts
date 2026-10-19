@@ -50,10 +50,10 @@ const keys = (): Key[] => {
   const p2: WorldCamera = {tx: 95, ty: 15, tz: 0, yaw: -10, pitch: 6, s: 0.88};
   const wc = (id: 'M' | 'D' | 'S' | 'P' | 'A') => ({x: places[id].x, y: places[id].y, z: places[id].z});
   const mid = (a: {x: number; y: number; z: number}[]) => ({x: a.reduce((t, q) => t + q.x, 0) / a.length, y: a.reduce((t, q) => t + q.y, 0) / a.length, z: a.reduce((t, q) => t + q.z, 0) / a.length});
-  const b4 = solveTxTy({yaw: -8, pitch: 0, s: 0.92}, mid([wc('P'), wc('S')]), 930, 745);
-  const b5 = solveTxTy({yaw: -10, pitch: 3, s: 0.84}, mid([wc('S'), wc('A'), wc('D')]), 1250, 440);
-  const b6a = solveTxTy({yaw: 6, pitch: 3, s: 0.9}, wc('S'), 1330, 680);
-  const b6b = solveTxTy({yaw: -4, pitch: 3, s: 0.9}, wc('S'), 1330, 680);
+  const b4 = solveTxTy({yaw: -8, pitch: 0, s: 0.86}, mid([wc('P'), wc('S')]), 930, 790);
+  const b5 = solveTxTy({yaw: -10, pitch: 3, s: 0.9}, mid([wc('S'), wc('A'), wc('D')]), 1230, 440);
+  const b6a = solveTxTy({yaw: 6, pitch: 3, s: 0.86}, wc('S'), 1400, 720);
+  const b6b = solveTxTy({yaw: -4, pitch: 3, s: 0.86}, wc('S'), 1400, 720);
   const b7: WorldCamera = {...C0, ...THEME_FRAMES.TA.B7f1440!.camera};
   const endOfFilm = beatEnd('Closing');
   const k = (f: number, pose: WorldCamera, ease = EASE.inout): Key => ({f, pose, ease});
@@ -86,7 +86,7 @@ const keys = (): Key[] => {
       k(B7.still, b7, EASE.linear), // = TA B7f1440 camera exactly
       k(C.retreat.start, {...b7, s: b7.s * 0.99}, EASE.linear),
       k(C.retreat.end, {...b7, s: b7.s * 0.93, ty: b7.ty + 30}, EASE.inout), // closing: the world steps back
-      k(endOfFilm, {...b7, s: b7.s * 0.905, ty: b7.ty + 44}, EASE.linear), // ring-out: a last, barely perceptible drift
+      k(endOfFilm, {...b7, s: b7.s * 0.885, ty: b7.ty + 52}, EASE.linear), // ring-out: a last, barely perceptible drift
     ],
   };
   return cache.keys;

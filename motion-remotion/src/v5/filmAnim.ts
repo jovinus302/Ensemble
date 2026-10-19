@@ -56,7 +56,7 @@ export const filmAnimAt = (f: number): FilmAnim => {
   const rowSwap3 = EASE.inout(prog(f, B3.rowSwap.start, B3.rowSwap.end - B3.rowSwap.start));
   const adRoll = eased(f, B5.reflected, 14, EASE.inout);
   const cardRise = eased(f, B4.card, B4.cardDur);
-  const solid = eased(f, B4.morph - 4, 8);
+  const solid = eased(f, B4.click, 12); // the card lights solid as a wipe spreading from the button, starting on the click
   const approach = 1 - Math.pow(1 - prog(f, B4.approach.start, B4.approach.end - B4.approach.start), 3);
   return {
     frame: f,
@@ -114,7 +114,8 @@ export const filmAnimAt = (f: number): FilmAnim => {
         pop: cardRise,
         lit: 0.55 + 0.45 * solid,
         solid,
-        press: bell(f, B4.click, 4),
+        press: bell(f, B4.click, 5),
+        flash: prog(f, B4.click, 14),
         bounce: bell(f, B4.morph + 5, 9),
         chip: mph(f, B4.morph),
       },
@@ -249,6 +250,7 @@ export const probes = (f: number): Record<string, number> => {
     'B2 ring S': a.S.amber,
     'B2 ring P': a.P.ring,
     'B2 headline settle': h.b2.enter[3],
+    'B2 headline exit': h.b2.exit[1],
     'B3 PM tile lights': a.M.pm,
     'B3 headline settle': h.b3.enter[0],
     'B3 thread M->D ends': threadAt(B3.threadD, f).head,

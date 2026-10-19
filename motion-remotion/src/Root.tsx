@@ -7,7 +7,9 @@ import {PitchV4} from './v4/PitchV4';
 import {PITCH_TOTAL} from './v4/pitch/pitchTimeline';
 import {StyleFrameV5} from './v5/StyleFrameV5';
 import {PitchV5} from './v5/PitchV5';
-import {TOTAL_FRAMES} from './v5/timing';
+import {TeaserV5} from './v5/TeaserV5';
+import {QaV5} from './v5/QaV5';
+import {TEASER_FRAMES, TOTAL_FRAMES} from './v5/timing';
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -46,6 +48,9 @@ export const RemotionRoot: React.FC = () => {
       />
       {/* v5 pitch film (storyboard-v5.md, 1680f = 56.0s). Stage 1: B1-B3 animated, later beats hold. */}
       <Composition id="PitchV5" component={PitchV5} durationInFrames={TOTAL_FRAMES} fps={30} width={1920} height={1080} />
+      {/* v5 teaser (storyboard-v5.md §6, 540f = 18.0s): the same scene read through source-frame remapping */}
+      <Composition id="QaV5" component={QaV5} durationInFrames={1} fps={30} width={64} height={36} />
+      <Composition id="TeaserV5" component={TeaserV5} durationInFrames={TEASER_FRAMES} fps={30} width={1920} height={1080} />
     </>
   );
 };

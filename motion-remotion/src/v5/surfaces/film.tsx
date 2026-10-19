@@ -53,7 +53,7 @@ export interface FilmAnim {
     caret: number; // 0/1 blink
     send: number; // 0..1 beat kick
     dots: number; // frame, for the typing dots in the composer
-    card: {pop: number; lit: number; solid: number; press: number; bounce: number; chip: Morph};
+    card: {pop: number; lit: number; solid: number; press: number; bounce: number; flash: number; chip: Morph};
     cursor: {a: number; near: number; frame: number}; // 지은's cursor: near 0..1 = decelerating approach to [옮기기]
     memo: number;
     minho: number;

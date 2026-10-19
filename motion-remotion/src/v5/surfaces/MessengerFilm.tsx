@@ -125,7 +125,7 @@ export const MessengerFilm: React.FC = () => {
     const n = k.press > 0 ? 1 : S.cursor.near;
     const driftX = Math.sin(S.cursor.frame / 11) * 6 * (1 - n);
     const driftY = Math.cos(S.cursor.frame / 9) * 5 * (1 - n);
-    return {x: 190 * (1 - n) + 30 + driftX, y: 120 * (1 - n) + 24 + driftY};
+    return {x: 230 * (1 - n) + 34 + driftX, y: 150 * (1 - n) + 28 + driftY};
   })();
   const card = (
     <div
@@ -141,7 +141,7 @@ export const MessengerFilm: React.FC = () => {
         opacity: Math.min(1, k.pop * 3),
       }}
     >
-      <div style={{position: 'absolute', inset: 0, borderRadius: 20, background: c.primaryContainer, opacity: 0.85 * k.solid}} />
+      {k.solid > 0.001 && <div style={{position: 'absolute', inset: 0, borderRadius: 20, background: c.primaryContainer, opacity: 0.85, clipPath: `circle(${k.solid * 900}px at 96px calc(100% - 42px))`}} />}
       <div style={{position: 'relative', display: 'flex', alignItems: 'center', gap: 12}}>
         <PmAvatar sz={sz} />
         <div style={{display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0}}>
@@ -159,14 +159,19 @@ export const MessengerFilm: React.FC = () => {
       </div>
       <div style={{position: 'relative', marginTop: 12, fontSize: base, fontWeight: 700, lineHeight: 1.25, whiteSpace: 'nowrap'}}>{B7COPY.decisionCard}</div>
       <div style={{position: 'relative', marginTop: 14, display: 'flex', gap: 12}}>
-        <div style={{position: 'relative', padding: '9px 26px', borderRadius: 999, background: c.primary, color: c.onPrimary, fontSize: base, fontWeight: 700, transform: `scale(${1 - 0.07 * k.press})`}}>
+        <div style={{position: 'relative', padding: '9px 26px', borderRadius: 999, background: c.primary, color: c.onPrimary, fontSize: base, fontWeight: 700, transform: `scale(${1 - 0.14 * k.press})`, filter: `brightness(${1 - 0.28 * k.press})`}}>
           옮기기
+          {k.flash > 0 && k.flash < 1 && (
+            <div style={{position: 'absolute', left: '50%', top: '50%', width: 0, height: 0, pointerEvents: 'none'}}>
+              <div style={{position: 'absolute', left: -(40 + 300 * k.flash), top: -(40 + 300 * k.flash), width: 80 + 600 * k.flash, height: 80 + 600 * k.flash, borderRadius: '50%', border: '4px solid #3DBE8B', opacity: 0.7 * (1 - k.flash), boxSizing: 'border-box'}} />
+            </div>
+          )}
           {S.cursor.a > 0.01 && (
             <div style={{position: 'absolute', left: cursorOff.x, top: cursorOff.y, opacity: S.cursor.a, pointerEvents: 'none', zIndex: 3}}>
-              <svg width="34" height="34" viewBox="0 0 24 24" style={{display: 'block', transform: `translate(-6px, -4px) scale(${1 - 0.12 * k.press})`}}>
+              <svg width="64" height="64" viewBox="0 0 24 24" style={{display: 'block', transform: `translate(-10px, -8px) scale(${1 - 0.12 * k.press})`}}>
                 <path d="M5 3l13 7-6 1.8L9.6 18z" fill="#18201C" stroke="#FFFFFF" strokeWidth="1.6" strokeLinejoin="round" />
               </svg>
-              <div style={{position: 'absolute', left: 24, top: 26, padding: '2px 12px', borderRadius: 10, background: '#18201C', color: '#FFFFFF', fontSize: small, fontWeight: 700, whiteSpace: 'nowrap'}}>지은</div>
+              <div style={{position: 'absolute', left: 40, top: 48, padding: '3px 16px', borderRadius: 12, background: '#18201C', color: '#FFFFFF', fontSize: Math.max(small, 28), fontWeight: 800, whiteSpace: 'nowrap', boxShadow: '0 0 0 2px #FFFFFF'}}>지은</div>
             </div>
           )}
         </div>
