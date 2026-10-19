@@ -25,8 +25,36 @@ const ROWS: {label: string; probe: string; mode: Mode; target: number; tol?: num
   {label: 'B3 S reply + 전달됨', probe: 'B3 reply 전달됨', mode: 'start', target: 495},
   {label: 'B3 brief arrives in A', probe: 'B3 brief arrives', mode: 'start', target: 540},
   {label: 'B3 glow pulse peak', probe: 'B3 pulse peak', mode: 'peak', target: 600},
+  {label: 'B4 scan thread lands on P', probe: 'B4 scan thread lands', mode: 'settle', target: 690, thr: THR.spring},
+  {label: 'B4 decision card rises', probe: 'B4 card rises', mode: 'start', target: 705},
+  {label: 'B4 headline settle', probe: 'B4 headline settle', mode: 'settle', target: 735},
+  {label: 'B4 headline exit starts', probe: 'B4 headline exit', mode: 'start', target: 792},
+  {label: 'B4 click (music accent)', probe: 'B4 click press', mode: 'peak', target: 810},
+  {label: 'B4 chip 제안 -> 확정', probe: 'B4 chip -> 확정', mode: 'start', target: 818},
+  {label: 'B5 thread -> A lands', probe: 'B5 thread -> A lands', mode: 'settle', target: 945, thr: THR.spring},
+  {label: 'B5 반영됨 chip (A)', probe: 'B5 반영됨 chip (A)', mode: 'start', target: 960},
+  {label: 'B5 banner number roll', probe: 'B5 banner roll', mode: 'start', target: 975},
+  {label: 'B5 D chip 전달됨 -> 반영됨', probe: 'B5 D chip 반영됨', mode: 'start', target: 1000},
+  {label: 'B5 P chip', probe: 'B5 P chip', mode: 'start', target: 1005},
+  {label: 'B5 PM memo', probe: 'B5 memo', mode: 'start', target: 1020},
+  {label: 'B5 headline settle', probe: 'B5 headline settle', mode: 'settle', target: 1020},
+  {label: 'B5 headline exit starts', probe: 'B5 headline exit', mode: 'start', target: 1068},
+  {label: 'B6 capsule date flip starts', probe: 'B6 date flip', mode: 'start', target: 1080},
+  {label: 'B6 rack focus starts', probe: 'B6 rack focus', mode: 'start', target: 1080},
+  {label: 'B6 민호 question', probe: 'B6 minho', mode: 'start', target: 1125},
+  {label: 'B6 PM answer', probe: 'B6 answer', mode: 'start', target: 1155},
+  {label: 'B6 reverse thread lands on M', probe: 'B6 reverse thread lands', mode: 'settle', target: 1200, thr: THR.spring},
+  {label: 'B6 headline settle', probe: 'B6 headline settle', mode: 'settle', target: 1230},
+  {label: 'B6 headline exit starts', probe: 'B6 headline exit', mode: 'start', target: 1290},
+  {label: 'B7 capsule becomes V decision row', probe: 'B7 capsule -> V row', mode: 'start', target: 1356},
+  {label: 'B7 V rows unfold (first)', probe: 'B7 V row 目標', mode: 'start', target: 1365},
+  {label: 'B7 headline settle', probe: 'B7 headline settle', mode: 'settle', target: 1410},
+  {label: 'B7 headline exit starts', probe: 'B7 headline exit', mode: 'start', target: 1455},
+  {label: 'C headline settle', probe: 'C headline settle', mode: 'settle', target: 1480},
+  {label: 'C headline morph starts', probe: 'C headline morph starts', mode: 'start', target: 1536},
+  {label: 'C wordmark lands (final hit)', probe: 'C wordmark lands', mode: 'settle', target: 1560, thr: THR.spring},
 ];
-const N = 700;
+const N = 1700;
 const series: Record<string, number[]> = {};
 for (let f = 0; f < N; f++) for (const [k, v] of Object.entries(probes(f))) (series[k] ??= []).push(v);
 const first = (arr: number[], thr: number) => arr.findIndex((v) => v >= thr);

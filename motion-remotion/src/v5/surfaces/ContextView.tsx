@@ -5,10 +5,12 @@ import React from 'react';
 import {CONTEXT_VIEW, B7COPY} from '../content';
 import {useFs} from './SurfaceFrame';
 import {useTheme} from './theme';
+import {useFilm} from './film';
 
 export const ContextView: React.FC = () => {
   const fs = useFs();
   const {pal: c} = useTheme();
+  const V = useFilm()?.V;
   return (
     <div style={{position: 'absolute', inset: 0, background: c.surface, display: 'flex', flexDirection: 'column'}}>
       <div style={{height: 60, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 24px', borderBottom: `1px solid ${c.outlineVariant}`}}>
@@ -17,7 +19,18 @@ export const ContextView: React.FC = () => {
       </div>
       <div style={{flex: 1, display: 'flex', flexDirection: 'column'}}>
         {CONTEXT_VIEW.rows.map((r, i) => (
-          <div key={r.key} style={{flex: 1, display: 'flex', alignItems: 'center', gap: 14, padding: '0 24px', borderTop: i ? `1px solid ${c.outlineVariant}` : undefined}}>
+          <div
+            key={r.key}
+            style={{
+              flex: V ? `${V.rows[i]} 1 0px` : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              padding: '0 24px',
+              borderTop: i ? `1px solid ${c.outlineVariant}` : undefined,
+              ...(V ? {overflow: 'hidden', minHeight: 0, opacity: i === 1 ? V.decision : Math.min(1, V.rows[i] * 2.5)} : {}),
+            }}
+          >
             <span data-anchor={`v-row-${i}`} style={{width: fs(20) * 2 + 14, flexShrink: 0, fontSize: fs(20), fontWeight: 700, color: c.primary}}>
               {r.key}
             </span>

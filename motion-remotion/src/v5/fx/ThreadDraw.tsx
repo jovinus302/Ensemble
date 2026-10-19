@@ -49,11 +49,12 @@ export interface ThreadDrawProps {
   dock?: number; // 0..1 docking ring at the target once the tip has arrived
   shadowColor?: string;
   scale?: number; // widths scale with the camera zoom
+  alpha?: number; // overall opacity (threads fade into the afterglow)
 }
 
-export const ThreadDraw: React.FC<ThreadDrawProps> = ({p0, p1, p2, p3, id, head: headIn, body, w0 = 14, w1 = 10, glow = 0, halo = 0, dock = 0, shadowColor = 'rgba(0,0,0,.45)', scale = 1}) => {
+export const ThreadDraw: React.FC<ThreadDrawProps> = ({p0, p1, p2, p3, id, head: headIn, body, w0 = 14, w1 = 10, glow = 0, halo = 0, dock = 0, shadowColor = 'rgba(0,0,0,.45)', scale = 1, alpha = 1}) => {
   const head = clamp01(headIn);
-  if (head <= 0.004) return null;
+  if (head <= 0.004 || alpha <= 0.003) return null;
   const n = Math.max(10, Math.round(72 * head));
   const half = (t: number) => {
     const taper = (w0 + (w1 - w0) * smooth(t)) / 2;
@@ -90,7 +91,7 @@ export const ThreadDraw: React.FC<ThreadDrawProps> = ({p0, p1, p2, p3, id, head:
   const arrived = dock > 0;
   const endColor = harmonyGradientStops[harmonyGradientStops.length - 1].color;
   return (
-    <svg style={{position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none'}} width={1920} height={1080}>
+    <svg style={{position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none', opacity: alpha}} width={1920} height={1080}>
       <defs>
         <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={p0.x} y1={p0.y} x2={p3.x + dx} y2={p3.y}>
           {harmonyGradientStops.map((s) => (
@@ -117,6 +118,30 @@ export const ThreadDraw: React.FC<ThreadDrawProps> = ({p0, p1, p2, p3, id, head:
           <circle cx={p3.x} cy={p3.y} r={w1 * scale * 0.5 + 0.5} fill={endColor} />
         </g>
       )}
+    </svg>
+  );
+};
+
+/** B7 hairline source line drawn from a context-view row to its source surface (progress 0..1) */
+export const SourceDraw: React.FC<{id: string; from: Pt; to: Pt; c1: Pt; c2: Pt; p: number; alpha?: number; occluders?: string[]}> = ({id, from, to, c1, c2, p, alpha = 0.6, occluders}) => {
+  if (p <= 0.003) return null;
+  return (
+    <svg style={{position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none'}} width={1920} height={1080}>
+      <defs>
+        {occluders && (
+          <mask id={`${id}-m`} maskUnits="userSpaceOnUse" x={-200} y={-200} width={2320} height={1480}>
+            <rect x={-200} y={-200} width={2320} height={1480} fill="white" />
+            {occluders.map((q, i) => (
+              <polygon key={i} points={q} fill="black" />
+            ))}
+          </mask>
+        )}
+      </defs>
+      <g mask={occluders ? `url(#${id}-m)` : undefined}>
+        <path d={`M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${to.x} ${to.y}`} pathLength={1} strokeDasharray="1 1" strokeDashoffset={1 - p} stroke="#C0EBD5" strokeWidth={1.6} fill="none" opacity={alpha} strokeLinecap="round" />
+        <circle cx={from.x} cy={from.y} r={3.2} fill="#C0EBD5" opacity={Math.min(1, alpha + 0.2)} />
+        {p > 0.98 && <circle cx={to.x} cy={to.y} r={4} fill="none" stroke="#C0EBD5" strokeWidth={1.6} opacity={alpha} />}
+      </g>
     </svg>
   );
 };

@@ -1,12 +1,12 @@
 // v5 film camera: keyed world poses, eased segments, zoom interpolated in log
 // space (storyboard-v5.md §1 "카메라"). One eased move per scene, never a zoom
 // reversal (s only falls after the dolly toward M), tracking moves <= 40f.
-import {THEMES, placementsFor} from './config';
+import {THEMES, THEME_FRAMES, placementsFor} from './config';
 import type {WorldCamera} from './stage/worldProject';
 import {cameraMatrix, perspectiveDivide} from './stage/worldProject';
 import {EASE, clamp01, lerp} from './anim';
-import {B1, B2, B3, BEAT_END} from './timeline';
-import {beatStart} from './timing';
+import {B1, B2, B3, B4, B5, B6, B7, BEAT_END, C} from './timeline';
+import {beatEnd, beatStart} from './timing';
 
 /** the approved TA still camera (B1f140 and B3f600 share it) */
 export const C0: WorldCamera = THEMES.TA.camera;
@@ -48,6 +48,14 @@ const keys = (): Key[] => {
   const m1 = solveTxTy({yaw: -13, pitch: 6, s: 1.15}, {x: M.x, y: M.y, z: M.z}, 640, 620);
   // B2 end / B3 reads: M and D together, every surface but A in view; same angle as C0
   const p2: WorldCamera = {tx: 95, ty: 15, tz: 0, yaw: -10, pitch: 6, s: 0.88};
+  const wc = (id: 'M' | 'D' | 'S' | 'P' | 'A') => ({x: places[id].x, y: places[id].y, z: places[id].z});
+  const mid = (a: {x: number; y: number; z: number}[]) => ({x: a.reduce((t, q) => t + q.x, 0) / a.length, y: a.reduce((t, q) => t + q.y, 0) / a.length, z: a.reduce((t, q) => t + q.z, 0) / a.length});
+  const b4 = solveTxTy({yaw: -8, pitch: 0, s: 0.92}, mid([wc('P'), wc('S')]), 930, 745);
+  const b5 = solveTxTy({yaw: -10, pitch: 3, s: 0.84}, mid([wc('S'), wc('A'), wc('D')]), 1250, 440);
+  const b6a = solveTxTy({yaw: 6, pitch: 3, s: 0.9}, wc('S'), 1330, 680);
+  const b6b = solveTxTy({yaw: -4, pitch: 3, s: 0.9}, wc('S'), 1330, 680);
+  const b7: WorldCamera = {...C0, ...THEME_FRAMES.TA.B7f1440!.camera};
+  const endOfFilm = beatEnd('Closing');
   const k = (f: number, pose: WorldCamera, ease = EASE.inout): Key => ({f, pose, ease});
   cache = {
     keys: [
@@ -60,9 +68,25 @@ const keys = (): Key[] => {
       k(B2.camMoveStart, m1),
       k(B2.camMoveEnd, p2),
       k(B3.camMove.start, {...p2, s: 0.876}, EASE.linear), // near-still read: drift <= 0.8%
-      k(B3.camMove.end, drift(0.8625, -6)),
+      k(B3.camMove.end, drift(0.8625, -14)),
       k(B3.pulse, tweak(0.86), EASE.linear), // = TA B3f600 camera exactly
-      k(BEAT_END, drift(0.857, 6), EASE.linear),
+      k(BEAT_END, drift(0.857, 14), EASE.linear), // read drift toward the branches (<=1% scale)
+      // ---- B4: between P and S, pitch relaxed, push toward the decision card (one T-cam move)
+      k(B4.camMove.end, b4),
+      k(B5.camMove.start, {...b4, s: b4.s * 0.994}, EASE.linear),
+      // ---- B5: truck right so S, A and D share the frame
+      k(B5.camMove.end, b5),
+      k(B6.rackIn.start, {...b5, s: b5.s * 0.995}, EASE.linear),
+      // ---- B6: S in front, slow orbit yaw +6 -> -4
+      k(B6.forward.start, b6a),
+      k(B6.orbit.end, b6b, EASE.soft),
+      k(B7.camMove.start, {...b6b, s: b6b.s * 0.996}, EASE.linear),
+      // ---- B7: pull back + rise onto the approved TA-B7f1440 camera
+      k(B7.camMove.end, {...b7, s: b7.s * 1.004}),
+      k(B7.still, b7, EASE.linear), // = TA B7f1440 camera exactly
+      k(C.retreat.start, {...b7, s: b7.s * 0.99}, EASE.linear),
+      k(C.retreat.end, {...b7, s: b7.s * 0.93, ty: b7.ty + 30}, EASE.inout), // closing: the world steps back
+      k(endOfFilm, {...b7, s: b7.s * 0.905, ty: b7.ty + 44}, EASE.linear), // ring-out: a last, barely perceptible drift
     ],
   };
   return cache.keys;
@@ -94,6 +118,7 @@ export const camMoving = (frame: number) => {
   for (let i = 1; i < ks.length; i++) {
     const a = ks[i - 1].pose;
     const b = ks[i].pose;
+    if (ks[i].f - ks[i - 1].f > 40) continue; // slow dollies (reads, orbit, closing retreat) need no blur
     const big = Math.abs(Math.log(a.s / b.s)) > 0.04 || Math.abs(a.tx - b.tx) > 20 || Math.abs(a.ty - b.ty) > 20;
     if (big && frame > ks[i - 1].f && frame < ks[i].f) return true;
   }

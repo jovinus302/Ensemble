@@ -6,7 +6,7 @@ import {colors} from '../../v3/tokens/video';
 import {DESIGN, B3COPY} from '../content';
 import {useFs} from './SurfaceFrame';
 import {useTheme} from './theme';
-import {useFilm} from './film';
+import {morphInStyle, morphOutStyle, useFilm} from './film';
 
 const ToolIcon: React.FC<{kind: 'cursor' | 'rect' | 'circle' | 'text' | 'comment'; active?: boolean}> = ({kind, active}) => {
   const {pal: c} = useTheme();
@@ -31,6 +31,22 @@ const ToolIcon: React.FC<{kind: 'cursor' | 'rect' | 'circle' | 'text' | 'comment
       {kind === 'comment' && <path d="M5 6.5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3.5v-3.5H7a2 2 0 0 1-2-2z" />}
     </svg>
   </div>
+  );
+};
+
+/** banner date "10.30" -> "11.06": the three changing digits roll like an odometer */
+const RollBanner: React.FC<{roll: number[]}> = ({roll}) => {
+  const digit = (from: string, to: string, t: number, key: string) => (
+    <span key={key} style={{position: 'relative', display: 'inline-block', overflow: 'hidden', height: '1.12em', verticalAlign: 'top'}}>
+      <span style={{display: 'block', transform: `translateY(${-t * 100}%)`}}>{from}</span>
+      <span style={{position: 'absolute', left: 0, top: 0, display: 'block', transform: `translateY(${(1 - t) * 100}%)`}}>{to}</span>
+    </span>
+  );
+  return (
+    <>
+      1{digit('0', '1', roll[0], 'a')}.{digit('3', '0', roll[1], 'b')}
+      {digit('0', '6', roll[2], 'c')} 출시
+    </>
   );
 };
 
@@ -139,13 +155,13 @@ export const Canvas: React.FC = () => {
               }}
             />
           )}
-          <div style={{position: 'absolute', left: 34, top: 44, fontSize: 62, fontWeight: 800, letterSpacing: '-0.02em', color: colors.brandInk, lineHeight: 1.05}}>{b7 ? DESIGN.bannerNew : DESIGN.banner}</div>
+          <div style={{position: 'absolute', left: 34, top: 44, fontSize: 62, fontWeight: 800, letterSpacing: '-0.02em', color: colors.brandInk, lineHeight: 1.05}}>{D && D.roll[0] > 0 && D.roll[2] < 1 ? <RollBanner roll={D.roll} /> : b7 || (D && D.roll[2] >= 1) ? DESIGN.bannerNew : DESIGN.banner}</div>
           <div style={{position: 'absolute', left: 36, top: 126, fontSize: fs(30), fontWeight: 600, color: colors.onSurfaceVariant}}>{DESIGN.sub}</div>
           <div style={{position: 'absolute', left: 36, bottom: 34, width: 150, height: 14, borderRadius: 7, background: colors.brandInk, opacity: 0.55}} />
         </div>
         {/* a collaborator's cursor drifting over the artboard (film micro motion) */}
         {D && D.cursor.a > 0 && (
-          <div style={{position: 'absolute', left: ART.x + 190 + D.cursor.x, top: ART.y + ART.h - 112 + D.cursor.y, opacity: D.cursor.a, pointerEvents: 'none'}}>
+          <div style={{position: 'absolute', left: ART.x + 190 + D.cursor.x + (ART.x + 211 - (ART.x + 190 + D.cursor.x)) * D.cursor.toBanner, top: ART.y + ART.h - 112 + D.cursor.y + (ART.y + 86 - (ART.y + ART.h - 112 + D.cursor.y)) * D.cursor.toBanner, opacity: D.cursor.a, pointerEvents: 'none'}}>
             <svg width="34" height="34" viewBox="0 0 24 24"><path d="M5 3l13 7-6 1.8L9.6 18z" fill="#2B6A52" stroke="#FFFFFF" strokeWidth="1.6" strokeLinejoin="round" /></svg>
             <div style={{position: 'absolute', left: 24, top: 26, padding: '2px 12px', borderRadius: 10, background: '#2B6A52', color: '#FFFFFF', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>서연</div>
           </div>
@@ -212,8 +228,14 @@ export const Canvas: React.FC = () => {
             >
               {B3COPY.pmInitial}
             </div>
-            <div style={{flex: 1, fontSize: fs(22), fontWeight: 600, lineHeight: 1.22, color: c.onSurface}}>{b7 ? B3COPY.pinTextB7 : B3COPY.pinText}</div>
-            <div style={{flexShrink: 0, padding: '4px 14px', borderRadius: 999, background: c.primaryContainer, color: c.onPrimaryContainer, fontSize: fs(20), fontWeight: 700, ...(D ? {opacity: Math.min(1, D.cardChip * 2), transform: `scale(${0.8 + 0.2 * D.cardChip})`} : {})}}>{b7 ? B3COPY.reflected : B3COPY.delivered}</div>
+            <div style={{flex: 1, position: 'relative', fontSize: fs(22), fontWeight: 600, lineHeight: 1.22, color: c.onSurface}}>
+              <div style={D ? {...morphOutStyle(D.chipMorph), visibility: D.chipMorph.out >= 1 ? 'hidden' : 'visible'} : undefined}>{b7 ? B3COPY.pinTextB7 : B3COPY.pinText}</div>
+              {D && D.chipMorph.in > 0 && <div style={{position: 'absolute', left: 0, right: 0, top: '50%', transform: 'translateY(-50%)'}}><div style={morphInStyle(D.chipMorph)}>{B3COPY.pinTextB7}</div></div>}
+            </div>
+            <div style={{flexShrink: 0, padding: '4px 14px', borderRadius: 999, background: c.primaryContainer, color: c.onPrimaryContainer, fontSize: fs(20), fontWeight: 700, position: 'relative', ...(D ? {opacity: Math.min(1, D.cardChip * 2), transform: `scale(${0.8 + 0.2 * D.cardChip})`} : {})}}>
+              <span style={D ? {...morphOutStyle(D.chipMorph), display: 'inline-block', visibility: D.chipMorph.out >= 1 ? 'hidden' : 'visible'} : undefined}>{b7 ? B3COPY.reflected : B3COPY.delivered}</span>
+              {D && D.chipMorph.in > 0 && <span style={{...morphInStyle(D.chipMorph), position: 'absolute', left: 14, top: 4}}>{B3COPY.reflected}</span>}
+            </div>
           </div>
         )}
         {/* comment pin */}

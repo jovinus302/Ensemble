@@ -5,7 +5,7 @@ import {DocCheckIcon} from '../../ui/icons';
 import {DOC, B7COPY} from '../content';
 import {useFs} from './SurfaceFrame';
 import {useTheme} from './theme';
-import {useFilm} from './film';
+import {morphInStyle, morphOutStyle, useFilm} from './film';
 
 export const Doc: React.FC = () => {
   const fs = useFs();
@@ -50,6 +50,7 @@ export const Doc: React.FC = () => {
               const amber = (b3 && r.item === '광고 집행') || (b7 && r.item === '보도자료 배포');
               const date = b7 && r.item === '광고 집행' ? '11/6' : r.date;
               const ad = r.item === '광고 집행';
+              const bo = r.item === '보도자료 배포';
               return (
                 <div
                   key={r.item}
@@ -69,8 +70,30 @@ export const Doc: React.FC = () => {
                   {P && ad && P.ring > 0 && (
                     <div style={{position: 'absolute', inset: 0, zIndex: -1, background: c.warningContainer, boxShadow: `inset 0 0 0 2.5px ${c.warning}, 0 0 ${12 * P.ringBreath}px rgba(154,91,0,${0.45 * P.ringBreath})`, opacity: Math.min(1, P.ring * 1.6), transform: `scale(${0.94 + 0.06 * P.ring})`}} />
                   )}
+                  {P && bo && P.boRing > 0 && (
+                    <div style={{position: 'absolute', inset: 0, zIndex: -1, background: c.warningContainer, boxShadow: `inset 0 0 0 2.5px ${c.warning}`, opacity: Math.min(1, P.boRing * 1.6), transform: `scale(${0.94 + 0.06 * P.boRing})`}} />
+                  )}
                   <span style={{flex: 1, whiteSpace: 'nowrap'}}>{r.item}</span>
-                  {b7 && amber ? (
+                  {P && ad && (P.adRoll <= 0 || P.adRoll >= 1) ? (
+                    <span style={{fontWeight: 700, fontVariantNumeric: 'tabular-nums'}}>{P.adRoll >= 1 ? '11/6' : r.date}</span>
+                  ) : P && bo && P.boChip >= 0.999 && P.boMorph.out >= 1 && P.boMorph.in >= 0.999 ? (
+                    <span data-anchor="doc-row" style={{padding: '1px 12px', borderRadius: 999, background: c.warning, color: '#FFFFFF', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>{B7COPY.waiting}</span>
+                  ) : P && ad ? (
+                    <span style={{position: 'relative', display: 'inline-block', overflow: 'hidden', fontWeight: 700, fontVariantNumeric: 'tabular-nums', height: '1.3em'}}>
+                      <span style={{display: 'block', transform: `translateY(${-P.adRoll * 100}%)`}}>{r.date}</span>
+                      <span style={{position: 'absolute', left: 0, top: 0, display: 'block', transform: `translateY(${(1 - P.adRoll) * 100}%)`}}>11/6</span>
+                    </span>
+                  ) : P && bo ? (
+                    <span style={{position: 'relative', display: 'inline-flex', justifyContent: 'flex-end', minWidth: 64}}>
+                      <span style={{fontWeight: 700, fontVariantNumeric: 'tabular-nums', opacity: 1 - Math.min(1, P.boChip * 3)}}>{date}</span>
+                      {P.boChip > 0 && (
+                        <span data-anchor="doc-row" style={{position: 'absolute', right: 0, top: '50%', transform: `translateY(-50%) scale(${0.8 + 0.2 * Math.min(1, P.boChip)})`, opacity: Math.min(1, P.boChip * 2), padding: '1px 12px', borderRadius: 999, background: c.warning, color: '#FFFFFF', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>
+                          {P.boMorph.out < 1 && <span style={{display: 'inline-block', ...morphOutStyle(P.boMorph)}}>전달됨 · 반영 대기</span>}
+                          {P.boMorph.in > 0 && <span style={{...morphInStyle(P.boMorph), ...(P.boMorph.out < 1 ? {position: 'absolute', right: 12, top: 1} : {})}}>{B7COPY.waiting}</span>}
+                        </span>
+                      )}
+                    </span>
+                  ) : b7 && amber ? (
                     <span data-anchor="doc-row" style={{padding: '1px 12px', borderRadius: 999, background: c.warning, color: '#FFFFFF', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>{B7COPY.waiting}</span>
                   ) : (
                     <span style={{fontWeight: 700, fontVariantNumeric: 'tabular-nums'}}>{date}</span>

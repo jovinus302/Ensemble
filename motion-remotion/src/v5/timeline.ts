@@ -68,7 +68,86 @@ export const B3 = {
   wordGlide: 14,
 };
 
-export const BEAT_END = at('B3', 300); // f660: end of stage 1 (later beats are placeholder holds)
+export const BEAT_END = at('B3', 300); // f660: end of stage 1
+
+// ------------------------------------------------------------------ B4 (f660-900): conflict + human decision
+export const B4 = {
+  camMove: {start: at('B4', 0), end: at('B4', 40)}, // the scene's one T-cam move: between P and S, pitch relaxes, push-in toward the card
+  scan: {start: at('B4', 15), end: at('B4', 30)}, // thread M -> P ad row (f690 = check pulse)
+  scanPulse: at('B4', 30),
+  rowsOut: {start: at('B4', 30), end: at('B4', 45)}, // S: 서연 / 도윤 rows make room
+  card: at('B4', 45), // decision card floats up (f705)
+  cardDur: 18,
+  headline: {reveal: at('B4', 60), settle: at('B4', 75), exit: at('B4', 132), exitDur: 6, stagger: 3}, // f735 -> f792
+  cursorIn: at('B4', 80), // 지은's cursor appears near the card
+  approach: {start: at('B4', 138), end: at('B4', 150)}, // stop-time f798-810: only the cursor decelerates
+  click: at('B4', 150), // f810 music accent
+  morph: at('B4', 158), // f818 chip 제안 -> 확정 · 지은, card lights solid, the beat's one bounce
+};
+
+// ------------------------------------------------------------------ B5 (f900-1080): follow-through
+export const B5 = {
+  camMove: {start: at('B5', 0), end: at('B5', 18)}, // truck right: S, A, D
+  threadA: {start: at('B5', 15), end: at('B5', 45)}, // confirmed card -> A shared inbox
+  briefOut: at('B5', 30), // old brief chip leaves, typing starts (f930)
+  typing: {start: at('B5', 30), perChar: 2},
+  reflected: at('B5', 60), // f960 chip 반영됨, P ad date flips
+  roll: {start: at('B5', 75), dur: 25, stagger: 3}, // f975-1000 banner 10.30 -> 11.06
+  dChip: at('B5', 100), // f1000 전달됨 -> 반영됨
+  pChip: at('B5', 105), // f1005 P 보도자료 chip
+  memo: at('B5', 120), // f1020 PM memo
+  rowsOut: {start: at('B5', 110), end: at('B5', 124)},
+  headline: {reveal: at('B5', 105), settle: at('B5', 120), exit: at('B5', 168), exitDur: 6, stagger: 3}, // f1020 -> f1068
+  afterglow: {start: at('B5', 150), end: at('B6', 0)},
+  cursorToBanner: {start: at('B5', 55), end: at('B5', 75)},
+};
+
+// ------------------------------------------------------------------ B6 (f1080-1320): memory
+export const B6 = {
+  capsuleOut: {start: at('B6', -24), end: at('B6', 0)}, // capsule re-emerges from the PM tile into M's caption band
+  flip: {start: at('B6', 0), end: at('B6', 24)}, // date field 10/14 -> 2주 뒤
+  rackIn: {start: at('B6', 0), end: at('B6', 24)},
+  rackOut: {start: at('B6', 120), end: at('B6', 144)},
+  forward: {start: at('B6', 24), end: at('B6', 48)}, // S steps forward
+  back: {start: at('B6', 120), end: at('B6', 144)},
+  rowsOut: {start: at('B6', 30), end: at('B6', 45)},
+  minho: at('B6', 45), // f1125
+  answer: at('B6', 75), // f1155
+  source: at('B6', 83), // source chip
+  capsuleToS: {start: at('B6', 24), end: at('B6', 60)},
+  reverse: {start: at('B6', 90), end: at('B6', 120)}, // f1170-1200, drawn from the source chip back to M
+  capsuleBack: {start: at('B6', 90), end: at('B6', 135)}, // settles in M's band f1215
+  flipBack: {start: at('B6', 135), end: at('B6', 150)},
+  orbit: {start: at('B6', 20), end: at('B6', 120)},
+  headline: {reveal: at('B6', 135), settle: at('B6', 150), exit: at('B6', 210), exitDur: 6, stagger: 3}, // f1230 -> f1290
+};
+
+// ------------------------------------------------------------------ B7 (f1320-1500): context view
+export const B7 = {
+  camMove: {start: at('B7', 0), end: at('B7', 24)}, // pull back + rise
+  even: {start: at('B7', 0), end: at('B7', 40)}, // pools merge into one key light
+  afterglow: {start: at('B7', 0), end: at('B7', 60)},
+  capsuleToV: {start: at('B7', 15), end: at('B7', 30)},
+  vGrow: {start: at('B7', 30), end: at('B7', 45)},
+  rows: [at('B7', 45), at('B7', 55), at('B7', 65)], // 목표 / 반영 / 다음 unfold from the 결정 row
+  rowDur: 14,
+  sources: {start: at('B7', 75), stagger: 6, dur: 18},
+  headline: {reveal: at('B7', 78), settle: at('B7', 90), exit: at('B7', 135), exitDur: 6, stagger: 3}, // f1410 -> f1455
+  chipMorph: at('B7', 15), // P chip 전달됨 · 반영 대기 -> 반영 대기
+  still: at('B7', 120), // = the approved TA-B7f1440 style frame
+};
+
+// ------------------------------------------------------------------ Closing (f1500-1680)
+export const C = {
+  headline: {reveal: at('Closing', -36), settle: at('Closing', -20), morph: at('Closing', 36), land: at('Closing', 60), stagger: 4},
+  recede: {start: at('Closing', 0), end: at('Closing', 30)},
+  converge: {start: at('Closing', 0), end: at('Closing', 36)},
+  underline: {start: at('Closing', 60), end: at('Closing', 75)},
+  lockup: {start: at('Closing', 75), end: at('Closing', 90)},
+  caption: at('Closing', 120),
+  retreat: {start: at('Closing', 0), end: at('Closing', 60)},
+};
+
 
 // ------------------------------------------------------------------ SFX (names from timing.json "sfx")
 export type SfxName = 'thread-draw' | 'capsule-arrive' | 'chip-morph' | 'click' | 'typing' | 'number-roll' | 'wordmark-land';
@@ -94,6 +173,27 @@ export const SFX_EVENTS: SfxEvent[] = [
   {name: 'chip-morph', frame: B3.reply, volume: 0.65, label: 'B3 reply 전달됨'},
   {name: 'thread-draw', frame: B3.threadA.start, volume: 0.7, label: 'B3 thread ->A'},
   {name: 'capsule-arrive', frame: B3.brief, volume: 0.75, label: 'B3 brief arrives (f540)'},
+  // ---- stage 2
+  {name: 'thread-draw', frame: B4.scan.start, volume: 0.5, label: 'B4 scan thread'},
+  {name: 'chip-morph', frame: B4.card, volume: 0.55, label: 'B4 decision card rises'},
+  {name: 'click', frame: B4.click, volume: 0.8, label: 'B4 click (music accent f810)'},
+  {name: 'chip-morph', frame: B4.morph, volume: 0.7, label: 'B4 chip 제안 -> 확정'},
+  {name: 'thread-draw', frame: B5.threadA.start, volume: 0.6, label: 'B5 thread -> A'},
+  {name: 'typing', frame: B5.typing.start, volume: 0.35, frames: 26, label: 'B5 A types'},
+  {name: 'chip-morph', frame: B5.reflected, volume: 0.65, label: 'B5 반영됨 (A) + P date flip'},
+  {name: 'number-roll', frame: B5.roll.start, volume: 0.65, label: 'B5 banner number roll'},
+  {name: 'chip-morph', frame: B5.dChip, volume: 0.6, label: 'B5 D chip 반영됨'},
+  {name: 'chip-morph', frame: B5.pChip, volume: 0.5, label: 'B5 P chip 반영 대기'},
+  {name: 'chip-morph', frame: B6.flip.start, volume: 0.6, label: 'B6 capsule date flip'},
+  {name: 'chip-morph', frame: B6.answer, volume: 0.55, label: 'B6 PM answer'},
+  {name: 'thread-draw', frame: B6.reverse.start, volume: 0.6, label: 'B6 reverse thread'},
+  {name: 'capsule-arrive', frame: B6.capsuleBack.end, volume: 0.7, label: 'B6 capsule lands in M'},
+  {name: 'capsule-arrive', frame: B7.capsuleToV.end, volume: 0.65, label: 'B7 capsule reaches V'},
+  {name: 'chip-morph', frame: B7.rows[0], volume: 0.45, label: 'B7 V row 1'},
+  {name: 'chip-morph', frame: B7.rows[1], volume: 0.45, label: 'B7 V row 2'},
+  {name: 'chip-morph', frame: B7.rows[2], volume: 0.45, label: 'B7 V row 3'},
+  {name: 'chip-morph', frame: C.headline.morph, volume: 0.5, label: 'C headline morph starts'},
+  {name: 'wordmark-land', frame: C.headline.land, volume: 0.8, label: 'C wordmark lands (f1560)'},
 ];
 
 export const sfxFile = (name: SfxName) => {

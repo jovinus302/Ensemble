@@ -20,9 +20,11 @@ export const RevealWords: React.FC<{
   accent: string;
   fontSize: number;
   width: number;
-  justify?: 'flex-start' | 'center';
+  justify?: 'flex-start' | 'center' | 'flex-end';
+  tracking?: string; // letter-spacing (closing: tightens into the wordmark)
+  opacity?: number;
   onRects?: (r: {x: number; y: number}[]) => void; // layout offsets of each word box inside this container (measured once)
-}> = ({words, color, accent, fontSize, width, justify = 'flex-start', onRects}) => {
+}> = ({words, color, accent, fontSize, width, justify = 'flex-start', tracking = '-0.035em', opacity = 1, onRects}) => {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!onRects || !ref.current) return;
@@ -43,8 +45,9 @@ export const RevealWords: React.FC<{
         fontWeight: 800,
         fontSize,
         lineHeight: 1.02,
-        letterSpacing: '-0.035em',
+        letterSpacing: tracking,
         color,
+        opacity,
       }}
     >
       {words.map((w, i) => (

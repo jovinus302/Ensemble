@@ -10,6 +10,12 @@ export interface ChipAnim {
   type?: number; // 0..1 caption text reveal (live captions type in)
 }
 
+/** chip morph: out 4f (.96 + fade), the new chip starts 2f after that */
+export interface Morph {
+  out: number;
+  in: number;
+}
+
 export interface FilmAnim {
   frame: number;
   M: {
@@ -28,37 +34,58 @@ export interface FilmAnim {
     sel: number; // selection frame
     ring: number; // amber ring on the banner date
     ringBreath: number; // 0..1 micro breathing
-    cursor: {x: number; y: number; a: number}; // a collaborator's cursor drifting over the artboard (px in the canvas area), a = visibility
+    cursor: {x: number; y: number; a: number; toBanner: number}; // a collaborator's cursor; toBanner 0..1 blends the drift toward the banner date
     pin1: number; // "1" pin visibility
     card: number; // PM comment card open
     cardPin: number; // PM pin pop
-    cardChip: number; // "전달됨" chip pop
+    cardChip: number; // chip pop (전달됨)
+    roll: number[]; // 3 digits of the banner date: 0 = 10.30, 1 = 11.06 (odometer roll per changing digit)
+    chipMorph: Morph; // 전달됨 -> 반영됨 (also swaps the card sentence)
   };
   S: {
     bubble: number[]; // pop spring per original message (도윤1, 지은, 서연, 도윤2); may overshoot
+    typing: number[]; // typing-dots bubble visibility before bubbles 서연, 도윤2 and the first replies (index = message 1..3)
     amber: number; // amber ring on 지은's question
     amberBreath: number;
-    row1: number; // 1 -> 0: first message scrolls out
-    replyRow: number; // 0 -> 1: room for the PM Agent reply row
+    open: {do1: number; ji: number; reply: number; seo: number; do2: number; card: number; memo: number; minho: number; answer: number};
     reply: number; // reply bubble pop
     badge: number; // "전달됨" pop
     caret: number; // 0/1 blink
     send: number; // 0..1 beat kick
     dots: number; // frame, for the typing dots in the composer
+    card: {pop: number; lit: number; solid: number; press: number; bounce: number; chip: Morph};
+    cursor: {a: number; near: number; frame: number}; // 지은's cursor: near 0..1 = decelerating approach to [옮기기]
+    memo: number;
+    minho: number;
+    answer: number;
+    source: number;
   };
   P: {
     page: number; // slide-in
     rows: number[]; // 3 schedule rows
     ring: number; // amber ring on "광고 집행"
     ringBreath: number;
+    scan: number; // 0..1 check pulse on the ad row (B4)
+    adRoll: number; // ad date 11/1 -> 11/6
+    boRing: number; // amber on 보도자료 배포 (B5)
+    boChip: number; // chip pop
+    boMorph: Morph; // 전달됨 · 반영 대기 -> 반영 대기
   };
   A: {
     lines: number[]; // 3 private lines scaleX
-    typed: number; // characters typed into the inbox slot
+    typed: number; // characters typed into the inbox slot (empty prompt)
     caret: number; // 0/1 blink
     slotBorder: number; // 0 dashed idle .. 1 solid mint
     emptyOut: number; // 0..1 empty text leaves (4f)
     briefIn: number; // 0..1 brief chip in (2f after out)
+    briefOut: number; // 0..1 brief chip leaves (B5 morph)
+    typed2: number; // characters of "광고 일정 11/6로 변경"
+    reflected: number; // chip pop 반영됨
+    slotGlow: number; // 0..1 soft glow when something lands in the slot
+  };
+  V: {
+    rows: number[]; // 4 rows open 0..1 (row 1 = 결정 is the capsule's row)
+    decision: number; // 결정 row content visible
   };
 }
 
@@ -71,3 +98,7 @@ export const chipStyle = (c: ChipAnim): React.CSSProperties => ({
   opacity: Math.max(0, Math.min(1, c.in * (1 - c.out))),
   transform: `scale(${c.out > 0 ? 1 - 0.04 * c.out : 0.9 + 0.1 * Math.min(1, c.in)})`,
 });
+
+/** the two halves of a morph as styles: outgoing (visible while out < 1) and incoming (visible once in > 0) */
+export const morphOutStyle = (m: Morph): React.CSSProperties => ({opacity: 1 - m.out, transform: `scale(${1 - 0.04 * m.out})`});
+export const morphInStyle = (m: Morph): React.CSSProperties => ({opacity: Math.min(1, m.in * 2), transform: `scale(${0.9 + 0.1 * Math.min(1, m.in)})`});

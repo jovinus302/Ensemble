@@ -27,7 +27,7 @@ const BgTone: React.FC<{bg: Exclude<WorldLook['bg'], 'paper'>}> = ({bg}) => (
 // then projects right behind its slab instead of drifting with parallax.
 export type PoolAmt = Partial<Record<SurfaceId, {lit: number; vis: number}>>; // film: continuous lit amount + visibility per surface
 
-const WallPools: React.FC<{look: WorldLook; places: Record<SurfaceId, SurfacePlacement>; lit: SurfaceId[]; even?: boolean; amt?: PoolAmt}> = ({look, places, lit, even, amt}) => {
+const WallPools: React.FC<{look: WorldLook; places: Record<SurfaceId, SurfacePlacement>; lit: SurfaceId[]; even?: boolean; amt?: PoolAmt; evenAmt?: number}> = ({look, places, lit, even, amt, evenAmt}) => {
   const wallZ = wallZFor(look);
   const P = look.pools!;
   const ids = Object.keys(places) as SurfaceId[];
@@ -59,7 +59,8 @@ const WallPools: React.FC<{look: WorldLook; places: Record<SurfaceId, SurfacePla
     );
   };
   const out: React.ReactNode[] = [];
-  if (even && P.key) {
+  const ea = evenAmt ?? (even ? 1 : 0); // film: the pools merge into one key light continuously
+  if (ea > 0 && P.key) {
     // one even key light behind the whole group (B7: the pools merge into one goal)
     const xs = ids.map((id) => centers[id]!.x);
     const ys = ids.map((id) => centers[id]!.y);
@@ -67,13 +68,31 @@ const WallPools: React.FC<{look: WorldLook; places: Record<SurfaceId, SurfacePla
     const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
     const w = 1100 * P.key.scale;
     const h = 650 * P.key.scale;
-    out.push(<div key="key" style={{position: 'absolute', left: -w / 2, top: -h / 2, width: w, height: h, borderRadius: '50%', background: `rgb(${P.rgb})`, opacity: P.key.a, filter: `blur(${P.blur * 1.3}px)`, transform: `translate3d(${cx}px, ${cy}px, ${wallZ}px)`}} />);
+    out.push(<div key="key" style={{position: 'absolute', left: -w / 2, top: -h / 2, width: w, height: h, borderRadius: '50%', background: `rgb(${P.rgb})`, opacity: P.key.a * ea, filter: `blur(${P.blur * 1.3}px)`, transform: `translate3d(${cx}px, ${cy}px, ${wallZ}px)`}} />);
   }
   for (const id of ids) {
     const p = places[id];
     const k = refFactor(p.z) / refFactor(wallZ);
     const la = amt ? amt[id]?.lit ?? 0 : undefined; // film: continuous lit amount
     const vis = amt ? amt[id]?.vis ?? 1 : 1;
+    if (evenAmt !== undefined && la !== undefined) {
+      // film path: blend the per-surface state (la) with the even state (ea); ea = 1 equals the `even` still exactly
+      const bst = P.boost?.[id];
+      const litN = la > 0;
+      const base = bst?.base ?? P.base;
+      const aLit = bst?.lit ?? P.lit;
+      const aN = litN ? base + (aLit - base) * la : base;
+      const aE = bst ? bst.lit * 0.85 : P.even ?? aLit;
+      const szz = bst ? bst.scale : P.scale;
+      const dyN = (bst?.dy ?? P.dy ?? 0) * la;
+      const dyE = bst?.dy ?? P.dy ?? 0;
+      const dyB = dyN + (dyE - dyN) * ea;
+      out.push(pool(id, p, k, P.rgb, szz, szz, 0, dyB, (aN + (aE - aN) * ea) * vis));
+      const tt = P.tint?.[id];
+      const tA = tt ? (litN ? tt.a * la : 0) * (1 - ea) + tt.a * 0.55 * ea : 0;
+      if (tt && tA > 0.001) out.push(pool(id + 't', p, k, tt.rgb, szz * 0.62, szz * 0.62, tt.dx, tt.dy + dyB, tA * vis));
+      continue;
+    }
     const isLit = even || (la !== undefined ? la > 0 : lit.includes(id));
     const boost = P.boost?.[id];
     const a = even && P.even !== undefined ? (boost ? boost.lit * 0.85 : P.even) : isLit ? boost?.lit ?? P.lit : P.base;
@@ -159,7 +178,8 @@ export const WorldStage: React.FC<{
   even?: boolean;
   places?: Record<SurfaceId, SurfacePlacement>; // film: animated placements (entrance / spread)
   poolAmt?: PoolAmt;
-}> = ({frame, look, surfaces, overlay, lit = [], even, places: placesIn, poolAmt}) => {
+  evenAmt?: number; // film: 0..1 blend toward the even key light (B7)
+}> = ({frame, look, surfaces, overlay, lit = [], even, places: placesIn, poolAmt, evenAmt}) => {
   const places = placesIn ?? placementsFor(look);
   return (
     <div style={{position: 'absolute', width: STAGE_W, height: STAGE_H, perspective: PERSPECTIVE, perspectiveOrigin: `${STAGE_W / 2}px ${STAGE_H / 2}px`, overflow: 'hidden', background: look.stageColor ?? '#F4F1EA'}}>
@@ -183,7 +203,7 @@ export const WorldStage: React.FC<{
           transform: cameraTransform(look.camera),
         }}
       >
-        {look.pools && <WallPools look={look} places={places} lit={lit} even={even} amt={poolAmt} />}
+        {look.pools && <WallPools look={look} places={places} lit={lit} even={even} amt={poolAmt} evenAmt={evenAmt} />}
         <WallShadows look={look} places={places} amt={poolAmt} />
         {surfaces}
       </div>

@@ -68,6 +68,7 @@ export const AgentTerminal: React.FC = () => {
               fontSize: fs(20),
               color: MUTED,
               fontWeight: 500,
+              boxShadow: A.slotGlow > 0.01 ? `0 0 ${26 * A.slotGlow}px rgba(143,213,179,${0.5 * A.slotGlow})` : undefined,
             }}
           >
             <div style={{position: 'absolute', left: 18, top: '50%', display: 'flex', alignItems: 'center', opacity: 1 - A.emptyOut, transform: `translateY(-50%) scale(${1 - 0.04 * A.emptyOut})`, transformOrigin: '0 50%', whiteSpace: 'nowrap'}}>
@@ -75,9 +76,20 @@ export const AgentTerminal: React.FC = () => {
               {AGENT.inboxEmpty.slice(0, A.typed)}
               <span style={{marginLeft: 8, width: 12, height: 26, background: TEXT, opacity: 0.8 * A.caret}} />
             </div>
-            {A.briefIn > 0 && (
-              <div style={{position: 'absolute', left: 18, top: '50%', transform: `translateY(-50%) scale(${0.9 + 0.1 * A.briefIn})`, transformOrigin: '0 50%', opacity: Math.min(1, A.briefIn * 2)}}>
+            {A.briefIn > 0 && A.briefOut < 1 && (
+              <div style={{position: 'absolute', left: 18, top: '50%', transform: `translateY(-50%) scale(${(0.9 + 0.1 * A.briefIn) * (1 - 0.04 * A.briefOut)})`, transformOrigin: '0 50%', opacity: Math.min(1, A.briefIn * 2) * (1 - A.briefOut)}}>
                 <div style={{padding: '6px 18px', borderRadius: 999, background: '#1F513F', color: '#C0EBD5', fontSize: fs(20), fontWeight: 700, whiteSpace: 'nowrap'}}>{B3COPY.brief}</div>
+              </div>
+            )}
+            {A.typed2 > 0 && (
+              <div style={{position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap'}}>
+                <div style={{padding: '6px 18px', borderRadius: 999, background: '#1F513F', color: '#C0EBD5', fontSize: fs(20), fontWeight: 700}}>
+                  {B7COPY.agentLine.slice(0, A.typed2)}
+                  {A.typed2 < B7COPY.agentLine.length && <span style={{display: 'inline-block', width: 2, height: '1.1em', background: '#C0EBD5', marginLeft: 2, verticalAlign: '-0.18em', opacity: A.caret}} />}
+                </div>
+                {A.reflected > 0 && (
+                  <div style={{padding: '4px 14px', borderRadius: 999, background: '#8FD5B3', color: '#00382A', fontSize: fs(20), fontWeight: 800, transform: `scale(${0.8 + 0.2 * Math.min(1, A.reflected)})`, opacity: Math.min(1, A.reflected * 2), transformOrigin: '0 50%'}}>{B7COPY.reflected}</div>
+                )}
               </div>
             )}
           </div>
