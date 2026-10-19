@@ -22,4 +22,4 @@
 
 /demo는 기존 서버 상태와 실행 기록을 읽는다. 실행 설정과 실제 CLI 성공 증거는 구분한다. /의 기존 앱과 app/packages의 내부 원장·권한 로직은 유지되며, 새 컨셉의 모든 환경에 PM Agent가 붙는 기능을 구현한 것으로 설명하지 않는다.
 
-[Argo 조사](argo/structure.md)는 과거 참고 자료다. [발표 자료 안내](presentations/README.md)와 [영상 프로젝트](../motion-remotion/README.md)의 과거 산출물은 당시 표현을 보존하며 현재 제품 명세로 사용하지 않는다. 최신 발표 메시지는 각자의 작업 환경 → PM Agent의 연결 → 프로젝트 맥락 확인 순서로 설명한다.
+[Argo 조사](argo/structure.md)는 과거 참고 자료다. [발표 자료 안내](presentations/README.md)와 [영상 프로젝트](../motion-remotion/README.md)의 과거 산출물은 당시 표현을 보존하며 현재 제품 명세로 사용하지 않는다. 최신 발표 메시지는 각자의 작업 환경 → PM Agent의 연결 → 프로젝트 맥락 확인 순서로 설명한다. 현재 메시지 기준 영상은 [storyboard v5](../motion-remotion/storyboard-v5.md) 초안(승인 전)이다.

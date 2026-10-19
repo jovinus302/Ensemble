@@ -1,51 +1,15 @@
 # Ensemble Motion — Remotion
 
-> **과거 영상 자료 · 2026-10-07 정리:** 이 문서는 이전 영상의 제작·검토 기록이다. 현재 제품은 여러 사람과 Agent의 맥락을 목표 아래 연결하고 다음 행동을 조율하는 PM Agent이며 [제품 의도](../intent.md)가 기준이다. 아래 대본·표현·화면은 새 메시지로 재제작된 결과가 아니다.
+> **v5 초안 진행 중 · 2026-10-12:** 현재 메시지 기준 영상은 [storyboard-v5.md](storyboard-v5.md)이며 사용자 승인 전이다. 순서는 storyboard 승인 → 스타일 프레임 3장 승인 → 모션 구현이다. 제품 기준은 [제품 의도](../intent.md). v4 이하 문서·렌더는 과거 자료이며 현재 메시지가 아니다.
 
+## Current source status (2026-10-12)
 
-## Current source status (2026-10-02)
+[Root.tsx](src/Root.tsx)에 등록된 composition:
 
-The repository contains several generations of compositions. Phase 2a below describes the original v2 SVG-world implementation, not the complete current composition list. [Root.tsx](src/Root.tsx) also registers `UiMockupFlat`, `PitchV3`, `StyleFrameV3`, `StyleFrameV4`, `OpeningV4` and `PitchV4`.
+- `StyleFrameV4`, `OpeningV4`, `PitchV4` — 과거 참조용(v4, 1,834f). 문서: [storyboard v4](storyboard-v4.md), [design review](review/design-v4.md), [style-frame log](review/log-v4-sf.md).
+- `StyleFrameV5` — 계획됨(미구현). storyboard-v5 §5의 스타일 프레임 3장 게이트 대기.
 
-- `Preview2a` implements v2 S01–S04 (750 frames); `Full` remains its 1,500-frame timeline with S05–S08 holding the S04 end state.
-- `PitchV3` is a registered intermediate implementation; its registration explicitly says full beat-by-beat motion is not complete. See [v3 review](review/log-v3-sf.md) and [v3 continuation notes](review/next-v3.md).
-- V4 has implemented style-frame, opening and full-pitch components under `src/v4/`. `PitchV4` uses the [1,834-frame timeline](src/v4/pitch/pitchTimeline.ts) at 30 fps (about 61.1 seconds), with a 388-frame opening. Its design references are [storyboard v4](storyboard-v4.md), [design review](review/design-v4.md) and [style-frame review log](review/log-v4-sf.md).
-
-This status is based on source and existing review documents at `main@c91234a`. No new render or visual acceptance was performed for this documentation update; composition registration and an implemented timeline alone do not establish final render approval. Earlier storyboards and review findings remain historical records.
-
-## Original Phase 2a implementation
-
-Persistent-world pitch video. One 3840x2160 SVG world (nodes/lines/packets/badges,
-pure function of frame) + a continuous camera (translate/scale, spring-driven) that
-pans/zooms through it. Scenes only drive state + headline copy — no cuts, no
-remounting the world, per `storyboard-v2.md` and `MOTION.md`.
-
-Phase 2a covers S01-S04 (0-25s / 0-750f). S05-S08 are Phase 2b (metadata reserved in
-`src/scenes/scenes.ts`, `implemented: false`).
-
-## Commands
-
-```bash
-npx remotion studio
-npx remotion render Preview2a out/preview-2a.mp4 --codec=h264 --crf=18
-npx remotion still Preview2a review/stills/f000.png --frame=0
-```
-
-`Preview2a` = S01-S04 (0-750f, 1920x1080 @30fps). `Full` = the full 1500f timeline
-(S05-S08 currently just hold the S04 end-state visually, not yet built).
-
-## Structure
-
-- `src/tokens/` — `motion.ts` (durations/easings/springs incl. the `ad` art-direction
-  pass), `colors.ts` (DESIGN.md tokens), `fonts.ts` (Pretendard loader).
-- `src/world/` — `coords.ts` (world map), `camera.ts` (camera path), `state.ts`
-  (per-frame world state, pure function), `s04Timing.ts` (shared S04 line/token
-  timing used by both World and Camera), `World.tsx` (the persistent SVG).
-- `src/primitives/Headline.tsx` — mask-reveal headline with per-scene variants
-  (blur-in, per-char, PM-green-snap, default word reveal).
-- `src/scenes/scenes.ts` — scene frame ranges + headline copy + variant.
-- `src/compositions/PitchVideo.tsx`, `src/Root.tsx` — composition wiring.
-- `review/log-2a.md` — defect-fixing rounds and documented deviations from storyboard.
+공용 모듈: `src/type/RevealUnit.tsx`(마스크 리빌), `src/tokens/`, `src/v3/`의 stage·fx·ui 일부(v4가 재사용). v2–v3 산출물은 git 기록에서 확인.
 
 ## License
 

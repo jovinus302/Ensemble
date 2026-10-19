@@ -1,67 +1,19 @@
 import React from 'react';
 import {Composition} from 'remotion';
-import {PitchVideo} from './compositions/PitchVideo';
-import {UiMockupFlat} from './ui/UiMockupFlat';
-import {PitchV3} from './v3/PitchV3';
-import {StyleFrameV3} from './v3/StyleFrameV3';
 import {StyleFrameV4} from './v4/StyleFrameV4';
 import {OpeningV4} from './v4/OpeningV4';
 import {OPENING} from './v4/opening';
 import {PitchV4} from './v4/PitchV4';
 import {PITCH_TOTAL} from './v4/pitch/pitchTimeline';
+import {StyleFrameV5} from './v5/StyleFrameV5';
+import {PitchV5} from './v5/PitchV5';
+import {TeaserV5} from './v5/TeaserV5';
+import {QaV5} from './v5/QaV5';
+import {TEASER_FRAMES, TOTAL_FRAMES} from './v5/timing';
 
 export const RemotionRoot: React.FC = () => {
   return (
     <>
-      {/* Full timeline per storyboard-v2.md (1500f = 50s). S05-S08 are Phase 2b —
-          the world simply holds its S04 end-state visually for those frames for now. */}
-      <Composition
-        id="Full"
-        component={PitchVideo}
-        durationInFrames={1500}
-        fps={30}
-        width={1920}
-        height={1080}
-      />
-      {/* Phase 2a deliverable: S01-S04, 0-750f (0-25s). */}
-      <Composition
-        id="Preview2a"
-        component={PitchVideo}
-        durationInFrames={750}
-        fps={30}
-        width={1920}
-        height={1080}
-      />
-      {/* Flat hi-fi product UI still, prep for 2.5D showcase pass. */}
-      <Composition
-        id="UiMockupFlat"
-        component={UiMockupFlat}
-        durationInFrames={1}
-        fps={30}
-        width={1440}
-        height={900}
-      />
-      {/* v3 (spec-v3-architect.md): CSS-3D "floating workspace" pitch video.
-          Full beat-by-beat motion is NOT implemented yet — see PitchV3.tsx
-          header comment. Registered so the composition list is stable. */}
-      <Composition
-        id="PitchV3"
-        component={PitchV3}
-        durationInFrames={1710}
-        fps={30}
-        width={1920}
-        height={1080}
-      />
-      {/* v3 style frames (spec §5/§7 step 11): SF1 f185, SF2 f505, SF3 f1305. */}
-      <Composition
-        id="StyleFrameV3"
-        component={StyleFrameV3}
-        durationInFrames={1}
-        fps={30}
-        width={1920}
-        height={1080}
-        defaultProps={{frame: 185, debugProjection: false}}
-      />
       {/* v4 style frames (review/design-v4.md r1 §3): SF1a / SF1b / SF2 / SF3, chosen by `still`. */}
       <Composition
         id="StyleFrameV4"
@@ -84,6 +36,21 @@ export const RemotionRoot: React.FC = () => {
       />
       {/* v4 full pitch video (storyboard-v4.md, 1834f = 61.1s). */}
       <Composition id="PitchV4" component={PitchV4} durationInFrames={PITCH_TOTAL} fps={30} width={1920} height={1080} />
+      {/* v5 style frame SF-A (storyboard-v5.md §5): world options A1/A2/A3. */}
+      <Composition
+        id="StyleFrameV5"
+        component={StyleFrameV5}
+        durationInFrames={1}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{still: 'A1' as const, measure: false}}
+      />
+      {/* v5 pitch film (storyboard-v5.md, 1680f = 56.0s). Stage 1: B1-B3 animated, later beats hold. */}
+      <Composition id="PitchV5" component={PitchV5} durationInFrames={TOTAL_FRAMES} fps={30} width={1920} height={1080} />
+      {/* v5 teaser (storyboard-v5.md §6, 540f = 18.0s): the same scene read through source-frame remapping */}
+      <Composition id="QaV5" component={QaV5} durationInFrames={1} fps={30} width={64} height={36} />
+      <Composition id="TeaserV5" component={TeaserV5} durationInFrames={TEASER_FRAMES} fps={30} width={1920} height={1080} />
     </>
   );
 };

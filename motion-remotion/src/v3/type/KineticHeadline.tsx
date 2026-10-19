@@ -1,5 +1,5 @@
 // v3 §3/§7 step 8 — KineticHeadline: builds on the v2 RevealUnit mask-reveal
-// primitive (exported from src/primitives/Headline.tsx) and adds the v3-only
+// primitive (exported from src/type/RevealUnit.tsx) and adds the v3-only
 // treatments storyboard-v3.md calls for: Z-fly-in, variable-weight morph,
 // word swap, scaleX/letter-spacing squeeze, strike/underline tube, and a
 // per-word Z-emphasis (translateZ) lift with a matching text-plane cast
@@ -7,7 +7,7 @@
 // perspective without following its zoom.
 import React from 'react';
 import {interpolate, spring} from 'remotion';
-import {RevealUnit} from '../../primitives/Headline';
+import {RevealUnit} from '../../type/RevealUnit';
 import {ad, FPS} from '../../tokens/motion';
 import {type, inkColor, accentColor, TypeStyle} from '../tokens/video';
 import {FONT_FAMILY, FONT_FAMILY_VARIABLE} from '../../tokens/fonts';

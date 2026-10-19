@@ -2,6 +2,8 @@
 
 > **과거 영상 자료 · 2026-10-07 정리:** 이 문서는 이전 영상의 제작·검토 기록이다. 현재 제품은 여러 사람과 Agent의 맥락을 목표 아래 연결하고 다음 행동을 조율하는 PM Agent이며 [제품 의도](../../intent.md)가 기준이다. 아래 대본·표현·화면은 새 메시지로 재제작된 결과가 아니다.
 
+> v5([storyboard-v5.md](../storyboard-v5.md))로 대체됨. 이 문서의 'AI PM', '한 채널', 'PM Agent이' 표현은 현재 메시지가 아니다.
+
 
 2026-09-28. Built against `review/design-v4.md` r1 (the review of record).
 Stills: `review/v4/SF1a.png`, `SF1b.png`, `SF2.png`, `SF3.png`; projection
