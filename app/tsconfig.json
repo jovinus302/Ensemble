@@ -3,6 +3,7 @@
   "include": [
     "packages/*/src",
     "packages/*/scripts",
-    "test"
+    "test",
+    "dogfood"
   ]
 }
