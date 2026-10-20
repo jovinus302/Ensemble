@@ -17,6 +17,7 @@
 | 검사와 검증 한계 | [QA](qa/README.md), [회귀 검사](qa/essential-regressions.md) |
 | 화면·움직임의 기준 | [DESIGN](../DESIGN.md), [MOTION](../MOTION.md) |
 | 이번 변경의 의도와 증거 | [변경 제안](change-proposition.md) |
+| 에이전트 전용 도그푸딩 | [계획](dogfooding/plan.md), [PM Workflow 7단계](dogfooding/pm-workflow.md), [기능 모판](dogfooding/feature-seedbed.md) |
 
 ## 현재 구현과 자료의 역할
 
